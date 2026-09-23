@@ -1,0 +1,47 @@
+# Credentials and local configuration
+.env
+.env.*
+!.env.example
+secrets/
+credentials/
+*.pem
+*.key
+*.jks
+*.keystore
+local.properties
+
+# Android / Gradle
+.gradle/
+.kotlin/
+**/build/
+*.apk
+*.aab
+.externalNativeBuild/
+.cxx/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+
+# Node tooling, if adopted
+node_modules/
+dist/
+
+# Runtime data: do not commit user images or recordings
+data/private/
+captures/
+recordings/
+generated-results/
+uploads/
+logs/
+*.log
+tmp/
+
+# Editor / OS
+.idea/
+*.iml
+.DS_Store
+Thumbs.db
