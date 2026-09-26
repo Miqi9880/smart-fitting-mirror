@@ -1,0 +1,32 @@
+name: Android build and unit tests
+on:
+  pull_request:
+    paths: ['android/**', 'contracts/**', '.github/workflows/android.yml']
+  push:
+    branches: [main]
+    paths: ['android/**', 'contracts/**', '.github/workflows/android.yml']
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Install SDK packages
+        run: sdkmanager 'platforms;android-35' 'build-tools;35.0.0'
+      - name: Build, test and lint
+        working-directory: android
+        run: ./gradlew --no-daemon :app:assembleDebug :core-contracts:test :core-vision:testDebugUnitTest :app:lintDebug :core-vision:lintDebug
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: android-validation
+          path: |
+            android/app/build/outputs/apk/debug/*.apk
+            android/**/build/reports/
+          retention-days: 7

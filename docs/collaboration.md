@@ -1,6 +1,6 @@
 # V0.1 三人协作约定
 
-状态：开发基线提案，合并后执行。设备和企业验收要求仍待确认。
+状态：V0.1 开发基线已合并。设备和企业验收要求仍待确认。
 
 ## 角色与目录
 
@@ -10,7 +10,7 @@
 | 后端与 AI | haiyangniu191-design | 服装与生成服务、Android 网络客户端、结果下载 | backend、android/core-network |
 | 实时试衣与 Android 交互 | lyf-bee | 衣服叠加、选择/生成/对比页面、模块装配 | android/feature-tryon、android/app |
 
-项目负责人已确认上述账号与角色。上述代码目录是落位约定，当前尚未创建应用工程。
+项目负责人已确认上述账号与角色。Android 工程已按上述边界建立；core-network 和 feature-tryon 当前是待对应成员实现的可构建空模块。构建与接入见 [Android 说明](../android/README.md)。
 
 - 项目负责人协调公共接口、依赖版本、Gradle 和 Manifest，负责跨模块问题及合并。
 - 实时试衣负责人维护页面和主流程，但不包办其他两人的 Android 接入。
