@@ -7,10 +7,10 @@
 | 角色 | 账号 | 主要交付 | 计划维护目录 |
 | --- | --- | --- | --- |
 | 项目负责人 / 硬件与人体视觉 | Miqi9880 | 工程基线、公共接口、采集、姿态与原始拍照 | android/core-contracts、android/core-vision |
-| 后端与 AI | 待确认 | 服装与生成服务、Android 网络客户端、结果下载 | backend、android/core-network |
-| 实时试衣与 Android 交互 | 待确认 | 衣服叠加、选择/生成/对比页面、模块装配 | android/feature-tryon、android/app |
+| 后端与 AI | haiyangniu191-design | 服装与生成服务、Android 网络客户端、结果下载 | backend、android/core-network |
+| 实时试衣与 Android 交互 | lyf-bee | 衣服叠加、选择/生成/对比页面、模块装配 | android/feature-tryon、android/app |
 
-lyf-bee 与 haiyangniu191-design 的角色映射尚未确认；项目负责人确认后更新本表及 Issue 负责人。上述代码目录是落位约定，当前尚未创建应用工程。
+项目负责人已确认上述账号与角色。上述代码目录是落位约定，当前尚未创建应用工程。
 
 - 项目负责人协调公共接口、依赖版本、Gradle 和 Manifest，负责跨模块问题及合并。
 - 实时试衣负责人维护页面和主流程，但不包办其他两人的 Android 接入。
