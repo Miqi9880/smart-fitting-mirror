@@ -9,6 +9,7 @@ import android.os.Looper
 import android.os.SystemClock
 import com.smartfitting.mirror.contracts.*
 import java.io.ByteArrayOutputStream
+import java.util.concurrent.Executors
 import kotlin.math.sin
 
 /** Explicitly synthetic frames for integration without a camera or model. */
@@ -17,6 +18,9 @@ class SyntheticVisionSource : VisionSource<BitmapPixels> {
         personMask = false, alignedDepth = false)
     private val handler = Handler(Looper.getMainLooper())
     private val latest = LatestFrame<BitmapPixels>()
+    private val captureExecutor = Executors.newSingleThreadExecutor()
+    private val generation = SessionGeneration()
+    private var activeTicket: Long? = null
     private var runnable: Runnable? = null
     private var onStatus: ((VisionStatus) -> Unit)? = null
     private var counter = 0L
@@ -26,7 +30,9 @@ class SyntheticVisionSource : VisionSource<BitmapPixels> {
                        onStatus: (VisionStatus) -> Unit) {
         check(Looper.myLooper() == Looper.getMainLooper())
         check(!closed)
+        require(sessionId.isNotBlank())
         stop()
+        activeTicket = generation.begin()
         this.onStatus = onStatus
         counter = 0
         onStatus(VisionStatus(SourceState.READY, message = "合成样例：非摄像头、非模型识别；每 8 秒模拟一次丢失"))
@@ -61,24 +67,47 @@ class SyntheticVisionSource : VisionSource<BitmapPixels> {
         handler.post(tick)
     }
     override fun captureOriginal(callback: (Result<CapturedPhoto>) -> Unit) {
+        check(Looper.myLooper() == Looper.getMainLooper())
+        val ticket = activeTicket
         val frame = latest.acquire()
-        if (frame == null) { callback(Result.failure(IllegalStateException("还没有样例帧"))); return }
-        val result = runCatching {
-            val bytes = ByteArrayOutputStream().use {
-                check(frame.pixels.bitmap.compress(Bitmap.CompressFormat.PNG, 100, it)); it.toByteArray()
-            }
-            CapturedPhoto(frame.metadata.sessionId, frame.metadata.frameId, frame.metadata.image.width,
-                frame.metadata.image.height, "image/png", bytes)
+        if (ticket == null || frame == null) {
+            frame?.release()
+            callback(Result.failure(IllegalStateException("还没有样例帧")))
+            return
         }
-        frame.release()
-        callback(result)
+        captureExecutor.execute {
+            val result = runCatching {
+                val bytes = ByteArrayOutputStream().use {
+                    check(frame.pixels.bitmap.compress(Bitmap.CompressFormat.PNG, 100, it)); it.toByteArray()
+                }
+                CapturedPhoto(frame.metadata.sessionId, frame.metadata.frameId, frame.metadata.image.width,
+                    frame.metadata.image.height, "image/png", bytes)
+            }
+            frame.release()
+            handler.post {
+                if (generation.accepts(ticket)) callback(result)
+                else {
+                    result.getOrNull()?.close()
+                    callback(Result.failure(IllegalStateException("会话已结束，拍照结果已清理")))
+                }
+            }
+        }
     }
     override fun stop() {
+        check(Looper.myLooper() == Looper.getMainLooper())
+        generation.end()
+        activeTicket = null
         runnable?.let { handler.removeCallbacks(it) }
         runnable = null
         latest.clear()
         onStatus?.invoke(VisionStatus(SourceState.STOPPED, message = "样例已停止，帧已清理"))
         onStatus = null
     }
-    override fun close() { stop(); closed = true }
+    override fun close() {
+        check(Looper.myLooper() == Looper.getMainLooper())
+        if (closed) return
+        stop()
+        closed = true
+        captureExecutor.shutdown()
+    }
 }

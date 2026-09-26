@@ -3,6 +3,7 @@ package com.smartfitting.mirror.vision
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Color
+import android.os.Looper
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.smartfitting.mirror.contracts.*
@@ -34,34 +35,73 @@ class BitmapAndSourceTest {
         val failure = AtomicReference<Throwable?>()
         lateinit var source: SyntheticVisionSource
         var callbacks = 0
+        var callbacksAtStop = 0
+        var captureRequested = false
         instrumentation.runOnMainSync {
             source = SyntheticVisionSource()
             source.start("instrumented", { lease ->
+                callbacks++
+                if (captureRequested) return@start
+                captureRequested = true
                 try {
-                    callbacks++
                     assertEquals(VisionSourceKind.MOCK, source.capabilities.source)
                     assertFalse(lease.metadata.image.mirrored)
+                    val shoulder = lease.metadata.keypoints.leftShoulder!!
+                    var captureReturned = false
                     source.captureOriginal { result ->
-                        result.getOrThrow().use { photo ->
-                            val decoded = BitmapFactory.decodeByteArray(photo.bytes, 0, photo.bytes.size)
-                            assertEquals(480, decoded.width)
-                            assertEquals(Color.rgb(110, 160, 180), decoded.getPixel(70, 70))
-                            // A shoulder is drawn by the View, never burned into captured pixels.
-                            val shoulder = lease.metadata.keypoints.leftShoulder!!
-                            val color = decoded.getPixel((shoulder.x * 479).toInt(), (shoulder.y * 639).toInt())
-                            assertNotEquals(Color.WHITE, color)
-                            decoded.recycle()
+                        try {
+                            assertTrue(captureReturned)
+                            assertEquals(Looper.getMainLooper(), Looper.myLooper())
+                            result.getOrThrow().use { photo ->
+                                val decoded = BitmapFactory.decodeByteArray(photo.bytes, 0, photo.bytes.size)
+                                assertEquals(480, decoded.width)
+                                assertEquals(Color.rgb(110, 160, 180), decoded.getPixel(70, 70))
+                                // A shoulder is drawn by the View, never burned into captured pixels.
+                                val color = decoded.getPixel((shoulder.x * 479).toInt(), (shoulder.y * 639).toInt())
+                                assertNotEquals(Color.WHITE, color)
+                                decoded.recycle()
+                            }
+                        } catch (error: Throwable) { failure.set(error) }
+                        finally {
+                            source.stop(); source.stop()
+                            callbacksAtStop = callbacks
+                            completed.countDown()
                         }
                     }
-                    source.stop(); source.stop()
-                } catch (error: Throwable) { failure.set(error) }
-                finally { completed.countDown() }
+                    captureReturned = true
+                } catch (error: Throwable) {
+                    failure.set(error)
+                    source.stop()
+                    completed.countDown()
+                }
             }, {})
         }
         assertTrue(completed.await(5, TimeUnit.SECONDS))
         instrumentation.waitForIdleSync()
         instrumentation.runOnMainSync { source.close() }
         failure.get()?.let { throw AssertionError(it) }
-        assertEquals(1, callbacks)
+        assertTrue(callbacksAtStop > 0)
+        assertEquals(callbacksAtStop, callbacks)
+    }
+    @Test fun syntheticCaptureRejectsResultAfterSourceClosed() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val completed = CountDownLatch(1)
+        val failure = AtomicReference<Throwable?>()
+        instrumentation.runOnMainSync {
+            val source = SyntheticVisionSource()
+            source.start("cancelled", { lease ->
+                source.captureOriginal { result ->
+                    try {
+                        assertTrue(result.isFailure)
+                        assertThrows(IllegalStateException::class.java) { lease.pixels }
+                    } catch (error: Throwable) { failure.set(error) }
+                    finally { result.getOrNull()?.close(); completed.countDown() }
+                }
+                // A queued encoder must finish, release its retained frame, and reject its old result.
+                source.close(); source.close()
+            }, {})
+        }
+        assertTrue(completed.await(5, TimeUnit.SECONDS))
+        failure.get()?.let { throw AssertionError(it) }
     }
 }

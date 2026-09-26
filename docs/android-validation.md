@@ -9,17 +9,17 @@ Windows 主机构建，JDK 21.0.10，Gradle 8.11.1，AGP 8.9.2，Android SDK 35�
 | 检查 | 结果 |
 | --- | --- |
 | app:assembleDebug | 通过，生成并安装调试 APK |
-| core-contracts:test | 11 项通过，含 13 份 JSON 样例双向映射 |
+| core-contracts:test | 14 项通过，含 13 份 JSON 样例双向映射、版本/句柄/跟踪状态校验 |
 | core-vision:testDebugUnitTest | 4 项通过，含坐标、置信度、出框提示 |
 | app:connectedDebugAndroidTest | 2 项通过，含停止/重建状态、RGB 推理及前后台恢复 |
-| core-vision:connectedDebugAndroidTest | 2 项通过，含方向变换、原图无叠加和停止清理 |
+| core-vision:connectedDebugAndroidTest | 3 项通过，含方向变换、异步原图无叠加、关闭后拒绝旧截图及帧释放 |
 | app:lintDebug / core-vision:lintDebug | 通过，0 Error；合计 23 个非阻断 Warning，主要涉及固定依赖版本和诊断页样式/国际化/绘制建议 |
 | Python 合同检查 | 通过：OpenAPI、两份 Schema、13 样例、五类错误拒绝及本地文档链接 |
 | 页面视觉检查 | 已检查竖屏与横屏；竖屏完整显示，横屏使用纵向滚动，保留原图比例 |
 
 运行命令见 [Android README](../android/README.md)。本机 Central 域名返回 403，构建时使用文档中的 centralRepositoryUrl 参数；未关闭 TLS。CI 保持默认官方 Central。
 
-设备测试曾发现：停止后重建 Activity，原始帧按钮恢复为可用。已修复按钮初始状态并重新通过测试。低置信度不再直接标记人体出框。
+设备测试曾发现：停止后重建 Activity，原始帧按钮恢复为可用。已修复按钮初始状态并重新通过测试。低置信度不再直接标记人体出框。审查后补全公共类型校验，并将合成截图压缩移到后台；会话关闭后清理并拒绝尚未返回的截图，相关回归测试已通过。
 
 ## 当前可交付
 

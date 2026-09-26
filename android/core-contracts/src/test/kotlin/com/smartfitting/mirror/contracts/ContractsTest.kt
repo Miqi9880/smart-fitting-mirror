@@ -34,6 +34,28 @@ class ContractsTest {
         val frame = ContractJson.decodeFromString<VisionFrame>(fixture("vision-tracking.json"))
         assertThrows(IllegalArgumentException::class.java) { frame.copy(keypoints = frame.keypoints.copy(leftHip = null)) }
     }
+    @Test fun declaredTrackingStateMustMatchReliableKeypoints() {
+        val tracked = ContractJson.decodeFromString<VisionFrame>(fixture("vision-tracking.json"))
+        val partialPoints = Keypoints(leftShoulder = Landmark(.4f, .3f, .8f))
+        assertEquals(TrackingState.PARTIAL, tracked.copy(trackingState = TrackingState.PARTIAL, keypoints = partialPoints).trackingState)
+        for (points in listOf(Keypoints(), Keypoints(leftShoulder = Landmark(.4f, .3f, .1f)), tracked.keypoints)) {
+            assertThrows(IllegalArgumentException::class.java) {
+                tracked.copy(trackingState = TrackingState.PARTIAL, keypoints = points)
+            }
+        }
+    }
+    @Test fun bufferIdentifiersCannotBeBlank() {
+        for (id in listOf("", "  ")) {
+            assertThrows(IllegalArgumentException::class.java) { ImageMetadata(id, 10, 10) }
+            assertThrows(IllegalArgumentException::class.java) { PlaneMetadata(id, 10, 10, 10, "foreground_uint8") }
+            assertThrows(IllegalArgumentException::class.java) { DepthMetadata(id, 10, 10, 20) }
+        }
+    }
+    @Test fun capabilitiesRejectUnsupportedSchemaVersionOnDecode() {
+        assertThrows(IllegalArgumentException::class.java) {
+            ContractJson.decodeFromString<VisionCapabilities>(fixture("capabilities-rgb.json").replace("0.1.0", "0.2.0"))
+        }
+    }
     @Test fun invalidCoordinatesAndMirroredMetadataAreRejected() {
         assertThrows(IllegalArgumentException::class.java) { Landmark(Float.NaN, .5f, 1f) }
         assertThrows(IllegalArgumentException::class.java) { Landmark(-.1f, .5f, 1f) }

@@ -51,17 +51,17 @@ enum class KeypointName { LEFT_SHOULDER, RIGHT_SHOULDER, LEFT_ELBOW, RIGHT_ELBOW
 @Serializable data class ImageMetadata(
     @SerialName("buffer_id") val bufferId: String,
     val width: Int, val height: Int, val orientation: String = "upright", val mirrored: Boolean = false
-) { init { require(width > 0 && height > 0 && orientation == "upright" && !mirrored) } }
+) { init { require(bufferId.isNotBlank() && width > 0 && height > 0 && orientation == "upright" && !mirrored) } }
 
 @Serializable data class PlaneMetadata(
     @SerialName("buffer_id") val bufferId: String, val width: Int, val height: Int,
     @SerialName("row_stride_bytes") val rowStrideBytes: Int, val format: String,
-) { init { require(width > 0 && height > 0 && rowStrideBytes >= width && format == "foreground_uint8") } }
+) { init { require(bufferId.isNotBlank() && width > 0 && height > 0 && rowStrideBytes >= width && format == "foreground_uint8") } }
 @Serializable data class DepthMetadata(
     @SerialName("buffer_id") val bufferId: String, val width: Int, val height: Int,
     @SerialName("row_stride_bytes") val rowStrideBytes: Int,
     val format: String = "depth_uint16_le_mm", @SerialName("invalid_value") val invalidValue: Int = 0
-) { init { require(width > 0 && height > 0 && rowStrideBytes.toLong() >= width.toLong() * 2 && format == "depth_uint16_le_mm" && invalidValue == 0) } }
+) { init { require(bufferId.isNotBlank() && width > 0 && height > 0 && rowStrideBytes.toLong() >= width.toLong() * 2 && format == "depth_uint16_le_mm" && invalidValue == 0) } }
 
 @Serializable data class VisionFrame(
     @SerialName("schema_version") val schemaVersion: String = "0.1.0",
@@ -79,7 +79,7 @@ enum class KeypointName { LEFT_SHOULDER, RIGHT_SHOULDER, LEFT_ELBOW, RIGHT_ELBOW
         require(schemaVersion == "0.1.0" && sessionId.isNotBlank() && frameId >= 0 && timestampMs >= 0)
         require(distanceM == null || (distanceM.isFinite() && distanceM > 0))
         require(depth == null || (depth.width == image.width && depth.height == image.height))
-        require(trackingState != TrackingState.TRACKING || keypoints.state() == TrackingState.TRACKING)
+        require(trackingState == keypoints.state())
         require(trackingState != TrackingState.LOST || keypoints.asMap().values.all { it == null })
     }
 }
@@ -88,4 +88,4 @@ enum class KeypointName { LEFT_SHOULDER, RIGHT_SHOULDER, LEFT_ELBOW, RIGHT_ELBOW
     val source: VisionSourceKind, val rgb: Boolean, val pose: Boolean,
     @SerialName("person_mask") val personMask: Boolean,
     @SerialName("aligned_depth") val alignedDepth: Boolean
-)
+) { init { require(schemaVersion == "0.1.0") } }
