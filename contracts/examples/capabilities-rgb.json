@@ -1,0 +1,8 @@
+{
+  "schema_version": "0.1.0",
+  "source": "rgb_camera",
+  "rgb": true,
+  "pose": true,
+  "person_mask": false,
+  "aligned_depth": false
+}

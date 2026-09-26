@@ -1,0 +1,8 @@
+{
+  "error": {
+    "code": "IDEMPOTENCY_CONFLICT",
+    "message": "该幂等键已绑定其他输入",
+    "retryable": false,
+    "request_id": "request_mock_02"
+  }
+}

@@ -1,0 +1,28 @@
+{
+  "schema_version": "0.1.0",
+  "session_id": "session_mock_01",
+  "frame_id": 2,
+  "timestamp_ms": 1033,
+  "image": {
+    "buffer_id": "mock_rgb_1",
+    "width": 720,
+    "height": 1280,
+    "orientation": "upright",
+    "mirrored": false
+  },
+  "tracking_state": "lost",
+  "keypoints": {
+    "left_shoulder": null,
+    "right_shoulder": null,
+    "left_elbow": null,
+    "right_elbow": null,
+    "left_wrist": null,
+    "right_wrist": null,
+    "left_hip": null,
+    "right_hip": null
+  },
+  "standing_hint": "unknown",
+  "distance_m": null,
+  "mask": null,
+  "depth": null
+}

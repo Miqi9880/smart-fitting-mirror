@@ -1,0 +1,38 @@
+{
+  "items": [
+    {
+      "garment_id": "upper_demo_01",
+      "name": "演示上衣",
+      "category": "upper_body",
+      "tags": [
+        "casual",
+        "blue"
+      ],
+      "thumbnail_url": "https://assets.example.invalid/upper_demo_01-thumb.png",
+      "preview_image": {
+        "url": "https://assets.example.invalid/upper_demo_01.png",
+        "width": 600,
+        "height": 800,
+        "anchors": {
+          "left_shoulder": {
+            "x": 0.75,
+            "y": 0.15
+          },
+          "right_shoulder": {
+            "x": 0.25,
+            "y": 0.15
+          },
+          "left_hip": {
+            "x": 0.7,
+            "y": 0.85
+          },
+          "right_hip": {
+            "x": 0.3,
+            "y": 0.85
+          }
+        }
+      },
+      "generation_reference_url": "https://assets.example.invalid/upper_demo_01-reference.jpg"
+    }
+  ]
+}
