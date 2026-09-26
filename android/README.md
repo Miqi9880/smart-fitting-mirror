@@ -4,6 +4,8 @@
 
 [本次验证记录与截图](../docs/android-validation.md)
 
+[无设备联调场景与两位同学的接入验收](../docs/no-device-integration.md)
+
 ## 固定工具版本
 
 | 项目 | 版本 |
@@ -52,7 +54,7 @@ adb devices
 adb shell am start -n com.smartfitting.mirror/.MainActivity
 ```
 
-- 合成样例：不需要摄像头，每 8 秒模拟一次人体丢失，验证数据格式和清理。
+- 合成样例：不需要摄像头；选择静止、平移、大小变化、缺少左肩、丢失或恢复场景。可暂停、单步、从头重放，并选择 480×640 / 640×480 图像画幅。默认综合演示每 80 个样本短暂丢失。
 - RGB 摄像头：优先前置，缺少前置时回退后置；只支持被 CameraX/Camera2 暴露的 RGB 设备，不保证厂商 USB 深度摄像机可直接使用。
 - 镜面开关：只影响显示；内部图像与关键点始终未镜像。
 - 查看原始帧：仅在内存展示当前帧，无关键点/UI 烧录，不写入相册；关闭弹窗或离开页面释放图像。
@@ -74,6 +76,8 @@ adb shell am start -n com.smartfitting.mirror/.MainActivity
 借用帧的回调默认在主线程执行。同步绘制可在回调期间读取；保存或异步使用须 retain，用完 release。源负责释放自己的引用，不要在回调里释放未 retain 的引用。BitmapPixels.bitmap 只在持有引用时有效，不可修改或自行 recycle。
 
 `CameraRgbSource` 的 start/stop/close/captureOriginal 在主线程调用；初始化需要 Context 和 LifecycleOwner。调用 stop 可重复，close 后不可重新 start。页面退到后台应 stop，销毁时 close。start 已包含旧会话清理。
+
+`SyntheticVisionSource` 同样在主线程操作；额外提供 configure(SyntheticSettings)、setPlaying(Boolean)、step()、seekTo(Long)。step 需要先暂停。start 从样本 0 开始，即使暂停也发送首帧；seekTo 不重置 frame_id。configure 在活动会话内从样本 0 重放，在未启动时只保存配置。UI 的场景/画幅切换则主动开启新会话，防止旧截图影响新场景。播放选择与配置在 stop 后保留，close 后不可再控制。
 
 摄像头每次只处理一帧，推理完成才关闭 ImageProxy，CameraX 使用 KEEP_ONLY_LATEST 丢弃积压帧。图像旋转一次，ML Kit 接收旋转后的 Bitmap（rotation=0），关键点、背景和原图绑定同一帧。现阶段优先正确性，Bitmap 复制与 CPU 绘制尚未做 GPU 优化。
 

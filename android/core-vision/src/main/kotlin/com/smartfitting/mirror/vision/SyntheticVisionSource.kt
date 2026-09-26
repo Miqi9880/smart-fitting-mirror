@@ -10,67 +10,108 @@ import android.os.SystemClock
 import com.smartfitting.mirror.contracts.*
 import java.io.ByteArrayOutputStream
 import java.util.concurrent.Executors
-import kotlin.math.sin
 
-/** Explicitly synthetic frames for integration without a camera or model. */
+/** Main-thread controls for a deterministic, explicitly synthetic integration source. */
 class SyntheticVisionSource : VisionSource<BitmapPixels> {
     override val capabilities = VisionCapabilities(source = VisionSourceKind.MOCK, rgb = true, pose = true,
         personMask = false, alignedDepth = false)
+    var settings = SyntheticSettings()
+        private set
+    var playing = true
+        private set
+    val lastSampleStep: Long? get() = run?.lastStep
     private val handler = Handler(Looper.getMainLooper())
     private val latest = LatestFrame<BitmapPixels>()
     private val captureExecutor = Executors.newSingleThreadExecutor()
     private val generation = SessionGeneration()
-    private var activeTicket: Long? = null
-    private var runnable: Runnable? = null
-    private var onStatus: ((VisionStatus) -> Unit)? = null
-    private var counter = 0L
+    private var run: Run? = null
     private var closed = false
+    private class Run(val ticket: Long, val sessionId: String,
+        val onFrame: (FrameLease<BitmapPixels>) -> Unit, val onStatus: (VisionStatus) -> Unit) {
+        var frameId = 0L
+        var nextStep = 0L
+        var lastStep: Long? = null
+    }
+    private val tick = object : Runnable {
+        override fun run() {
+            val current = run ?: return
+            emit(current)
+            if (run === current && playing) schedule()
+        }
+    }
 
+    fun configure(settings: SyntheticSettings) {
+        checkUsable()
+        if (this.settings == settings) return
+        this.settings = settings
+        seekTo(0)
+    }
+    fun setPlaying(value: Boolean) {
+        checkUsable()
+        if (playing == value) return
+        playing = value
+        handler.removeCallbacks(tick)
+        // A paused start still needs an initial image.
+        if (run?.lastStep == null && run != null) handler.post(tick)
+        else if (playing && run != null) schedule()
+    }
+    fun step() {
+        checkUsable()
+        check(!playing) { "Pause before stepping" }
+        handler.removeCallbacks(tick)
+        run?.let { emit(it) }
+    }
+    fun seekTo(step: Long) {
+        checkUsable()
+        require(step >= 0)
+        handler.removeCallbacks(tick)
+        val current = run ?: return
+        current.nextStep = step
+        emit(current)
+        if (run === current && playing) schedule()
+    }
+    private fun schedule() {
+        handler.removeCallbacks(tick)
+        handler.postDelayed(tick, SyntheticScene.STEP_MS)
+    }
     override fun start(sessionId: String, onFrame: (FrameLease<BitmapPixels>) -> Unit,
                        onStatus: (VisionStatus) -> Unit) {
-        check(Looper.myLooper() == Looper.getMainLooper())
-        check(!closed)
+        checkUsable()
         require(sessionId.isNotBlank())
         stop()
-        activeTicket = generation.begin()
-        this.onStatus = onStatus
-        counter = 0
-        onStatus(VisionStatus(SourceState.READY, message = "合成样例：非摄像头、非模型识别；每 8 秒模拟一次丢失"))
-        val tick = object : Runnable {
-            override fun run() {
-                if (runnable !== this) return
-                counter++
-                val shift = (sin(counter / 15.0) * .10).toFloat()
-                val lost = counter % 80 in 60L..69L
-                fun point(x: Float, y: Float) = Landmark(x + shift, y, .95f)
-                val points = if (lost) Keypoints() else Keypoints(
-                    point(.65f, .25f), point(.35f, .25f), point(.7f, .43f), point(.3f, .43f),
-                    point(.72f, .6f), point(.28f, .6f), point(.6f, .65f), point(.4f, .65f))
-                val bitmap = Bitmap.createBitmap(480, 640, Bitmap.Config.ARGB_8888)
-                val canvas = Canvas(bitmap)
-                canvas.drawColor(Color.rgb(20, 32, 45))
-                val paint = Paint().apply { color = Color.rgb(40, 58, 72); strokeWidth = 1f }
-                for (x in 0..480 step 40) canvas.drawLine(x.toFloat(), 0f, x.toFloat(), 640f, paint)
-                for (y in 0..640 step 40) canvas.drawLine(0f, y.toFloat(), 480f, y.toFloat(), paint)
-                paint.color = Color.rgb(110, 160, 180)
-                canvas.drawCircle(70f, 70f, 22f, paint) // Asymmetric raw marker proves mirror direction.
-                val metadata = VisionFrame(sessionId = sessionId, frameId = counter,
-                    timestampMs = SystemClock.elapsedRealtime(), image = ImageMetadata("synthetic_$counter", 480, 640),
-                    trackingState = points.state(), keypoints = points)
-                val frame = FrameLease(metadata, BitmapPixels(bitmap)) { it.bitmap.recycle() }
-                latest.offer(frame)
-                try { onFrame(frame) } finally { frame.release() }
-                if (runnable === this) handler.postDelayed(this, 100)
-            }
-        }
-        runnable = tick
-        handler.post(tick)
+        val current = Run(generation.begin(), sessionId, onFrame, onStatus)
+        run = current
+        onStatus(VisionStatus(SourceState.READY, message = "合成样例：非摄像头、非模型识别；可暂停、单步或从头重放"))
+        if (run === current) handler.post(tick)
+    }
+    private fun emit(current: Run) {
+        if (run !== current) return
+        val step = current.nextStep++
+        current.lastStep = step
+        val points = SyntheticScene.sample(settings.scenario, step)
+        val width = settings.viewport.width
+        val height = settings.viewport.height
+        val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bitmap)
+        canvas.drawColor(Color.rgb(20, 32, 45))
+        val paint = Paint().apply { color = Color.rgb(40, 58, 72); strokeWidth = 1f }
+        for (x in 0..width step 40) canvas.drawLine(x.toFloat(), 0f, x.toFloat(), height.toFloat(), paint)
+        for (y in 0..height step 40) canvas.drawLine(0f, y.toFloat(), width.toFloat(), y.toFloat(), paint)
+        paint.color = Color.rgb(110, 160, 180)
+        canvas.drawCircle(70f, 70f, 22f, paint)
+        val frameId = ++current.frameId
+        val metadata = VisionFrame(sessionId = current.sessionId, frameId = frameId,
+            timestampMs = SystemClock.elapsedRealtime(), image = ImageMetadata("synthetic_${current.ticket}_$frameId", width, height),
+            trackingState = points.state(), keypoints = points)
+        val frame = FrameLease(metadata, BitmapPixels(bitmap)) { it.bitmap.recycle() }
+        latest.offer(frame)
+        try { current.onFrame(frame) } finally { frame.release() }
     }
     override fun captureOriginal(callback: (Result<CapturedPhoto>) -> Unit) {
-        check(Looper.myLooper() == Looper.getMainLooper())
-        val ticket = activeTicket
+        checkMain()
+        val current = run
         val frame = latest.acquire()
-        if (ticket == null || frame == null) {
+        if (current == null || frame == null) {
             frame?.release()
             callback(Result.failure(IllegalStateException("还没有样例帧")))
             return
@@ -85,7 +126,7 @@ class SyntheticVisionSource : VisionSource<BitmapPixels> {
             }
             frame.release()
             handler.post {
-                if (generation.accepts(ticket)) callback(result)
+                if (generation.accepts(current.ticket)) callback(result)
                 else {
                     result.getOrNull()?.close()
                     callback(Result.failure(IllegalStateException("会话已结束，拍照结果已清理")))
@@ -94,20 +135,21 @@ class SyntheticVisionSource : VisionSource<BitmapPixels> {
         }
     }
     override fun stop() {
-        check(Looper.myLooper() == Looper.getMainLooper())
+        checkMain()
+        val previous = run
+        run = null
         generation.end()
-        activeTicket = null
-        runnable?.let { handler.removeCallbacks(it) }
-        runnable = null
+        handler.removeCallbacks(tick)
         latest.clear()
-        onStatus?.invoke(VisionStatus(SourceState.STOPPED, message = "样例已停止，帧已清理"))
-        onStatus = null
+        previous?.onStatus?.invoke(VisionStatus(SourceState.STOPPED, message = "样例已停止，帧已清理"))
     }
     override fun close() {
-        check(Looper.myLooper() == Looper.getMainLooper())
+        checkMain()
         if (closed) return
-        stop()
         closed = true
+        stop()
         captureExecutor.shutdown()
     }
+    private fun checkMain() = check(Looper.myLooper() == Looper.getMainLooper())
+    private fun checkUsable() { checkMain(); check(!closed) { "Source is closed" } }
 }

@@ -15,6 +15,8 @@
 
 接口提案见 [PR #1](https://github.com/Miqi9880/smart-fitting-mirror/pull/1)。账号与角色已由项目负责人确认；进度以各 Issue 为准。
 
+负责人已补充可控制的合成人体场景，供 T04/T05 接入前使用。具体操作、V01–V08 验收和全链路前置条件见 [无设备联调说明](no-device-integration.md)。真实 RGB 与企业设备的验收仍保留。
+
 ## T01 项目负责人：Android 骨架和公共类型
 
 依赖：接口提案合并。范围：android 工程、core-contracts、共享构建配置。

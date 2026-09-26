@@ -19,8 +19,12 @@ class VisionDebugView(context: Context) : View(context) {
     private val imagePaint = Paint(Paint.FILTER_BITMAP_FLAG)
     private val empty = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.LTGRAY; textSize = 17 * resources.displayMetrics.scaledDensity }
 
-    fun submit(frame: FrameLease<BitmapPixels>) { latest.offer(frame); invalidate() }
-    fun clear() { latest.clear(); invalidate() }
+    fun submit(frame: FrameLease<BitmapPixels>) {
+        latest.offer(frame)
+        contentDescription = "人体关键点预览：${frame.metadata.trackingState}，${frame.metadata.image.width}×${frame.metadata.image.height}"
+        invalidate()
+    }
+    fun clear() { latest.clear(); contentDescription = "人体关键点预览：无活动帧"; invalidate() }
     override fun onDetachedFromWindow() { clear(); super.onDetachedFromWindow() }
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)

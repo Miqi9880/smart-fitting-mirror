@@ -3,6 +3,7 @@ package com.smartfitting.mirror
 import android.Manifest
 import android.app.AlertDialog
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.content.res.Configuration
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
@@ -18,6 +19,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowCompat
+import androidx.core.content.ContextCompat
 import com.smartfitting.mirror.contracts.*
 import com.smartfitting.mirror.vision.*
 import java.util.UUID
@@ -26,6 +28,7 @@ class MainActivity : ComponentActivity() {
     private lateinit var viewfinder: VisionDebugView
     private lateinit var status: TextView
     private lateinit var metrics: TextView
+    private lateinit var syntheticControls: SyntheticControls
     private lateinit var rgb: CameraRgbSource
     private val mock = SyntheticVisionSource()
     private var selected: VisionSource<BitmapPixels> = mock
@@ -38,7 +41,10 @@ class MainActivity : ComponentActivity() {
     private var captureBusy = false
     private var lastMetricAt = 0L
     private var metricFrames = 0
+    private var pendingCameraPermission = false
     private val permission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (!pendingCameraPermission) return@registerForActivityResult
+        pendingCameraPermission = false
         if (granted) { selected = rgb; shouldRun = true; if (visible) begin() }
         else { status.text = "未获得摄像头权限，可重试或打开权限设置；合成样例仍可使用。" }
     }
@@ -48,6 +54,11 @@ class MainActivity : ComponentActivity() {
         rgb = CameraRgbSource(this, this, targetRotation = { @Suppress("DEPRECATION") windowManager.defaultDisplay.rotation })
         if (savedInstanceState?.getBoolean("rgb") == true) selected = rgb
         shouldRun = savedInstanceState?.getBoolean("running", true) ?: true
+        pendingCameraPermission = savedInstanceState?.getBoolean("pending_permission", false) ?: false
+        mock.configure(SyntheticSettings(
+            SyntheticScenario.entries.firstOrNull { it.name == savedInstanceState?.getString("scenario") } ?: SyntheticScenario.DEMO,
+            SyntheticViewport.entries.firstOrNull { it.name == savedInstanceState?.getString("viewport") } ?: SyntheticViewport.PORTRAIT))
+        mock.setPlaying(savedInstanceState?.getBoolean("playing", true) ?: true)
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL; setPadding(dp(18), dp(12), dp(18), dp(12))
             setBackgroundColor(Color.rgb(242, 246, 249))
@@ -59,14 +70,23 @@ class MainActivity : ComponentActivity() {
         }
         root.addView(label("智能穿衣镜 · 人体视觉", 22f))
         root.addView(label("开发诊断页｜关键点、原始帧与生命周期验证", 12f))
-        root.addView(row(button("合成样例") { selected = mock; shouldRun = true; begin() },
-            button("RGB 摄像头") { permission.launch(Manifest.permission.CAMERA) }))
+        root.addView(row(button("合成样例") {
+            pendingCameraPermission = false; selected = mock; shouldRun = true; begin()
+        }, button("RGB 摄像头") { requestRgb() }))
+        syntheticControls = SyntheticControls(this, mock) { settings ->
+            pendingCameraPermission = false
+            end()
+            mock.configure(settings)
+            if (shouldRun) begin()
+        }
+        root.addView(syntheticControls)
         status = label(if (shouldRun) "准备数据源" else "已停止，临时图像已清理。", 13f)
         root.addView(status)
         metrics = label("无活动会话", 12f)
         root.addView(metrics)
         viewfinder = VisionDebugView(this)
-        root.addView(viewfinder, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
+        val previewHeight = if (resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE) 260 else 340
+        root.addView(viewfinder, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(previewHeight)))
         val mirror = Switch(this).apply {
             text = "镜面显示（仅显示层翻转）"; isChecked = savedInstanceState?.getBoolean("mirror", true) ?: true
             viewfinder.mirrored = isChecked
@@ -76,16 +96,14 @@ class MainActivity : ComponentActivity() {
         val capture = button("查看原始帧") { capture() }.apply { isEnabled = false }
         captureButton = capture
         root.addView(row(capture, button("停止并清理") {
-            shouldRun = false; end(); status.text = "已停止，临时图像已清理。"
+            pendingCameraPermission = false; shouldRun = false; end(); status.text = "已停止，临时图像已清理。"
         }))
         root.addView(row(button("重新开始") { shouldRun = true; begin() }, button("权限设置") {
             startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName")))
         }))
         root.addView(label("本页不上传、不保存照片；深度、分割、衣服与云端生成尚未接入。", 11f))
-        if (resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE) {
-            viewfinder.layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(260))
-            setContentView(ScrollView(this).apply { addView(root) })
-        } else setContentView(root)
+        setContentView(ScrollView(this).apply { isFillViewport = true; addView(root) })
+        syntheticControls.render(selected === mock, false)
         WindowCompat.getInsetsController(window, root).apply {
             isAppearanceLightStatusBars = true
             isAppearanceLightNavigationBars = true
@@ -96,34 +114,53 @@ class MainActivity : ComponentActivity() {
         outState.putBoolean("rgb", selected === rgb)
         outState.putBoolean("running", shouldRun)
         outState.putBoolean("mirror", viewfinder.mirrored)
+        outState.putString("scenario", mock.settings.scenario.name)
+        outState.putString("viewport", mock.settings.viewport.name)
+        outState.putBoolean("playing", mock.playing)
+        outState.putBoolean("pending_permission", pendingCameraPermission)
         super.onSaveInstanceState(outState)
     }
     override fun onStop() { visible = false; end(); super.onStop() }
     override fun onDestroy() { rgb.close(); mock.close(); super.onDestroy() }
+
+    private fun requestRgb() {
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
+            pendingCameraPermission = false; selected = rgb; shouldRun = true; begin()
+        } else {
+            pendingCameraPermission = true
+            permission.launch(Manifest.permission.CAMERA)
+        }
+    }
 
     private fun begin() {
         if (!visible) return
         end()
         val id = UUID.randomUUID().toString()
         activeSession = id
+        syntheticControls.render(selected === mock, true)
         lastMetricAt = SystemClock.elapsedRealtime()
         metricFrames = 0
         selected.start(id, { frame ->
             if (activeSession != frame.metadata.sessionId) return@start
             viewfinder.submit(frame)
+            syntheticControls.render(selected === mock, true, frame.metadata.trackingState)
             captureButton?.isEnabled = !captureBusy
             metricFrames++
             val now = SystemClock.elapsedRealtime()
-            if (now - lastMetricAt >= 500) {
-                val fps = metricFrames * 1000f / (now - lastMetricAt)
+            if (now - lastMetricAt >= 500 || (selected === mock && !mock.playing)) {
+                val fps = metricFrames * 1000f / (now - lastMetricAt).coerceAtLeast(1)
                 metrics.text = "${selected.capabilities.source} · ${frame.metadata.trackingState} · " +
-                    "${frame.metadata.image.width}×${frame.metadata.image.height} · %.1f FPS（处理输出）".format(fps)
+                    "${frame.metadata.image.width}×${frame.metadata.image.height} · " +
+                    if (selected === mock && !mock.playing) "暂停 / 单步" else "%.1f FPS（处理输出）".format(fps)
                 metricFrames = 0; lastMetricAt = now
             }
         }, { update ->
             if (activeSession == id) {
                 status.text = update.message
-                if (update.state == SourceState.ERROR) { viewfinder.clear(); captureButton?.isEnabled = false }
+                if (update.state == SourceState.ERROR) {
+                    viewfinder.clear(); captureButton?.isEnabled = false
+                    syntheticControls.render(selected === mock, false)
+                }
             }
         })
     }
@@ -136,6 +173,7 @@ class MainActivity : ComponentActivity() {
         if (::viewfinder.isInitialized) viewfinder.clear()
         captureButton?.isEnabled = false
         if (::metrics.isInitialized) metrics.text = "无活动会话"
+        if (::syntheticControls.isInitialized) syntheticControls.render(selected === mock, false)
     }
     private fun capture() {
         val id = activeSession ?: return
