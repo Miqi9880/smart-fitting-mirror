@@ -1,0 +1,57 @@
+# 后端与服装接口 V0.1
+
+[OpenAPI 合同](../../contracts/openapi.json) 定义字段和响应，本文定义行为。采用 [OpenAPI 3.0.3](https://spec.openapis.org/oas/v3.0.3)，合同不表示已有可运行服务。
+
+## 通用规则
+
+API 前缀 /api/v1，JSON 使用 snake_case，时间为 UTC RFC3339。Base URL 可配置。
+
+POST /sessions 创建游客会话，返回本项目的 session_token；其余业务请求使用 Authorization: Bearer，不使用供应商密钥。服务端校验上传、任务归属，不能仅靠客户端传来的 session_id 授权。
+
+模拟服务在本机或受控网络运行，跨网络真实传图使用 HTTPS。服务端对会话创建、上传和生成限流。错误格式统一为 error:{code,message,retryable,request_id}，不返回堆栈或密钥。
+
+## 首轮接口
+
+| 方法与路径（省略前缀） | 用途 | 成功 |
+| --- | --- | --- |
+| POST /sessions | 创建游客会话 | 201 Session |
+| GET /garments | 上衣目录，首版不分页 | 200 GarmentList |
+| POST /uploads | multipart 上传原始照片，字段 file | 201 Upload |
+| POST /tryon-jobs | upload_id、garment_id 创建任务 | 202 Job；幂等重放 200 Job |
+| GET /tryon-jobs/{job_id} | 轮询状态 | 200 Job |
+| POST /tryon-jobs/{job_id}/cancel | 请求取消 | 200 当前 Job |
+| DELETE /sessions/current | 撤销与清理 | 204，无正文 |
+
+视频推荐、后台管理和统计查询在后续阶段扩展，不阻塞首次联调。
+
+## 素材与上传
+
+Garment 包含编号、名称、upper_body 类别、标签、缩略图、preview_image 和 generation_reference_url。preview_image 指定图片 URL、宽高及双肩双髋四个归一化锚点，供初版躯干对齐。
+
+预览素材为正面、未镜像、透明背景 PNG。锚点左右指假设穿着者的解剖学左右，髋锚点是身体对齐位置，不强制位于下摆。尺寸和锚点必须对照真实素材校验。云端参考图可与预览素材不同。
+
+generation_reference_url 为空时，该服装创建生成任务返回 422 GARMENT_NOT_GENERATABLE。服务端按 garment_id 查素材，不接受客户端任意远程 URL。样例 .invalid URL 不可下载；模拟服务任务需准备原创或授权可用素材。
+
+上传 JPEG/PNG，初始限制 10 MiB、1600 万像素，服务端检查实际类型和解码尺寸。原图不含衣服/UI，不保留不必要 EXIF。限制是开发初值，选定供应商后复核。
+
+上传返回 upload_id、宽高和 expires_at。输入最多保存 30 分钟且不超过会话有效期，可在用完后提前清理；不跨会话复用。
+
+## 幂等与任务状态
+
+POST /tryon-jobs 必须带 Idempotency-Key（随机 UUID）。服务端按会话和 key 保存输入指纹及任务：同 key 同输入返回同一任务，不同输入返回 409 IDEMPOTENCY_CONFLICT。映射保留到会话结束。创建请求超时后重试使用原 key，不新建计费任务；新任务用新 key。重新上传产生新 upload_id 时不能沿用已绑定旧输入的 key。
+
+queued → running → succeeded / failed / cancelled；queued 也可直接 failed/cancelled。终态不可回退。
+
+- succeeded：result 非空、error 为空；failed：error 非空、result 为空；其余状态两者均为空。
+- is_mock=true 必须显示“模拟结果”，不能当成真实换装。
+- 结果含 image_url、宽高和 expires_at。资源访问须受会话授权或可撤销短期机制控制，不公开人像；地址随会话失效。
+- 客户端每 2 秒轮询；网络超时不等于任务失败，不自动新建任务。离开页面暂停，回来查询原 job_id。
+- 开发初值：服务端任务总时限 120 秒，超时 failed / GENERATION_TIMEOUT；客户端等待较久可继续查询或取消，不伪造终态。
+- 429 读取 Retry-After 秒数；网络错误和 5xx 有上限退避。结束会话或取消后停止轮询。
+- 取消和成功以服务端先提交的终态为准。已成功/失败时取消返回原终态；先取消则迟到结果丢弃。不能保证供应商取消已发生的费用。
+
+## 会话结束
+
+V0.1 会话固定 30 分钟，无续期。客户端提前提示，服务端到期自动清理。DELETE 返回前撤销令牌和资源访问、取消未完成任务；本项目临时文件在 60 秒内删除。第三方留存需在接真实服务前确认。
+
+同一已撤销令牌重复 DELETE 仍为 204，其他请求为 401。其他会话的资源访问返回 404。客户端过滤旧会话回调。当前接口不提供永久保存或跨会话找回结果。

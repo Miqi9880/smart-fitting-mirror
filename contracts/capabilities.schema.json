@@ -1,0 +1,38 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "0.1.0"
+    },
+    "source": {
+      "type": "string",
+      "enum": [
+        "mock",
+        "rgb_camera",
+        "depth_camera"
+      ]
+    },
+    "rgb": {
+      "type": "boolean"
+    },
+    "pose": {
+      "type": "boolean"
+    },
+    "person_mask": {
+      "type": "boolean"
+    },
+    "aligned_depth": {
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "schema_version",
+    "source",
+    "rgb",
+    "pose",
+    "person_mask",
+    "aligned_depth"
+  ],
+  "$schema": "https://json-schema.org/draft/2020-12/schema"
+}

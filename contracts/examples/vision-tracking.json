@@ -1,0 +1,60 @@
+{
+  "schema_version": "0.1.0",
+  "session_id": "session_mock_01",
+  "frame_id": 1,
+  "timestamp_ms": 1000,
+  "image": {
+    "buffer_id": "mock_rgb_1",
+    "width": 720,
+    "height": 1280,
+    "orientation": "upright",
+    "mirrored": false
+  },
+  "tracking_state": "tracking",
+  "keypoints": {
+    "left_shoulder": {
+      "x": 0.65,
+      "y": 0.25,
+      "confidence": 0.95
+    },
+    "right_shoulder": {
+      "x": 0.35,
+      "y": 0.25,
+      "confidence": 0.95
+    },
+    "left_elbow": {
+      "x": 0.7,
+      "y": 0.43,
+      "confidence": 0.95
+    },
+    "right_elbow": {
+      "x": 0.3,
+      "y": 0.43,
+      "confidence": 0.95
+    },
+    "left_wrist": {
+      "x": 0.72,
+      "y": 0.6,
+      "confidence": 0.95
+    },
+    "right_wrist": {
+      "x": 0.28,
+      "y": 0.6,
+      "confidence": 0.95
+    },
+    "left_hip": {
+      "x": 0.6,
+      "y": 0.65,
+      "confidence": 0.95
+    },
+    "right_hip": {
+      "x": 0.4,
+      "y": 0.65,
+      "confidence": 0.95
+    }
+  },
+  "standing_hint": "unknown",
+  "distance_m": null,
+  "mask": null,
+  "depth": null
+}
