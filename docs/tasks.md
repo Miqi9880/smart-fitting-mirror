@@ -2,6 +2,19 @@
 
 这些任务用于设备未到位期间启动开发，按依赖推进，无固定截止日期。此处为详细验收基线，GitHub Issues 用于认领和进度。当前均未开始，不把文档或模拟样例视作功能实现。
 
+## 已发布的任务入口
+
+| 任务 | GitHub Issue | 初始负责人 |
+| --- | --- | --- |
+| T01 Android 骨架与公共类型 | [#2](https://github.com/Miqi9880/smart-fitting-mirror/issues/2) | Miqi9880 |
+| T02 RGB 人体视觉 | [#3](https://github.com/Miqi9880/smart-fitting-mirror/issues/3) | Miqi9880 |
+| T03 模拟 HTTP 服务 | [#4](https://github.com/Miqi9880/smart-fitting-mirror/issues/4) | 后端与 AI，待认领 |
+| T04 Android 网络模块 | [#5](https://github.com/Miqi9880/smart-fitting-mirror/issues/5) | 后端与 AI，待认领 |
+| T05 试衣预览与页面 | [#6](https://github.com/Miqi9880/smart-fitting-mirror/issues/6) | 实时试衣，待认领 |
+| T06 首次联调 | [#7](https://github.com/Miqi9880/smart-fitting-mirror/issues/7) | Miqi9880 组织，全员参与 |
+
+接口提案见 [PR #1](https://github.com/Miqi9880/smart-fitting-mirror/pull/1)。角色账号映射确认后再更新指派；进度以各 Issue 为准。
+
 ## T01 项目负责人：Android 骨架和公共类型
 
 依赖：接口提案合并。范围：android 工程、core-contracts、共享构建配置。
