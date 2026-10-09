@@ -50,3 +50,11 @@ onStatus：starting / ready / stopped / error。错误区分 PERMISSION_DENIED�
 四个躯干锚点满足门限时显示衣服，否则隐藏并提示调整站位；首版不沿用旧位置。无深度/mask 时允许基础叠加，在调试面板注明未启用遮挡。退出、会话变化、lost 时清理旧状态。
 
 联调验证：无深度样例可运行；镜像后三层一致且左右名称不变；横竖画幅不产生单层裁剪；tracking→partial/lost 隐藏衣服；旧会话帧被忽略；帧替换和退出无重复释放或泄漏。
+
+## Android 实现映射
+
+core-contracts 已提供对应 Kotlin 类型；像素载体是 core-vision 的 BitmapPixels（竖正、未镜像 Bitmap）。VisionSource.captureOriginal 使用回调返回 Result<CapturedPhoto>，压缩不阻塞主线程。JSON 合同不变。
+
+Canvas 绘制使用像素中心：归一化点映射为 0.5 + x*(width-1)，随后与 Bitmap 共用变换；因此镜像时仍符合 x→1-x，不产生一像素偏移。FitCenter 与诊断视图使用同一约定。
+
+当前实现只提供 RGB 和合成源，无深度或 mask。返回 partial 的原因可能是低置信度、遮挡或身体出框；站位提示应作为引导，不表示已经进行深度测距。具体构建和所有权示例见 [Android 说明](../../android/README.md)。
