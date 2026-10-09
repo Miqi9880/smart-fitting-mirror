@@ -6,12 +6,12 @@
 | --- | --- | --- |
 | Android 骨架/类型/视觉/诊断 | PR [#8](https://github.com/Miqi9880/smart-fitting-mirror/pull/8) 已合并，main 提交 52a887a；23 JVM +10 模拟器测试，见 android-validation | Miqi9880 继续真实人体、设备/SDK 核对，不重搭工程 |
 | 模拟后端/透明素材 | PR [#9](https://github.com/Miqi9880/smart-fitting-mirror/pull/9) 已合并，main 提交 16024b9；35 后端测试，见 backend-validation | haiyangniu191-design 接手维护、复现和 Android 联通；lyf-bee 核对锚点 |
-| Android 网络/生成状态 | 负责人本地已有 HttpFittingApi/FittingSession 草稿及模块测试，尚未发布/合并 | 暂由负责人完成交接；haiyangniu191-design 先复现服务，不重复客户端 |
-| 衣服叠加 | 负责人本地已有 TorsoWarp/TryOnView 草稿及几何测试，尚未发布/合并 | 暂由负责人完成交接；lyf-bee 先做素材与 V01–V07 验证准备 |
-| 产品页面/端到端 | main 仍为诊断页；完整模拟试衣未交付 | 负责人先补首版闭环，再由 yyyrrrxxx 接手交互修正、装配与验收 |
+| Android 网络/生成状态 | 本轮提供 HttpFittingApi/FittingSession，12 项单测与 Android HTTP 流程验证见 tryon-validation | haiyangniu191-design 接手复现、异常恢复与真实服务适配，不重复客户端 |
+| 衣服叠加 | 本轮提供 TorsoWarp/TryOnView，几何单测与像素绘制测试见 tryon-validation | lyf-bee 接手素材、V01–V07 与真实人体效果验证 |
+| 产品页面/端到端 | 本轮提供 TryOnActivity/Model/OwnedImage 首版，模拟闭环有仪器测试；保留诊断入口 | yyyrrrxxx 接手交互修正、大屏装配与异常验收 |
 | 真 AI/深度/遮挡 | 未接入，不能用模拟证据替代 | 第 8–9 周确认条件，后续按学期计划推进 |
 
-前两项已可从 main 拉取；本地草稿不能视作成员已能拿到的代码。上述状态是本次任务发布时快照，负责人后续发布 PR/合并时会更新本页与原 Issue，给出接手提交和验证证据。
+视觉与后端基线已在 main；本轮新增代码按对应 PR 的合并状态接手，代码链接与提交会同步到 #5/#6/#7。具体步骤见 [联调说明](tryon-integration.md)，结果见 [本轮验证](tryon-validation.md)。未合并时不把分支代码当作 main 已有能力。
 
 ## 接手后的责任
 

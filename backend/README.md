@@ -59,4 +59,4 @@ macOS/Linux 将 `.venv\Scripts\python` 换成 `.venv/bin/python`。仅运行服�
 
 烟雾检查走创建会话→目录/素材→上传→幂等创建→轮询→结果下载→跨会话拒绝→取消另一任务→结束/重复结束/资源撤销。默认只输出不含令牌的摘要；可用 `--output generated-results/mock-preview.png` 保存测试合成结果，目录被 Git 忽略。
 
-当前仍需 Android 实际接入、真实人像精度、企业设备性能和长时间运行验证。TestClient 的 httpx 兼容层会提示弃用警告，现有固定版本下测试可运行；真实 HTTP 测试独立覆盖 CLI 服务。
+Android 对本服务的首版接入见 [模拟试衣联调](../docs/tryon-integration.md) 与 [验证记录](../docs/tryon-validation.md)。真实人像精度、企业设备性能和长时间运行仍需验证。TestClient 的 httpx 兼容层会提示弃用警告，现有固定版本下测试可运行；真实 HTTP 测试独立覆盖 CLI 服务。
