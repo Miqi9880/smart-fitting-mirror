@@ -22,7 +22,8 @@ class ApiFailure(val status: Int, val code: String, override val message: String
                  val retryable: Boolean, val retryAfterSeconds: Long? = null) : IOException(message)
 
 /** Owns its OkHttp client. No redirects, automatic request replay, logging or disk image cache. */
-class HttpFittingApi(baseUrl: String, private val client: OkHttpClient = defaultClient()) : FittingTransport {
+class HttpFittingApi internal constructor(baseUrl: String, private val client: OkHttpClient) : FittingTransport {
+    constructor(baseUrl: String) : this(baseUrl, defaultClient())
     private val root = baseUrl.trim().toHttpUrl().also {
         require(it.encodedPath == "/" && it.query == null && it.fragment == null && it.username.isEmpty() && it.password.isEmpty()) {
             "服务地址只填写协议、主机和端口，例如 http://10.0.2.2:8000"

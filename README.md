@@ -2,11 +2,11 @@
 
 面向 Android 大屏与深度摄像机的课程设计项目，由四人合作开发实时试衣与云端高清试衣功能。
 
-当前状态：Android 人体视觉开发版已合并，包含合成样例、RGB 摄像头、八点姿态、原始帧查看与生命周期清理。main 已提供可运行的本地模拟后端与透明服装素材；Android 网络、试衣渲染和真实云端生成尚未接入。硬件已可接触，型号、SDK 与最终验收范围需核对。
+当前版本具备人体视觉、可运行模拟后端、Android 网络状态、透明上衣四点叠加及首版试衣页面，可联调选衣、原图上传、模拟生成、前后对比和结束清理。真实 AI、深度和遮挡尚未接入；硬件型号、SDK 与老师最终验收范围仍需核对。
 
-构建与接入从 [Android 开发说明](android/README.md) 开始。入口是开发诊断页，不是最终试衣产品界面。
+构建从 [Android 开发说明](android/README.md) 开始；完整操作和成员接入点见 [模拟试衣联调](docs/tryon-integration.md)。默认进入首版试衣页，页底保留硬件诊断入口。
 
-模拟服务从 [后端启动说明](backend/README.md) 开始；[35 项后端验证记录](docs/backend-validation.md) 区分模拟测试与尚未完成的 Android 集成。
+模拟服务从 [后端启动说明](backend/README.md) 开始；[35 项后端验证记录](docs/backend-validation.md) 记录后端证据，Android 闭环另见 [本轮验证](docs/tryon-validation.md)。
 
 ## 核心流程
 

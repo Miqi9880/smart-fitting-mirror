@@ -37,7 +37,7 @@ import kotlinx.serialization.Serializable
     init { require((result != null) == (status == JobStatus.SUCCEEDED)); require((error != null) == (status == JobStatus.FAILED)) }
 }
 
-/** Logical client boundary. Implementation belongs to core-network; no live client is supplied. */
+/** Logical client boundary; implementation and transport dependencies belong to core-network. */
 interface FittingApi {
     suspend fun createSession(): Session
     suspend fun garments(sessionToken: String): GarmentList

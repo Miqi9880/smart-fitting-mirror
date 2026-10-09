@@ -4,7 +4,7 @@
 
 ## 在模拟器上操作
 
-打开应用，选择“合成样例”。第一个下拉框选择场景，第二个选择图像画幅。点击“暂停”固定画面，“单步”推进一个样本，“从头重放”回到样本 0。播放按每 100 毫秒推进一个样本调度，不承诺实际设备恒定帧率。
+从试衣页底部进入“硬件诊断”，选择“合成样例”（首版试衣页也复用同一组控制）。第一个下拉框选择场景，第二个选择图像画幅。点击“暂停”固定画面，“单步”推进一个样本，“从头重放”回到样本 0。播放按每 100 毫秒推进一个样本调度，不承诺实际设备恒定帧率。
 
 场景每 80 个样本循环。重放只重置场景样本号；同一会话内 frame_id 继续递增，timestamp_ms 仍为单调时钟。界面更换场景/画幅会开启新会话，旧截图回调失效。暂停不结束会话，可以查看暂停位置的原始图。
 
@@ -55,10 +55,10 @@ source.seekTo(20) // partial；接下来可依次定位 40、60，再回到 0
 | --- | --- | --- |
 | 合成数据与诊断控制 | Miqi9880 | 见 [Android 验证记录](android-validation.md)；只能证明数据源和诊断页 |
 | 透明上衣素材及锚点 | haiyangniu191-design + lyf-bee | 按 [T03](https://github.com/Miqi9880/smart-fitting-mirror/issues/4) 交付并共同确认 |
-| 服装渲染 | lyf-bee | [T05](https://github.com/Miqi9880/smart-fitting-mirror/issues/6)，负责人补位基线待交接 |
-| 产品页面与装配 | yyyrrrxxx | [T06](https://github.com/Miqi9880/smart-fitting-mirror/issues/7)，接手首版后继续验收与改进 |
-| 模拟服务与 Android 网络 | haiyangniu191-design | [T03](https://github.com/Miqi9880/smart-fitting-mirror/issues/4)、[T04](https://github.com/Miqi9880/smart-fitting-mirror/issues/5)，模拟服务已在 PR #9 合并，Android 网络基线待交接 |
-| 无设备端到端演示 | yyyrrrxxx 集成、全员参与，Miqi9880 组织 | 上述依赖满足后按 [T06](https://github.com/Miqi9880/smart-fitting-mirror/issues/7) 验收 |
+| 服装渲染 | lyf-bee | [T05](https://github.com/Miqi9880/smart-fitting-mirror/issues/6)，已提供 TorsoWarp/TryOnView 基线，继续场景和真人验证 |
+| 产品页面与装配 | yyyrrrxxx | [T06](https://github.com/Miqi9880/smart-fitting-mirror/issues/7)，已提供首版试衣页，继续交互与大屏验收 |
+| 模拟服务与 Android 网络 | haiyangniu191-design | [T03](https://github.com/Miqi9880/smart-fitting-mirror/issues/4)、[T04](https://github.com/Miqi9880/smart-fitting-mirror/issues/5)，模拟服务在 PR #9 合并，网络基线与 HTTP 流程证据见 tryon-validation |
+| 无设备端到端演示 | yyyrrrxxx 集成、全员参与，Miqi9880 组织 | 已有模拟闭环，按 [T06](https://github.com/Miqi9880/smart-fitting-mirror/issues/7) 验收 |
 
 全链路目标：进入 → 选上衣 → 随合成人体移动 → 拍摄原图 → 模拟生成 → 对比 → 结束。记录提交号、模拟器配置、服务启动方式、一条正常流程和一次失败恢复。只有数据源通过测试，不能勾选“服装渲染通过”或“端到端已完成”。
 

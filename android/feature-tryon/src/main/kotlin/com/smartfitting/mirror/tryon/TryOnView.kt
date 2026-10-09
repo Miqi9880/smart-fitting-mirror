@@ -27,6 +27,7 @@ class TryOnView(context: Context) : View(context), TryOnRenderer<BitmapPixels> {
         if (asset !== bitmap) asset?.recycle()
         asset = bitmap
         assetId = item?.garmentId
+        garment = item // Selection also changes on a paused input frame.
         invalidate()
     }
     override fun submit(frame: FrameLease<BitmapPixels>, garment: Garment?) {

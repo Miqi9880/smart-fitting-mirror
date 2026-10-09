@@ -80,6 +80,9 @@ class ScenarioControlsTest {
             }
             awaitUi(scenario) { it.button("查看原始帧").isEnabled }
             SystemClock.sleep(500)
+            // Focus restoration is asynchronous on a busy emulator; a stale dialog
+            // still fails this bounded wait instead of depending on a fixed delay.
+            awaitUi(scenario) { it.window.decorView.hasWindowFocus() }
             scenario.onActivity { activity ->
                 assertTrue(activity.window.decorView.findViewWithTag<Spinner>("synthetic.scenario").isEnabled)
                 assertTrue(activity.window.decorView.hasWindowFocus()) // An old capture must not open a dialog.

@@ -21,4 +21,4 @@
 
 原 T05 中 app 页面/选衣/生成/对比/主工程集成转给 yyyrrrxxx；lyf-bee 保留 feature-tryon。#7 改由 yyyrrrxxx 负责集成实现，Miqi9880 仍组织协调。后端与 core-network 保持 haiyangniu191-design。
 
-负责人正在补齐网络、渲染和首版 App 流程，交接前这些具体文件暂由负责人实现；成员先推进环境、代码阅读、测试场景与硬件证据。交付后在原 Issue 链接代码并扣除已完成项，不让协作者重做。见 [当前交接清单](task-handoff.md)。
+负责人先行补充了网络、渲染和首版 App 流程；交接 PR/提交与验证证据会同步到原 Issue，成员先做本周环境/复现，再基于交付代码修正，不重复搭建。见 [当前交接清单](task-handoff.md) 和 [联调说明](tryon-integration.md)。

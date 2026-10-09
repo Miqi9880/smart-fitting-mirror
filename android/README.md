@@ -1,8 +1,8 @@
-# Android 人体视觉开发版
+# Android 模拟试衣联调版
 
-本工程实现 T01 的模块骨架与公共类型，以及 T02 的普通 RGB 摄像头适配。默认打开明确标记的合成样例，点击“RGB 摄像头”后请求权限并运行本地姿态检测。没有试衣渲染、网络请求或云端生成。
+本工程实现公共类型、RGB/合成视觉、HTTP 网络状态、四点上衣叠加及首版试衣页。默认合成输入；连接本地模拟服务后可选衣、拍原图上传、等待模拟结果并对比/清理。尚无真实 AI、深度、分割和遮挡。完整步骤见 [试衣联调](../docs/tryon-integration.md)，[验证证据](../docs/tryon-validation.md)。
 
-[本次验证记录与截图](../docs/android-validation.md)
+[原视觉基线验证记录与截图](../docs/android-validation.md)
 
 [无设备联调场景与四人接入验收](../docs/no-device-integration.md)
 
@@ -51,8 +51,10 @@ macOS/Linux 使用 `./gradlew`。APK 位于 app/build/outputs/apk/debug/app-debu
 ```powershell
 adb devices
 .\gradlew.bat :app:installDebug
-adb shell am start -n com.smartfitting.mirror/.MainActivity
+adb shell am start -n com.smartfitting.mirror/.TryOnActivity
 ```
+
+默认试衣页的连接/生成/对比见联调说明；以下操作描述保留的“硬件诊断”页（从试衣页底部进入），该页不上传图像。
 
 - 合成样例：不需要摄像头；选择静止、平移、大小变化、缺少左肩、丢失或恢复场景。可暂停、单步、从头重放，并选择 480×640 / 640×480 图像画幅。默认综合演示每 80 个样本短暂丢失。
 - RGB 摄像头：优先前置，缺少前置时回退后置；只支持被 CameraX/Camera2 暴露的 RGB 设备，不保证厂商 USB 深度摄像机可直接使用。
@@ -69,9 +71,9 @@ adb shell am start -n com.smartfitting.mirror/.MainActivity
 | --- | --- |
 | core-contracts | 纯 JVM Kotlin；对应 13 份公共 JSON 样例的 DTO、帧引用管理、接口与 FIT_CENTER 变换 |
 | core-vision | CameraRgbSource、SyntheticVisionSource、BitmapPixels、PoseMapper |
-| core-network | 可构建空模块，haiyangniu191-design 实现 FittingApi |
-| feature-tryon | 可构建空模块，lyf-bee 维护 TryOnRenderer；产品页面属 app |
-| app | 人体视觉诊断入口，展示接入示例；后续产品页面由 yyyrrrxxx 接手，负责人先补首版基线 |
+| core-network | HttpFittingApi、FittingSession；haiyangniu191-design 接手网络与状态维护 |
+| feature-tryon | TorsoWarp、TryOnView；lyf-bee 接手素材/形变/渲染维护 |
+| app | TryOnActivity/Model/OwnedImage 产品基线 + MainActivity 诊断；yyyrrrxxx 接手交互与集成 |
 
 借用帧的回调默认在主线程执行。同步绘制可在回调期间读取；保存或异步使用须 retain，用完 release。源负责释放自己的引用，不要在回调里释放未 retain 的引用。BitmapPixels.bitmap 只在持有引用时有效，不可修改或自行 recycle。
 

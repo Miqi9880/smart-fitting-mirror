@@ -95,7 +95,7 @@ class FittingSession(private val api: FittingTransport, private val scope: Corou
         val active = session ?: return
         val request = attempt ?: return
         mutable.value = state.value.copy(phase = FittingPhase.CREATING, canCapture = false,
-            message = "正在创建模拟任务", retry = RetryAction.NONE)
+            message = "正在创建生成任务", retry = RetryAction.NONE)
         try {
             val job = retryRequest { api.createJob(active.sessionToken, CreateJob(request.uploadId, request.garmentId), request.key) }
             if (current(ticket)) accept(job, ticket)
@@ -171,7 +171,8 @@ class FittingSession(private val api: FittingTransport, private val scope: Corou
         mutable.value = state.value.copy(job = job, retry = RetryAction.NONE)
         when (job.status) {
             JobStatus.QUEUED, JobStatus.RUNNING -> {
-                mutable.value = state.value.copy(phase = FittingPhase.WAITING, message = "模拟任务：${job.status}；可取消或结束", canCapture = false)
+                mutable.value = state.value.copy(phase = FittingPhase.WAITING,
+                    message = "${if (job.isMock) "模拟" else "生成"}任务：${job.status}；可取消或结束", canCapture = false)
                 startPolling(ticket)
             }
             JobStatus.SUCCEEDED -> {

@@ -1,7 +1,9 @@
-# 后端同学接入位置
+# 后端与 Android 网络接入
 
-维护人：haiyangniu191-design。当前仅是可构建模块骨架，未实现网络请求。
+维护人：haiyangniu191-design。负责人先行补充 HttpFittingApi 与 FittingSession；无需重写客户端。协议仍为 core-contracts 的 FittingApi 与 DTO。
 
-Miqi9880 已提供 FittingApi、HTTP DTO 和 CapturedPhoto，无需重复定义。下一步实现 HTTP 客户端与生成状态流程，详见 [T04 接手清单](../../docs/task-handoff.md)。原始拍照已实现，上传、远端取消和会话清理仍需本模块接入并验证。
+HttpFittingApi 接收 origin 地址，封装会话、目录、原始上传、幂等创建/查询/取消/结束及同来源图片下载；无重定向、自动请求重放或磁盘缓存。FittingSession 输出 StateFlow，持有凭证、固定创建请求的幂等 key、控制轮询与结束清理。generate 接管 CapturedPhoto，页面不再同时释放。
 
-从 core-contracts 的 FittingApi 接口与 HTTP DTO 开始，实现会话、目录、上传、幂等创建、查询、取消和清理。不要修改摄像头或诊断页面。接口实现可采用你选择的网络库，依赖变更在 PR 说明。
+具体所有权、错误和接入步骤见 [试衣联调](../../docs/tryon-integration.md)。本模块 12 项单元测试覆盖原 key 重试、取消竞争、后台暂停、清理失败、请求所有权和图片来源/大小。Android 对真实本地模拟服务的四项流程测试在 app 的 TryOnFlowTest。
+
+本周先复现测试和服务，后续真实 AI、更多失败恢复按 [#5](https://github.com/Miqi9880/smart-fitting-mirror/issues/5) 推进。页面归 yyyrrrxxx，摄像头归 Miqi9880。
