@@ -1,6 +1,10 @@
 package com.smartfitting.mirror
 
 import android.os.SystemClock
+import android.graphics.Bitmap
+import android.graphics.Rect
+import android.view.View
+import android.view.ViewGroup
 import android.widget.*
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.ViewModelProvider
@@ -13,6 +17,7 @@ import org.junit.Assume.assumeTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
+import java.io.File
 
 /** Opt-in real HTTP integration: four local CLI servers, never a paid AI endpoint. */
 @RunWith(AndroidJUnit4::class)
@@ -52,10 +57,33 @@ class TryOnFlowTest {
             assertTrue(it.button("connect").isEnabled)
         }
     }
+    private fun evidence(scenario: ActivityScenario<TryOnActivity>, name: String, tag: String? = null) {
+        if (InstrumentationRegistry.getArguments().getString("fitting_evidence") != "true") return
+        scenario.onActivity {
+            val play = it.window.decorView.findViewWithTag<Button>("synthetic.play")
+            if (play.text == "暂停" && play.isEnabled) play.performClick()
+            if (tag == null) {
+                val content = it.findViewById<ViewGroup>(android.R.id.content)
+                (content.getChildAt(0) as ScrollView).scrollTo(0, 0)
+            } else {
+                val target = it.window.decorView.findViewWithTag<View>(tag)
+                target.requestRectangleOnScreen(Rect(0, 0, target.width, target.height), true)
+            }
+        }
+        SystemClock.sleep(600)
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val bitmap = instrumentation.uiAutomation.takeScreenshot()
+        val output = File(instrumentation.targetContext.getExternalFilesDir(null), "evidence/$name.png")
+        output.parentFile!!.mkdirs()
+        output.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+        bitmap.recycle()
+        SystemClock.sleep(1200)
+    }
 
     @Test fun successPreviewOnlySelectionComparisonAndCleanup() {
         ActivityScenario.launch(TryOnActivity::class.java).use { scenario ->
             connect(scenario, 8000)
+            evidence(scenario, "preview")
             scenario.onActivity {
                 it.window.decorView.findViewWithTag<Spinner>("fitting.garments").setSelection(2)
             }
@@ -77,7 +105,9 @@ class TryOnFlowTest {
                 assertTrue(it.window.decorView.findViewWithTag<TextView>("fitting.result.kind").text.contains("MOCK"))
                 assertNotNull(it.window.decorView.findViewWithTag<ImageView>("fitting.before").drawable)
             }
+            evidence(scenario, "comparison", "fitting.after")
             end(scenario)
+            evidence(scenario, "ended")
             assertTrue(original.all { it == 0.toByte() } && result.all { it == 0.toByte() })
             scenario.recreate()
             scenario.onActivity { assertEquals(FittingPhase.CLOSED, it.model().state.value.phase); assertFalse(it.button("generate").isEnabled) }

@@ -57,7 +57,9 @@ python -m backend --host 127.0.0.1 --port 8003 --mode rate-limit
 
 未传 fitting_test_host 时，TryOnFlowTest 的四项真实 HTTP 用例会跳过，不得声称完整闭环通过；其他不依赖服务的仪器测试仍执行。测试只允许回环/官方模拟器主机地址，避免意外触发真实付费生成。USB 真机需转发 8000–8003 四个端口，参数改为 http://127.0.0.1；相机/人体效果仍须人工实测。
 
-测试覆盖：成功与原图/结果清理、仅预览服装、模拟失败、同任务旋转/后台恢复、取消、429 重试、结束后不显示迟到结果；另有像素级渲染/整体镜像/暂停换衣/丢失隐藏/帧释放测试。测试完 Ctrl+C 停止各自服务。结果见 app/core-vision 的 build/reports/androidTests 及各模块 build/test-results。
+测试覆盖：成功与原图/结果清理、仅预览服装、模拟失败、同任务 Activity 重建/后台恢复、取消、429 重试、结束后不显示迟到结果；另有像素级渲染/整体镜像/暂停换衣/丢失隐藏/帧释放测试。测试完 Ctrl+C 停止各自服务。结果见 app/core-vision 的 build/reports/androidTests 及各模块 build/test-results。
+
+可选截图证据：额外传 `-Pandroid.testInstrumentationRunnerArguments.fitting_evidence=true`，成功流程用例会暂停合成输入，滚动到预览/结果/结束位置，将截图存入设备应用的 external files/evidence 目录。仅在测试合成输入中使用；这不授权保存真人照片。结束后可用 adb pull 导出，清空 App 测试数据会删除该目录。
 
 ## 目前限制
 

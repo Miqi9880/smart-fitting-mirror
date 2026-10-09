@@ -75,10 +75,6 @@ class TryOnActivity : ComponentActivity() {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(18), dp(12), dp(18), dp(12)); setBackgroundColor(Color.rgb(242, 246, 249))
         }
-        ViewCompat.setOnApplyWindowInsetsListener(root) { view, insets ->
-            val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
-            view.setPadding(dp(18) + bars.left, dp(12) + bars.top, dp(18) + bars.right, dp(12) + bars.bottom); insets
-        }
         root.addView(label("智能穿衣镜 · 试衣联调", 23f))
         root.addView(label("选择上衣，预览后主动拍摄生成。本版可连接本地模拟服务。", 13f))
         address = EditText(this).apply {
@@ -146,7 +142,16 @@ class TryOnActivity : ComponentActivity() {
         root.addView(row(button("硬件诊断", "fitting.diagnostics") { startActivity(Intent(this, MainActivity::class.java)) },
             button("权限设置", "fitting.permissions") { startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName"))) }))
         root.addView(label("当前没有深度测距、人体分割或遮挡。合成样例不代表真实人体识别效果。", 11f))
-        setContentView(ScrollView(this).apply { isFillViewport = true; addView(root) })
+        val scroll = ScrollView(this).apply {
+            isFillViewport = true; addView(root); setBackgroundColor(Color.rgb(242, 246, 249))
+        }
+        // Insets belong outside the scrolling content so controls/images never
+        // move underneath the status and navigation bars when viewing results.
+        ViewCompat.setOnApplyWindowInsetsListener(scroll) { view, insets ->
+            val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
+            view.setPadding(bars.left, bars.top, bars.right, bars.bottom); insets
+        }
+        setContentView(scroll)
         WindowCompat.getInsetsController(window, root).apply { isAppearanceLightStatusBars = true; isAppearanceLightNavigationBars = true }
         lifecycleScope.launch { repeatOnLifecycle(Lifecycle.State.STARTED) { model.state.collect { render(it) } } }
     }
@@ -188,6 +193,7 @@ class TryOnActivity : ComponentActivity() {
         activeVision = null; hasFrame = false; captureBusy = false
         assetJob?.cancel(); assetJob = null; assetKey = null
         mock.stop(); rgb.stop(); preview.clear(); generate.isEnabled = false
+        visionStatus.text = "采集已停止，临时预览帧已清理"
         controls.render(!model.rgb, false)
     }
     private fun capture() {
