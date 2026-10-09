@@ -1,76 +1,24 @@
-# 三人首批任务
+# 四人当前任务（第 6 周）
 
-这些任务用于设备未到位期间启动开发，按依赖推进，无固定截止日期。此处为详细验收基线，GitHub Issues 用于认领和进度。T01/T02 已有首版代码与模拟器验证，见 [验证记录](android-validation.md)；代码审阅、合并与真实设备验证分别记录，不把模拟样例视作完整功能实现。
+整体计划见 [第 6–18 周路线](semester-plan.md)；第一次配置请读 [环境与 Git/PR 入门](getting-started.md)。未来一周每人预计 6–8 小时，以跑通环境、理解基线、完成一个小 PR/实测报告为主；第 7 周完成模拟闭环，不要求新成员本周从零写整套系统。
 
-## 已发布的任务入口
+| 成员 | 长期归属 | 下一周最小交付 | 详细任务 |
+| --- | --- | --- | --- |
+| Miqi9880 | 硬件、人体视觉、公共接口、项目协调 | 设备/SDK 核对与真实 RGB 报告 | [#3](https://github.com/Miqi9880/smart-fitting-mirror/issues/3) |
+| haiyangniu191-design | 后端、AI、Android 网络 | 三种模拟服务复现、调用链与网络接手记录 | [#5](https://github.com/Miqi9880/smart-fitting-mirror/issues/5) |
+| lyf-bee | 实时服装渲染 | 一件 PNG 锚点检查、V01–V07 场景验证/准备 | [#6](https://github.com/Miqi9880/smart-fitting-mirror/issues/6) |
+| yyyrrrxxx | Android 页面、模块装配与交互验收 | 运行 App、页面状态表、正常/异常验收步骤 | [#7](https://github.com/Miqi9880/smart-fitting-mirror/issues/7) |
 
-| 任务 | GitHub Issue | 初始负责人 |
-| --- | --- | --- |
-| T01 Android 骨架与公共类型 | [#2](https://github.com/Miqi9880/smart-fitting-mirror/issues/2) | Miqi9880 |
-| T02 RGB 人体视觉 | [#3](https://github.com/Miqi9880/smart-fitting-mirror/issues/3) | Miqi9880 |
-| T03 模拟 HTTP 服务 | [#4](https://github.com/Miqi9880/smart-fitting-mirror/issues/4) | haiyangniu191-design |
-| T04 Android 网络模块 | [#5](https://github.com/Miqi9880/smart-fitting-mirror/issues/5) | haiyangniu191-design |
-| T05 试衣预览与页面 | [#6](https://github.com/Miqi9880/smart-fitting-mirror/issues/6) | lyf-bee |
-| T06 首次联调 | [#7](https://github.com/Miqi9880/smart-fitting-mirror/issues/7) | Miqi9880 组织，全员参与 |
+这些是长期功能卡内的本周增量；本周报告通过不等于整个功能完成。每张 Issue 包含已有交付、文件范围、逐日任务、环境命令、验收标准和依赖。进度在原卡更新，避免重复认领。
 
-接口提案见 [PR #1](https://github.com/Miqi9880/smart-fitting-mirror/pull/1)。账号与角色已由项目负责人确认；进度以各 Issue 为准。
+## 已完成的基线
 
-2026-09-26 已按实际交付补充 [协作者接手清单](task-handoff.md)：公共类型、主工程、视觉源与诊断流程可复用；T03 的服务、T04 的网络实现及 T05 的衣服渲染/产品页面仍需分别验收。保留原负责人，不把部分基础工作完成视作整个任务完成。
+- T01 / [#2](https://github.com/Miqi9880/smart-fitting-mirror/issues/2)：Android 骨架与公共类型，PR #8 已合并。
+- T03 / [#4](https://github.com/Miqi9880/smart-fitting-mirror/issues/4)：模拟 HTTP 服务与演示素材，PR #9 已合并、35 项测试通过；后续维护仍由 haiyangniu191-design 负责。
+- T02 的 RGB 首版和模拟器验证已交付，真实人体、企业设备和深度另行验收；所以 #3 保持打开。
 
-负责人已补充可控制的合成人体场景，供 T04/T05 接入前使用。具体操作、V01–V08 验收和全链路前置条件见 [无设备联调说明](no-device-integration.md)。真实 RGB 与企业设备的验收仍保留。
+## 本次分工变化
 
-## T01 项目负责人：Android 骨架和公共类型
+原 T05 中 app 页面/选衣/生成/对比/主工程集成转给 yyyrrrxxx；lyf-bee 保留 feature-tryon。#7 改由 yyyrrrxxx 负责集成实现，Miqi9880 仍组织协调。后端与 core-network 保持 haiyangniu191-design。
 
-依赖：接口提案合并。范围：android 工程、core-contracts、共享构建配置。
-
-交付：可运行空应用、模块依赖、对应合同的 Kotlin 类型、构建说明；记录工具版本、minSdk 与暂用测试设备。core-contracts 不依赖厂商 SDK。公共类型包含 VisionFrame/Capabilities、帧所有权接口、原始拍照结果、服装和生成状态。
-
-验收：全新检出按 README 可构建；有真实执行的构建命令与结果；启动页面可见；JSON 样例可映射到对应类型；其他成员不需要自己创建另一套 App。仅用模拟器时明确标注，企业硬件兼容性仍待验证。
-
-## T02 项目负责人：RGB 人体视觉适配
-
-依赖：T01；算法验证可提前用样例视频开始。范围：core-vision。
-
-交付：现有 RGB 摄像头预览、八点姿态输出、归一化坐标、tracking/partial/lost、原始单帧、权限和退出恢复。source 为 rgb_camera，aligned_depth=false，缺失 mask/depth 为 null。
-
-验收：双肩双髋驱动渲染；人体离开后 lost；镜像和旋转一致；前后台切换不重复打开摄像头；拍照不含衣服/UI；记录测试设备及帧率，不宣称达到目标大屏性能。
-
-## T03 后端与 AI：模拟 HTTP 服务与素材目录
-
-依赖：合同；不依赖 Android 骨架。范围：backend、开发说明、可使用的演示素材。
-
-交付：实现 OpenAPI 七个操作，服务可本地启动；提供至少一件上衣的可访问透明 PNG 与锚点。与渲染负责人共同校验素材；把 .invalid 占位链接替换为本地开发链接。固定返回演示图时 is_mock=true。
-
-验收：创建会话→目录→上传→创建→查询→结果→结束可走通；同幂等键不重复建任务、不同输入冲突；取消与成功竞争遵守终态；跨会话访问失败；过期/清理有效。说明如何触发成功、失败、延时和限流模拟场景。用合成图片验证，不提交人像。
-
-## T04 后端与 AI：Android 网络和生成状态适配
-
-依赖：T01、T03。范围：core-network，不开发完整 UI。
-
-交付：会话、目录、上传、生成、轮询、取消、结果下载、清理接口；把错误映射为页面可消费的状态；可配置 Base URL。禁止在 APK 中写供应商密钥。
-
-验收：真实连接模拟服务；原创建请求超时后重用幂等键；网络故障不重复计费；取消/结束停止轮询；过期会话的回调不更新新页面；is_mock 和错误信息传递到 UI；构建与适用网络测试通过。
-
-## T05 实时试衣：合成关键点驱动预览与基础页面
-
-依赖：T01；素材与锚点可提前和 T03 协调。范围：feature-tryon、app 装配。
-
-交付：读取共享视觉样例，让一件上衣随四个躯干锚点定位和缩放；服装选择、拍照生成入口、等待、结果对比、结束按钮。先使用模拟网络状态，后接 T04。
-
-验收：平移、缩放、左右镜像和画幅变化正确；partial/lost 隐藏衣服；depth=null 不崩溃，调试界面注明未启用遮挡；使用真实透明素材验证锚点；异步帧替换正确释放；UI 明确显示模拟结果和失败状态。
-
-## T06 全员：首次 RGB 端到端联调
-
-负责人：Miqi9880 组织；三人各修自己的模块。依赖：T02、T04、T05。
-
-交付：同一个 Android 应用完成“进入→选上衣→随人体移动→拍摄原图→模拟生成→对比→结束”。发布可复现演示说明，注明 commit、设备、服务启动方式、模拟范围和已知限制。
-
-验收：无深度仍可演示；录制正常流程和一次异常恢复；检查退出清理、迟到结果、左右对齐及权限恢复；每项事实有证据，不能把模拟生成说成真实换装。
-
-## 后续候选，不抢在首次联调前做
-
-- 获取企业设备信息，接入深度和 RGB 对齐，验证手臂遮挡。
-- 选择真实云端试衣服务，确认费用、图像要求与数据留存后替换模拟提供方。
-- 补充服装管理、至少五条相关视频推荐和统计，再讨论增强功能。
-
-首轮不开发全套运营平台、精确量体、多件搭配或布料仿真。
+负责人正在补齐网络、渲染和首版 App 流程，交接前这些具体文件暂由负责人实现；成员先推进环境、代码阅读、测试场景与硬件证据。交付后在原 Issue 链接代码并扣除已完成项，不让协作者重做。见 [当前交接清单](task-handoff.md)。
