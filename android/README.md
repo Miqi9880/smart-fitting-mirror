@@ -4,7 +4,7 @@
 
 [本次验证记录与截图](../docs/android-validation.md)
 
-[无设备联调场景与两位同学的接入验收](../docs/no-device-integration.md)
+[无设备联调场景与四人接入验收](../docs/no-device-integration.md)
 
 ## 固定工具版本
 
@@ -70,8 +70,8 @@ adb shell am start -n com.smartfitting.mirror/.MainActivity
 | core-contracts | 纯 JVM Kotlin；对应 13 份公共 JSON 样例的 DTO、帧引用管理、接口与 FIT_CENTER 变换 |
 | core-vision | CameraRgbSource、SyntheticVisionSource、BitmapPixels、PoseMapper |
 | core-network | 可构建空模块，haiyangniu191-design 实现 FittingApi |
-| feature-tryon | 可构建空模块，lyf-bee 实现 TryOnRenderer 和产品页面 |
-| app | 人体视觉诊断入口，展示接入示例；后续产品页面由实时试衣同学接入 |
+| feature-tryon | 可构建空模块，lyf-bee 维护 TryOnRenderer；产品页面属 app |
+| app | 人体视觉诊断入口，展示接入示例；后续产品页面由 yyyrrrxxx 接手，负责人先补首版基线 |
 
 借用帧的回调默认在主线程执行。同步绘制可在回调期间读取；保存或异步使用须 retain，用完 release。源负责释放自己的引用，不要在回调里释放未 retain 的引用。BitmapPixels.bitmap 只在持有引用时有效，不可修改或自行 recycle。
 

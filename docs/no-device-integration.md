@@ -55,9 +55,10 @@ source.seekTo(20) // partial；接下来可依次定位 40、60，再回到 0
 | --- | --- | --- |
 | 合成数据与诊断控制 | Miqi9880 | 见 [Android 验证记录](android-validation.md)；只能证明数据源和诊断页 |
 | 透明上衣素材及锚点 | haiyangniu191-design + lyf-bee | 按 [T03](https://github.com/Miqi9880/smart-fitting-mirror/issues/4) 交付并共同确认 |
-| 服装渲染与产品页面 | lyf-bee | [T05](https://github.com/Miqi9880/smart-fitting-mirror/issues/6)，尚待对应模块交付 |
-| 模拟服务与 Android 网络 | haiyangniu191-design | [T03](https://github.com/Miqi9880/smart-fitting-mirror/issues/4)、[T04](https://github.com/Miqi9880/smart-fitting-mirror/issues/5)，尚待对应模块交付 |
-| 无设备端到端演示 | 全员，Miqi9880 组织 | 上述依赖满足后按 [T06](https://github.com/Miqi9880/smart-fitting-mirror/issues/7) 验收 |
+| 服装渲染 | lyf-bee | [T05](https://github.com/Miqi9880/smart-fitting-mirror/issues/6)，负责人补位基线待交接 |
+| 产品页面与装配 | yyyrrrxxx | [T06](https://github.com/Miqi9880/smart-fitting-mirror/issues/7)，接手首版后继续验收与改进 |
+| 模拟服务与 Android 网络 | haiyangniu191-design | [T03](https://github.com/Miqi9880/smart-fitting-mirror/issues/4)、[T04](https://github.com/Miqi9880/smart-fitting-mirror/issues/5)，模拟服务已在 PR #9 合并，Android 网络基线待交接 |
+| 无设备端到端演示 | yyyrrrxxx 集成、全员参与，Miqi9880 组织 | 上述依赖满足后按 [T06](https://github.com/Miqi9880/smart-fitting-mirror/issues/7) 验收 |
 
 全链路目标：进入 → 选上衣 → 随合成人体移动 → 拍摄原图 → 模拟生成 → 对比 → 结束。记录提交号、模拟器配置、服务启动方式、一条正常流程和一次失败恢复。只有数据源通过测试，不能勾选“服装渲染通过”或“端到端已完成”。
 
