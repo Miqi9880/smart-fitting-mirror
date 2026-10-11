@@ -1,10 +1,10 @@
 """Standalone V01-V07 scene verification for the synthetic fitting-mirror pipeline.
 
-This tool exercises the same geometry the renderer uses — four torso anchors mapped onto a
-body — but on synthetic PNG assets and synthetic body poses, so it never needs a camera,
-an emulator, or the HTTP service.
+This tool checks PNG anchors and a Python model of torso destination coordinates using
+synthetic body poses. It does not execute the Android renderer, draw a warped garment,
+or test frame ownership, display mirroring, lifecycle or device performance.
 
-It deliberately mirrors the two reference implementations already in the repository:
+Its geometry conventions come from these implementations in the repository:
 
 * backend/service.py publishes the garment anchors, and
   backend/tests/test_service.py asserts the four anchors land on opaque pixels.
@@ -14,12 +14,12 @@ It deliberately mirrors the two reference implementations already in the reposit
 Scene intent matches docs/no-device-integration.md:
 
     V01 STILL     four torso points, tracking              garment drawn, anchors on cloth
-    V02 WAVE      raised arm moves the sleeve anchors      sleeve follows, no false offset
-    V03 SCALE     body scale 0.5x / 1x / 2x                anchors scale proportionally
+    V02 TRANSLATE torso shifts right/left by 0.1            equal movement, unchanged span
+    V03 SCALE     body scale 0.7x / 1.2x plus extra values  anchors scale proportionally
     V04 PARTIAL   left shoulder missing                    degrade, never reuse stale state
     V05 LOST      no keypoints at all                      hide the garment, no residue
     V06 RECOVERY  lost -> reappear with a new pose         re-lock, no reused stale state
-    V07 VIEWPORT  portrait vs landscape image              anchor mapping stays consistent
+    V07 VIEWPORT  portrait vs landscape image              coordinate round-trip only
 
 Every verify_vNN returns a SceneResult; run_all prints a summary and exits non-zero when
 any scene fails. Read-only: no asset or repository file is written.
@@ -52,22 +52,17 @@ RIGHT_SHOULDER = (0.25, 0.15)
 LEFT_HIP = (0.70, 0.85)
 RIGHT_HIP = (0.30, 0.85)
 TORSO_ORDER = ("right_shoulder", "left_shoulder", "right_hip", "left_hip")
-# Corner traversal order for the perspective warp. This must match TorsoWarp.kt exactly
-# (right shoulder -> right hip -> left hip -> left shoulder); listing the corners in
-# left/right-board order instead produces a self-crossed quad that the winding check rejects.
-WARP_ORDER = ("right_shoulder", "right_hip", "left_hip", "left_shoulder")
+# Same perimeter traversal as TorsoWarp.kt. Source and destination must use matching order.
+WARP_ORDER = ("left_shoulder", "right_shoulder", "right_hip", "left_hip")
 GARMENT_ANCHORS = {"right_shoulder": RIGHT_SHOULDER, "left_shoulder": LEFT_SHOULDER,
                    "right_hip": RIGHT_HIP, "left_hip": LEFT_HIP}
 
 ANCHOR_ALPHA_MIN = 10    # alpha <= 10 counts as transparent background
 PIXEL_TOLERANCE = 1e-4   # float slack when comparing pixel-centre coordinates
-SLEEVE_TOLERANCE = 2e-2  # normalized slack for "sleeve still anchored to the arm"
 
 # Synthetic body poses, normalized to the canonical upright unmirrored frame.
 STILL = {"right_shoulder": (0.35, 0.25), "left_shoulder": (0.65, 0.25),
          "right_hip": (0.40, 0.65), "left_hip": (0.60, 0.65)}
-WAVE = {"right_shoulder": (0.35, 0.25), "left_shoulder": (0.66, 0.13),
-        "right_hip": (0.40, 0.65), "left_hip": (0.60, 0.65)}
 
 
 # --------------------------------------------------------------------------------------
@@ -90,7 +85,7 @@ class SceneResult:
 
 
 # --------------------------------------------------------------------------------------
-# Geometry helpers (must stay numerically identical to TorsoWarp.kt / FitCenter.kt)
+# Geometry helpers (Python model; not a replacement for Android tests)
 # --------------------------------------------------------------------------------------
 def to_pixels(points: dict[str, tuple[float, float]], width: int, height: int
               ) -> dict[str, tuple[float, float]]:
@@ -108,25 +103,28 @@ def scaled_body(pose: dict[str, tuple[float, float]], factor: float,
 
 
 def tracking_state(pose: dict[str, tuple[float, float] | None]) -> str:
-    """Same rule as Keypoints.state(): all four reliable torso points -> tracking."""
-    return "tracking" if all(pose.get(name) is not None for name in TORSO_ORDER) else "partial"
+    """Torso-only fixture state; all present points are assumed reliable (confidence >= .5)."""
+    if all(pose.get(name) is not None for name in TORSO_ORDER):
+        return "tracking"
+    return "partial" if any(pose.get(name) is not None for name in TORSO_ORDER) else "lost"
 
 
 def torso_warp_source(frame_pose: dict[str, tuple[float, float] | None],
-                      asset_size: tuple[int, int]) -> dict[str, tuple[float, float]] | None:
+                      frame_size: tuple[int, int]) -> dict[str, tuple[float, float]] | None:
     """Destination anchors for the garment, or None when the torso cannot be used.
 
-    Mirrors TorsoWarp.points(): all four torso anchors and confidence >= 0.5 are required,
-    the quadrilateral must be non-degenerate and consistently wound, and the asset must
-    declare positive dimensions.
+    Models only the destination-quad geometry of TorsoWarp.points(). Present fixture
+    points are assumed reliable; confidence handling and source-image warping are not
+    exercised here. Convexity and size thresholds operate in normalized coordinates.
     """
-    asset_w, asset_h = asset_size
-    if asset_w <= 0 or asset_h <= 0:
+    frame_w, frame_h = frame_size
+    if frame_w <= 0 or frame_h <= 0:
         return None
     if any(frame_pose.get(name) is None for name in TORSO_ORDER):
         return None
-    destination = to_pixels({n: frame_pose[n] for n in TORSO_ORDER}, asset_w, asset_h)
-    ordered = [destination[n] for n in WARP_ORDER]
+    ordered = [frame_pose[n] for n in WARP_ORDER]
+    if any(not (0 <= x <= 1 and 0 <= y <= 1) for x, y in ordered):
+        return None
     # Degenerate or self-crossed quads must never explode the perspective warp.
     winding = 0.0
     area = 0.0
@@ -142,9 +140,9 @@ def torso_warp_source(frame_pose: dict[str, tuple[float, float] | None],
             return None
         winding = cross
         area += ax * by - bx * ay
-    if abs(area) <= 0.0:
+    if abs(area) <= 0.002:
         return None
-    return destination
+    return to_pixels({n: frame_pose[n] for n in TORSO_ORDER}, frame_w, frame_h)
 
 
 def anchor_alpha(image: Image.Image, anchor: tuple[float, float]) -> int:
@@ -213,10 +211,10 @@ def verify_v01(assets: Assets, verbose: bool) -> SceneResult:
 
 
 # --------------------------------------------------------------------------------------
-# V02 - raised arm: the sleeve anchor must follow the arm and not drift
+# V02 - translation: all torso points move together without changing size
 # --------------------------------------------------------------------------------------
 def verify_v02(assets: Assets, verbose: bool) -> SceneResult:
-    title = "抬手：袖子跟随手臂，袖子锚点不偏移"
+    title = "左右移动：四锚点整体平移，不额外缩放"
     problem = _guard(assets)
     if problem:
         return SceneResult("V02", title, False, problem)
@@ -225,43 +223,32 @@ def verify_v02(assets: Assets, verbose: bool) -> SceneResult:
     for garment in GARMENT_IDS:
         width, height = assets.size(garment)
         base = torso_warp_source(STILL, (width, height))
-        raised = torso_warp_source(WAVE, (width, height))
-        if base is None or raised is None:
-            failures.append("{0}: 躯干锚点不可用，无法计算袖子跟随".format(garment))
+        if base is None:
+            failures.append("{0}: 基准躯干锚点不可用".format(garment))
             continue
-        static = {"right_shoulder", "right_hip", "left_hip"}
-        for name in TORSO_ORDER:
-            before, after = base[name], raised[name]
-            moved = max(abs(after[0] - before[0]), abs(after[1] - before[1]))
-            if name == "left_shoulder":
-                # The raising shoulder must actually drive the garment anchor.
-                if moved < 1.0:
-                    failures.append("{0}: 抬手臂后 left_shoulder 锚点几乎未移动 (delta={1:.2f}px)".format(
-                        garment, moved))
-            elif moved > PIXEL_TOLERANCE:
-                failures.append("{0}: {1} 不应随袖子移动，却偏移了 {2:.3f}px".format(garment, name, moved))
-            details.append("{0:<14} {1:<15} delta=({2:+.2f},{3:+.2f})px".format(
-                garment, name, after[0] - before[0], after[1] - before[1]))
-        # The sleeve must stay glued to the raised shoulder, not float off the arm.
-        expected = to_pixels({"left_shoulder": WAVE["left_shoulder"]}, width, height)["left_shoulder"]
-        actual = raised["left_shoulder"]
-        drift = max(abs(actual[0] - expected[0]), abs(actual[1] - expected[1])) / max(width, height)
-        if drift > SLEEVE_TOLERANCE:
-            failures.append("{0}: 袖子锚点相对手臂漂移 {1:.4f}（限 {2}）".format(
-                garment, drift, SLEEVE_TOLERANCE))
-        details.append("{0:<14} 袖子跟随漂移 {1:.4f} 归一化".format(garment, drift))
-        details.append("{0:<14} static 锚点位移 {1:.3f}px".format(
-            garment, max(max(abs(raised[n][0] - base[n][0]), abs(raised[n][1] - base[n][1])) for n in static)))
+        for shift in (0.0, 0.1, -0.1):
+            pose = {n: (x + shift, y) for n, (x, y) in STILL.items()}
+            moved = torso_warp_source(pose, (width, height))
+            if moved is None:
+                failures.append("{0}: shift={1} 时锚点不可用".format(garment, shift))
+                continue
+            for name in TORSO_ORDER:
+                dx = moved[name][0] - base[name][0]
+                dy = moved[name][1] - base[name][1]
+                if max(abs(dx - shift * (width - 1)), abs(dy)) > PIXEL_TOLERANCE:
+                    failures.append("{0}/{1}: 平移量错误或发生额外缩放".format(garment, name))
+            details.append("{0:<14} shift={1:+.1f} 四点预期共同位移=({2:+.2f},0.00)px".format(
+                garment, shift, shift * (width - 1)))
     if failures:
         return SceneResult("V02", title, False, "；".join(failures), details)
-    return SceneResult("V02", title, True, "抬手臂时左侧袖锚跟随肩点移动，其余三点零漂移", details)
+    return SceneResult("V02", title, True, "四点按 0 / +0.1 / -0.1 整体平移，点间距离不变", details)
 
 
 # --------------------------------------------------------------------------------------
 # V03 - size change: anchors must scale proportionally with the body
 # --------------------------------------------------------------------------------------
 def verify_v03(assets: Assets, verbose: bool) -> SceneResult:
-    title = "大小变化：0.5x / 1x / 2x 等比缩放"
+    title = "大小变化：0.7x / 1.2x 及额外倍率等比缩放"
     problem = _guard(assets)
     if problem:
         return SceneResult("V03", title, False, problem)
@@ -273,7 +260,7 @@ def verify_v03(assets: Assets, verbose: bool) -> SceneResult:
         if baseline is None:
             failures.append("{0}: 基准躯干锚点不可用".format(garment))
             continue
-        for factor in (0.5, 1.0, 2.0):
+        for factor in (0.5, 0.7, 1.0, 1.2, 2.0):
             scaled = torso_warp_source(scaled_body(STILL, factor), (width, height))
             if scaled is None:
                 failures.append("{0}: scale={1} 时锚点退化".format(garment, factor))
@@ -293,7 +280,7 @@ def verify_v03(assets: Assets, verbose: bool) -> SceneResult:
             details.append("{0:<14} scale={1:<4} 宽度比={2:.4f}".format(garment, factor, ratio))
     if failures:
         return SceneResult("V03", title, False, "；".join(failures), details)
-    return SceneResult("V03", title, True, "锚点随人体按 0.5x/1x/2x 严格等比缩放", details)
+    return SceneResult("V03", title, True, "锚点按 0.7x/1.2x 及额外 0.5x/1x/2x 等比缩放", details)
 
 
 # --------------------------------------------------------------------------------------
@@ -321,7 +308,7 @@ def verify_v04(assets: Assets, verbose: bool) -> SceneResult:
         details.append("{0:<14} state={1:<8} warp={2}".format(garment, state, "None(隐藏)" if warp is None else "渲染"))
     if failures:
         return SceneResult("V04", title, False, "；".join(failures), details)
-    return SceneResult("V04", title, True, "缺左肩 -> partial，渲染器降级隐藏且不沿用旧锚点", details)
+    return SceneResult("V04", title, True, "缺左肩 -> partial，Python 几何模型返回 None", details)
 
 
 # --------------------------------------------------------------------------------------
@@ -335,6 +322,8 @@ def verify_v05(assets: Assets, verbose: bool) -> SceneResult:
     details: list[str] = []
     failures: list[str] = []
     empty: dict[str, tuple[float, float] | None] = {name: None for name in TORSO_ORDER}
+    if tracking_state(empty) != "lost":
+        failures.append("零锚点输入的状态应为 lost")
     for garment in GARMENT_IDS:
         width, height = assets.size(garment)
         warp = torso_warp_source(empty, (width, height))
@@ -344,7 +333,7 @@ def verify_v05(assets: Assets, verbose: bool) -> SceneResult:
             garment, "None" if warp is None else "非 None"))
     if failures:
         return SceneResult("V05", title, False, "；".join(failures), details)
-    return SceneResult("V05", title, True, "零锚点输入时三张图均隐藏，无残留渲染", details)
+    return SceneResult("V05", title, True, "零锚点 -> lost，Python 几何模型返回 None", details)
 
 
 # --------------------------------------------------------------------------------------
@@ -364,10 +353,11 @@ def verify_v06(assets: Assets, verbose: bool) -> SceneResult:
     for garment in GARMENT_IDS:
         width, height = assets.size(garment)
         before = torso_warp_source(STILL, (width, height))
+        partial = torso_warp_source(dict(STILL, left_shoulder=None), (width, height))
         hidden = torso_warp_source(lost_pose, (width, height))
         after = torso_warp_source(new_pose, (width, height))
-        if hidden is not None:
-            failures.append("{0}: 丢失阶段未隐藏".format(garment))
+        if partial is not None or hidden is not None:
+            failures.append("{0}: partial/lost 阶段未返回 None".format(garment))
         if before is None or after is None:
             failures.append("{0}: 恢复阶段锚点不可用".format(garment))
             continue
@@ -385,7 +375,7 @@ def verify_v06(assets: Assets, verbose: bool) -> SceneResult:
             garment, hidden is None, stale_gap))
     if failures:
         return SceneResult("V06", title, False, "；".join(failures), details)
-    return SceneResult("V06", title, True, "丢失后按新姿态重新定位，未复用旧锚点、无闪回", details)
+    return SceneResult("V06", title, True, "Python 模型的 partial/lost 返回 None，恢复坐标匹配新姿态", details)
 
 
 # --------------------------------------------------------------------------------------
@@ -401,30 +391,26 @@ def verify_v07(assets: Assets, verbose: bool) -> SceneResult:
     viewports = (("portrait", 480, 640), ("landscape", 640, 480))
     for garment in GARMENT_IDS:
         asset_w, asset_h = assets.size(garment)
-        reference: dict[str, tuple[float, float]] | None = None
         for label, width, height in viewports:
             if torso_warp_source(STILL, (asset_w, asset_h)) is None:
                 failures.append("{0}: 素材锚点退化".format(garment))
                 break
             pixels = to_pixels({n: STILL[n] for n in TORSO_ORDER}, width, height)
-            normalized = {n: (pixels[n][0] / (width - 1), pixels[n][1] / (height - 1))
+            normalized = {n: ((pixels[n][0] - 0.5) / (width - 1), (pixels[n][1] - 0.5) / (height - 1))
                           for n in TORSO_ORDER}
-            if reference is None:
-                reference = normalized
-            else:
-                for name in TORSO_ORDER:
-                    got, want = normalized[name], reference[name]
-                    error = max(abs(got[0] - want[0]), abs(got[1] - want[1]))
-                    if error > 1e-3:
-                        failures.append("{0}/{1}: {2} 归一化映射不一致 (误差 {3:.5f})".format(
-                            garment, label, name, error))
+            for name in TORSO_ORDER:
+                got, want = normalized[name], STILL[name]
+                error = max(abs(got[0] - want[0]), abs(got[1] - want[1]))
+                if error > 1e-9:
+                    failures.append("{0}/{1}: {2} 归一化反算不等于输入 (误差 {3:.5f})".format(
+                        garment, label, name, error))
             details.append("{0:<14} {1:<10} {2}x{3} 映射={4}".format(
                 garment, label, width, height,
                 " ".join("{0}:({1:.0f},{2:.0f})".format(n[:5], *pixels[n]) for n in TORSO_ORDER)))
             # Anchors must remain inside the frame in both orientations.
             for name in TORSO_ORDER:
                 x, y = pixels[name]
-                if not (0 <= x <= width - 1 and 0 <= y <= height - 1):
+                if not (0.5 <= x <= width - 0.5 and 0.5 <= y <= height - 0.5):
                     failures.append("{0}/{1}: {2} 越界".format(garment, label, name))
     if failures:
         return SceneResult("V07", title, False, "；".join(failures), details)
@@ -466,7 +452,7 @@ def run_all(assets_dir: Path, verbose: bool = False, stream=None) -> int:
     if failed:
         print("失败场景: " + ", ".join(failed), file=out)
     print("=" * 78, file=out)
-    print("本工具只验证合成几何与合成素材；不代表真实人体识别精度、真实试衣效果或设备性能。", file=out)
+    print("本工具仅检查 PNG 和 Python 几何模型；未执行 Android 渲染、帧生命周期或 UI 验收，也不代表真人效果或设备性能。", file=out)
     return 0 if not failed else 1
 
 
