@@ -1,10 +1,3 @@
-<!--
-GitHub Issue 草稿（尚未创建：本机无 gh CLI / token）。
-创建后请：1) 回填编号到 docs/reports/lyf-bee-week6.md 第 7、8.5 节；
-2) 把 docs/images/lyf-bee-v07/v07-warp-portrait-vs-landscape.png 作为附件贴进正文；
-3) 删除本注释块。
--->
-
 # [T05] V07 横图画幅下衣服被拉宽 —— TorsoWarp 锚点四边形长宽比不匹配
 
 关联：#6（T05 服装渲染）· 证据：[周报第 8 节](lyf-bee-week6.md#8-模拟器实操验证补充)（模拟器实测 + 离线复现）

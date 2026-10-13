@@ -163,7 +163,7 @@ source.start(sessionId, { borrowed ->
 ### 待办
 
 - 本报告与脚本已提交 PR #12，关联 Issue #6；合并仅代表本次阶段性交付通过。
-- **V01–V07 已在模拟器 App 内执行完毕（第 8 节）：V01–V06 通过；V07 未通过，单列跟踪**——横图画幅下衣服被拉宽，根因与复现见第 8.5 节，Issue 草稿见 [lyf-bee-week6-v07-issue.md](lyf-bee-week6-v07-issue.md)（GitHub 编号待创建后回填）。
+- **V01–V07 已在模拟器 App 内执行完毕（第 8 节）：V01–V06 通过；V07 未通过，单列跟踪**——横图画幅下衣服被拉宽，根因与复现见第 8.5 节，跟踪 Issue：[#15](https://github.com/Miqi9880/smart-fitting-mirror/issues/15)。
 - 修复 V07 横图画幅拉伸（归属 `feature-tryon` 渲染几何，候选方向见 8.5，待评审）。
 - 补跑 Android 构建、`:feature-tryon:testDebugUnitTest`、`:feature-tryon:lintDebug` 并正式记录；与 yyyrrrxxx 做一次真实模块联调。
 - 将 V01–V07 验证接入 CI（当前仅本地可跑）。
@@ -270,4 +270,4 @@ App 装在模拟器上并连上本地服务后，逐个切换场景，观察渲�
 
 **推论**：衣服素材按 3:4 画布设计，只有在 3:4 画幅下不变形；任何其它画幅都会出现同比例拉伸。该机制与输入来源无关（真实摄像头下拉伸倍数由真人姿态四边形与素材四边形之比决定），所以这是渲染几何问题，不是测量或坐标换算问题。
 
-**候选修复方向（待评审，本次未改代码）**：在 `feature-tryon` 渲染侧对目标四边形按素材画布长宽比做等比补偿；或在数据源/素材约定侧统一长宽比基准。选哪一侧超出本报告范围，需与模块负责人评审后定； Issue 正文见 [V07 Issue 草稿](lyf-bee-week6-v07-issue.md)。
+**候选修复方向（待评审，本次未改代码）**：在 `feature-tryon` 渲染侧对目标四边形按素材画布长宽比做等比补偿；或在数据源/素材约定侧统一长宽比基准。选哪一侧超出本报告范围，需与模块负责人评审后定； Issue 正文见 [#15](https://github.com/Miqi9880/smart-fitting-mirror/issues/15)。
