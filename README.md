@@ -36,7 +36,7 @@
 
 当前第 6 周，第 18 周开始考核。先看 [每人未来一周的任务](docs/tasks.md)、[新成员环境与 Git 入门](docs/getting-started.md) 和 [第 6–18 周计划](docs/semester-plan.md)。第 7 周先完成模拟闭环，第 14 周前完成确认核心功能，第 16–17 周留给冻结与演练。
 
-负责人先行补位的实现及交接点见 [已有基础](docs/task-handoff.md)；成员无需重复开发。硬件已可接触，按 [现场核对表](docs/hardware-intake.md) 收集型号、平台、SDK 和实际能力。
+负责人先行补位的实现及交接点见 [已有基础](docs/task-handoff.md)；成员无需重复开发。[当前设备记录](docs/hardware-status.md) 已于 2026-10-14 更正：负责人报告 ZC-3588A、Android 15、8 GB / 128 GB、触摸可用；有线摄像头已找到但接口尚未匹配，安装权限和相机能力仍待核验。后续按 [现场核对表](docs/hardware-intake.md) 收集实际参数与 SDK。
 
 ## 协作资料
 
