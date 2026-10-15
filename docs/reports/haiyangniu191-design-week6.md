@@ -63,6 +63,17 @@ TryOnActivity（页面）
 
 真机使用 `http://127.0.0.1:8000`；`10.0.2.2` 仅供 Android Studio 官方模拟器访问宿主电脑。
 
+### 网络错误与状态接手表
+
+| 场景 | 当前处理 | 本周核验 |
+| --- | --- | --- |
+| `401 SESSION_INVALID` | 清空原图/结果和当前任务，关闭本地会话，提示重新连接；不继续使用旧令牌 | `FittingSession.fail` 代码检查，后端 smoke 覆盖令牌撤销后返回 401 |
+| `429` / 可重试错误 | 读取 `Retry-After`，同一请求最多自动尝试 3 次；无响应头时按 1、2、4 秒退避，单次等待超过 60 秒交给用户重试 | rate-limit smoke 通过；SM-S9060 真机仪器测试验证首次 429 后恢复成功 |
+| 创建任务响应未知 | 同一次生成保留原 `uploadId`、`garmentId` 和幂等键，重试时不另建计费任务 | `HttpFittingApiTest` 与 `FittingSessionTest` 已覆盖稳定 key；三模式 smoke 的幂等检查通过 |
+| 取消与完成竞争 | 以服务端最先进入的终态为准；完成先胜出时仍接受成功，取消先胜出后不再产生结果 | 后端竞态测试及 SM-S9060 真机取消流程通过 |
+| 结束会话/页面销毁 | 先使本地版本失效并清零图像，停止轮询；远端删除失败不伪装成已删除，进程退出只做最长 10 秒撤销尝试，TTL 作为后备 | SM-S9060 验证结束后不显示迟到结果，测试完成后临时服务与端口转发均已清理 |
+| 普通网络错误或 `5xx` | 有上限退避；仍失败时进入可见错误态并暴露对应重试动作，不把失败显示成成功 | JVM 网络测试覆盖；本周真机运行未人为断开 USB/网络制造该场景 |
+
 ### 成功模式
 
 成功流程显示了“`MOCK · 模拟结果，非真实 AI 换装`”，并展示合成输入原图和静态演示上衣结果。
@@ -74,6 +85,18 @@ TryOnActivity（页面）
 失败流程显示“模拟生成失败，可重新拍摄”，证明 App 能显示模拟后端的失败终态，而不是把失败伪装为成功。
 
 ![Android 失败状态](evidence/haiyangniu191-design-week6/failure-mock-result-2026-10-15.jpg)
+
+### SM-S9060 真机回归
+
+2026-10-15 在已解锁并保持前台的 Samsung SM-S9060 上启动 `success`、`failure`、`delayed`、`rate-limit` 四个本地服务，将 8000–8003 端口通过 ADB reverse 转发到手机，并执行：
+
+```powershell
+.\gradlew.bat --no-configuration-cache `
+  -Pandroid.testInstrumentationRunnerArguments.fitting_test_host=http://127.0.0.1 `
+  :app:connectedDebugAndroidTest --console=plain
+```
+
+结果为 9 项测试、0 失败、0 错误、0 跳过，耗时 23.963 秒，Gradle `BUILD SUCCESSFUL`。测试覆盖成功/失败、仅预览服装、Activity 重建与后台恢复、取消、429 原请求重试、结束清理以及拒绝迟到结果。原始 XML 位于本机 `android/app/build/outputs/androidTest-results/connected/debug/`，构建结果不提交仓库。
 
 ## 已知问题与边界
 
@@ -87,7 +110,6 @@ TryOnActivity（页面）
 `haiyangniu191-design` 后续维护 `backend` 与 `android/core-network`，不重复实现 `yyyrrrxxx` 负责的 Android 页面。下一步计划：
 
 1. 复现并定位服装素材 `unexpected end of stream`，区分后端连接中断、ADB 转发重连和 Android 客户端读取问题。
-2. 阅读并验证 `HttpFittingApi` 与 `FittingSession` 的重试、取消、幂等键和轮询逻辑。
-3. 在真机验证限流后的 `Retry-After` 恢复、取消生成和结束清理。
-4. 等真实 AI 提供方、鉴权方式和数据留存要求确认后，在后端适配真实生成接口；密钥不进入 APK 或 Git。
+2. 与 `yyyrrrxxx` 完成一次同版本模拟联调，记录地址、commit、模式与发现的问题，并在 Issue #5 更新本周状态。
+3. 等真实 AI 提供方、鉴权方式和数据留存要求确认后，在后端适配真实生成接口；密钥不进入 APK 或 Git。
 
