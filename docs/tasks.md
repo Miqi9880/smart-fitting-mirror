@@ -1,19 +1,21 @@
-# 四人当前任务（第 6 周）
+# 四人当前任务（2026-10-19 至 10-25）
 
-整体计划见 [第 6–18 周路线](semester-plan.md)；第一次配置请读 [环境与 Git/PR 入门](getting-started.md)。未来一周每人预计 6–8 小时，以跑通环境、理解基线、完成一个小 PR/实测报告为主；第 7 周完成模拟闭环，不要求新成员本周从零写整套系统。
+本周按负责人新要求推进 **真实服装照片＋真实人体输入**。完整总目标、完成状态、先后依赖、环境与逐项验收见 [10 月 19–25 日任务](weekly-2026-10-19.md)；素材从 [真实输入材料](materials/README.md) 开始。首次配置请读 [环境与 Git/PR 入门](getting-started.md)，长期里程碑见 [第 6–18 周路线](semester-plan.md)。不根据日期推定学校周次。
 
-2026-10-13 更新：Miqi9880 本周现场硬件验证暂缓，改为无硬件视觉验证与模拟联调；具体安排以 [Issue #3](https://github.com/Miqi9880/smart-fitting-mirror/issues/3) 为准。[本次独立验证与启动步骤](reports/Miqi9880-2026-10-13.md) 已交付，团队共同验收和硬件待办仍保留。其他三人的职责不变。
+原模拟闭环、视觉回归、lyf-bee 的场景报告及 haiyangniu191-design 的网络报告已分别通过 PR #11/#13/#12/#14/#17 交付。它们可继续用于回归，本周验收改为一件实拍服装在实时真人画面上跟随；旧绘制上衣与合成点不计为本周效果。现有 APK 仍是原模拟联调版，本次任务发布和原图准备不表示已实现新功能。
+
+历史进展（2026-10-13）：Miqi9880 于 10 月 13–18 日暂缓现场验证，已交付 [无硬件视觉验证与启动步骤](reports/Miqi9880-2026-10-13.md)。共同验收和硬件待办转入当前 [Issue #3](https://github.com/Miqi9880/smart-fitting-mirror/issues/3)，不将旧的暂缓安排扩展成无限期停止真人工作。
 
 2026-10-14 更正：[当前设备](hardware-status.md) 为负责人报告的 ZC-3588A / Android 15，已能操作界面，有线摄像头已找到但接口不匹配。此前 S40、电源/不开机/摄像头未找到的信息不再用于任务决策。本次仅补充设备事实，不把安装、RGB 或深度验证记为完成。
 
 | 成员 | 长期归属 | 下一周最小交付 | 详细任务 |
 | --- | --- | --- | --- |
-| Miqi9880 | 硬件、人体视觉、公共接口、项目协调 | 无硬件视觉/原图/清理验证、模拟闭环与交接报告（10 月 13–18 日调整） | [#3](https://github.com/Miqi9880/smart-fitting-mirror/issues/3) |
-| haiyangniu191-design | 后端、AI、Android 网络 | 三种模拟服务复现、调用链与网络接手记录 | [#5](https://github.com/Miqi9880/smart-fitting-mirror/issues/5) |
-| lyf-bee | 实时服装渲染 | 一件 PNG 锚点检查、V01–V07 场景验证/准备 | [#6](https://github.com/Miqi9880/smart-fitting-mirror/issues/6) |
-| yyyrrrxxx | Android 页面、模块装配与交互验收 | 运行 App、页面状态表、正常/异常验收步骤 | [#7](https://github.com/Miqi9880/smart-fitting-mirror/issues/7) |
+| Miqi9880 | 硬件、人体视觉、公共接口、项目协调 | 真实 RGB/关键点实测、V07 等比例输入，5–7 小时 | [#3](https://github.com/Miqi9880/smart-fitting-mirror/issues/3) |
+| haiyangniu191-design | 后端、AI、Android 网络 | 真实素材目录接入与断流排查，5–7 小时 | [#5](https://github.com/Miqi9880/smart-fitting-mirror/issues/5) |
+| lyf-bee | 实时服装渲染 | 一件实拍上衣抠图/锚点/跟随及调试点显示，6–8 小时 | [#6](https://github.com/Miqi9880/smart-fitting-mirror/issues/6) |
+| yyyrrrxxx | Android 页面、模块装配与交互验收 | 真人入口/关键点开关及完整联调，5–7 小时 | [#7](https://github.com/Miqi9880/smart-fitting-mirror/issues/7) |
 
-这些是长期功能卡内的本周增量；本周报告通过不等于整个功能完成。每张 Issue 包含已有交付、文件范围、逐日任务、环境命令、验收标准和依赖。进度在原卡更新，避免重复认领。
+这些是长期功能卡内的本周增量；工时含成员理解、实现和验证，不是代理执行时间。每张 Issue 包含已有交付、文件范围、环境命令、验收标准和依赖。先交一个可接入的小 PR，周末再共同验收；本周报告通过不等于长期功能卡完成。
 
 ## 已完成的基线
 
