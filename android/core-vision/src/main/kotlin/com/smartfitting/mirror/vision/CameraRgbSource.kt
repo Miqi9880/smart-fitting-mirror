@@ -48,6 +48,7 @@ class CameraRgbSource(
         val onFrame: (FrameLease<BitmapPixels>) -> Unit, val onStatus: (VisionStatus) -> Unit) {
         var analysis: ImageAnalysis? = null
         var frameCounter = 0L
+        val stabilizer = PoseStabilizer()
     }
 
     override fun start(sessionId: String, onFrame: (FrameLease<BitmapPixels>) -> Unit,
@@ -124,7 +125,9 @@ class CameraRgbSource(
                             name to PoseMapper.PixelPoint(it.position.x, it.position.y, it.inFrameLikelihood)
                         }
                     }.toMap()
-                    val keypoints = PoseMapper.map(points, bitmap.width, bitmap.height)
+                    val keypoints = current.stabilizer.update(
+                        PoseMapper.map(points, bitmap.width, bitmap.height),
+                        timestampMs, bitmap.width, bitmap.height)
                     val state = keypoints.state()
                     val frameId = ++current.frameCounter
                     val metadata = VisionFrame(sessionId = current.sessionId, frameId = frameId,
@@ -185,6 +188,7 @@ class CameraRgbSource(
         generation.end()
         previous?.analysis?.let { it.clearAnalyzer(); provider?.unbind(it) }
         previous?.detector?.close()
+        previous?.stabilizer?.reset()
         latest.clear()
         latestArrivalMs = 0
         return previous

@@ -58,3 +58,5 @@ core-contracts 已提供对应 Kotlin 类型；像素载体是 core-vision 的 B
 Canvas 绘制使用像素中心：归一化点映射为 0.5 + x*(width-1)，随后与 Bitmap 共用变换；因此镜像时仍符合 x→1-x，不产生一像素偏移。FitCenter 与诊断视图使用同一约定。
 
 当前实现只提供 RGB 和合成源，无深度或 mask。返回 partial 的原因可能是低置信度、遮挡或身体出框；站位提示应作为引导，不表示已经进行深度测距。具体构建和所有权示例见 [Android 说明](../../android/README.md)。
+
+RGB 输出在当前帧模型点通过有效性检查后，使用 `PoseStabilizer` 做相邻帧坐标平滑（当前测量权重 0.6）；confidence、点是否存在和 tracking_state 仍依据当前测量。缺点立即 null，停止/会话切换、画幅变化或长间隔不混合旧历史；合成点不经此滤波。它不补造丢失点或距离，也不将其他帧的异步推理当作当前结果。来源及适配范围见 [参考迁移记录](../reference-reuse.md)。

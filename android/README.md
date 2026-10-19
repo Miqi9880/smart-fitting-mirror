@@ -2,6 +2,8 @@
 
 本工程实现公共类型、RGB/合成视觉、HTTP 网络状态、四点上衣叠加及首版试衣页。默认合成输入；连接本地模拟服务后可选衣、拍原图上传、等待模拟结果并对比/清理。尚无真实 AI、深度、分割和遮挡。完整步骤见 [试衣联调](../docs/tryon-integration.md)，[验证证据](../docs/tryon-validation.md)。
 
+RGB 模型输出已适配参考项目的关键点平滑，缺点/丢失仍立即清理，保留当前置信度和独立相机会话；不影响合成回归数据。来源、其余迁移决策与边界见 [参考复用说明](../docs/reference-reuse.md)。
+
 [原视觉基线验证记录与截图](../docs/android-validation.md)
 
 [无设备联调场景与四人接入验收](../docs/no-device-integration.md)
