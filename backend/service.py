@@ -17,7 +17,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable, Literal
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, Query
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, ConfigDict, Field
@@ -25,6 +25,8 @@ from starlette.concurrency import run_in_threadpool
 from starlette.datastructures import UploadFile
 from starlette.exceptions import HTTPException
 from PIL import Image, ImageDraw, ImageOps, UnidentifiedImageError
+from .catalog import ASSET_SPECS, GarmentWrite, initial_catalog, public_item, matches
+from .catalog_repository import CatalogRepository
 
 MAX_FILE = 10 * 1024 * 1024
 MAX_BODY = MAX_FILE + 64 * 1024
@@ -33,11 +35,6 @@ MAX_STORED = 128 * 1024 * 1024
 ASSETS = Path(__file__).parent / "assets"
 TERMINAL = {"succeeded", "failed", "cancelled"}
 Mode = Literal["success", "failure", "delayed", "timeout", "rate-limit"]
-CATALOG = {
-    "upper_blue": ("蓝色休闲上衣", "blue", True),
-    "upper_sand": ("沙色休闲上衣", "sand", True),
-    "upper_preview": ("绿色上衣（仅预览）", "green", False),
-}
 
 
 def stamp(epoch: float) -> str:
@@ -130,6 +127,7 @@ class Job:
     value: dict
     created: float
     mode: Mode
+    asset_id: str
     result_bytes: bytes | None = None
 
 
@@ -141,16 +139,18 @@ class Guest:
     jobs: dict[str, Job] = field(default_factory=dict)
     keys: dict[str, tuple[tuple[str, str], str]] = field(default_factory=dict)
     throttled_keys: set[str] = field(default_factory=set)
+    catalog: dict[str, GarmentWrite] = field(default_factory=initial_catalog)
 
 
 class Store:
     """One-process mock. Every terminal-state decision and ownership check shares a lock."""
-    def __init__(self, mode: Mode = "success", clock: Callable[[], float] = time.time, ttl: float = 1800):
+    def __init__(self, mode: Mode = "success", clock: Callable[[], float] = time.time, ttl: float = 1800, catalog_path=None):
         self.mode, self.clock, self.ttl = mode, clock, ttl
         self.lock = threading.RLock()
         self.guests: dict[str, Guest] = {}
         self.buckets: dict[str, deque] = defaultdict(deque)
         self.secret = secrets.token_bytes(32)
+        self.catalog_repository = CatalogRepository(catalog_path) if catalog_path is not None else None
 
     def token(self, sid: str) -> str:
         return sid + "." + hmac.new(self.secret, sid.encode(), hashlib.sha256).hexdigest()
@@ -204,6 +204,8 @@ class Store:
                 raise Problem(503, "CAPACITY_REACHED", "模拟服务会话容量已满", True)
             sid = "session_" + uuid.uuid4().hex
             guest = Guest(sid, self.clock() + self.ttl)
+            if self.catalog_repository is not None:
+                guest.catalog = self.catalog_repository.snapshot()
             self.guests[sid] = guest
             return {"session_id": sid, "session_token": self.token(sid), "expires_at": stamp(guest.expires)}
 
@@ -236,9 +238,10 @@ class Store:
                 if prior != fingerprint:
                     raise Problem(409, "IDEMPOTENCY_CONFLICT", "相同幂等键不能用于不同输入")
                 return guest.jobs[jid].value.copy(), 200
-            if upload_id not in guest.uploads or garment_id not in CATALOG:
+            if upload_id not in guest.uploads or garment_id not in guest.catalog:
                 raise Problem(404, "RESOURCE_NOT_FOUND", "上传或服装不存在")
-            if not CATALOG[garment_id][2]:
+            asset_id = guest.catalog[garment_id].asset_id
+            if not ASSET_SPECS[asset_id]["generatable"]:
                 raise Problem(422, "GARMENT_NOT_GENERATABLE", "该服装仅支持实时预览")
             # Limit new attempts too; rejected simulation keys must not grow without bound.
             self.rate("jobs:" + guest.sid, 6)
@@ -252,7 +255,7 @@ class Store:
             value = {"job_id": jid, "session_id": guest.sid, "upload_id": upload_id, "garment_id": garment_id,
                      "status": "queued", "is_mock": True, "created_at": stamp(now), "updated_at": stamp(now),
                      "result": None, "error": None}
-            guest.jobs[jid] = Job(value, now, self.mode)
+            guest.jobs[jid] = Job(value, now, self.mode, asset_id)
             guest.keys[key] = fingerprint, jid
             return value.copy(), 202
 
@@ -272,7 +275,7 @@ class Store:
             else:
                 try:
                     photo = guest.uploads[job.value["upload_id"]]
-                    result = mock_result(photo, job.value["garment_id"])
+                    result = mock_result(photo, job.asset_id)
                     if self.bytes_stored() + len(result) > MAX_STORED:
                         raise ValueError("capacity")
                     job.result_bytes = result
@@ -326,8 +329,8 @@ def decode_photo(data: bytes, media_type: str) -> Photo:
         raise Problem(422, "INVALID_IMAGE", "图片无法解码")
 
 
-def mock_result(photo: Photo, garment_id: str) -> bytes:
-    with Image.open(io.BytesIO(photo.data)) as original, Image.open(ASSETS / f"{garment_id}.png") as shirt:
+def mock_result(photo: Photo, asset_id: str) -> bytes:
+    with Image.open(io.BytesIO(photo.data)) as original, Image.open(ASSETS / ASSET_SPECS[asset_id]["file"]) as shirt:
         result = original.convert("RGBA")
         layer = ImageOps.contain(shirt, (max(1, int(photo.width * .65)), max(1, int(photo.height * .7))))
         result.alpha_composite(layer, ((photo.width - layer.width) // 2, int(photo.height * .12)))
@@ -345,12 +348,12 @@ class CreateInput(BaseModel):
     garment_id: str = Field(min_length=1, max_length=128)
 
 
-def create_app(mode: Mode = "success", *, clock=time.time, ttl=1800) -> FastAPI:
+def create_app(mode: Mode = "success", *, clock=time.time, ttl=1800, catalog_path=None) -> FastAPI:
     if mode not in {"success", "failure", "delayed", "timeout", "rate-limit"}:
         raise ValueError("Unknown mock mode")
     if not 0 < ttl <= 1800:
         raise ValueError("Session lifetime must be between 0 and 1800 seconds")
-    store = Store(mode, clock, ttl)
+    store = Store(mode, clock, ttl, catalog_path)
 
     @asynccontextmanager
     async def lifespan(app):
@@ -406,18 +409,56 @@ def create_app(mode: Mode = "success", *, clock=time.time, ttl=1800) -> FastAPI:
         return JSONResponse(store.create_session(request.client.host if request.client else "local"), 201, headers={"Cache-Control": "no-store"})
 
     @app.get("/api/v1/garments")
-    def garments(request: Request):
+    def garments(request: Request, q: str = Query(default="", max_length=128),
+                 tag: str | None = Query(default=None, max_length=100)):
         with store.lock:
-            store.guest(auth(request))
-        root = str(request.base_url) + "api/v1/assets/"
-        anchors = {"left_shoulder": {"x": .75, "y": .15}, "right_shoulder": {"x": .25, "y": .15},
-                   "left_hip": {"x": .7, "y": .85}, "right_hip": {"x": .3, "y": .85}}
-        items = [{"garment_id": gid, "name": name, "category": "upper_body", "tags": ["demo", color],
-                           "thumbnail_url": root + gid + ".png",
-                           "preview_image": {"url": root + gid + ".png", "width": 600, "height": 800, "anchors": anchors},
-                           "generation_reference_url": root + gid + ".png" if generatable else None}
-                          for gid, (name, color, generatable) in CATALOG.items()]
+            guest = store.guest(auth(request))
+            root = str(request.base_url) + "api/v1/assets/"
+            items = [public_item(item, root) for item in guest.catalog.values() if matches(item, q, tag)]
         return JSONResponse({"items": items}, headers={"Cache-Control": "no-store"})
+
+    @app.get("/api/v1/garments/{gid}")
+    def garment_detail(request: Request, gid: str):
+        with store.lock:
+            item = store.guest(auth(request)).catalog.get(gid)
+            if item is None:
+                raise Problem(404, "RESOURCE_NOT_FOUND", "服装不存在")
+            value = public_item(item, str(request.base_url) + "api/v1/assets/")
+        return JSONResponse(value, headers={"Cache-Control": "no-store"})
+
+    def save_garment(request, body, *, replace):
+        with store.lock:
+            guest = store.guest(auth(request))
+            exists = body.garment_id in guest.catalog
+            if exists != replace:
+                raise Problem(404 if replace else 409, "RESOURCE_NOT_FOUND" if replace else "GARMENT_EXISTS", "服装不存在" if replace else "服装编号已存在")
+            if body.asset_id not in ASSET_SPECS:
+                raise Problem(422, "INVALID_ASSET", "请选择目录中已有的图片素材")
+            if not body.name.strip() or any(not s.strip() or len(s) > 100 for s in [*body.tags, *body.details.sizes, *body.details.colors]):
+                raise Problem(400, "INVALID_REQUEST", "名称、标签、尺寸或颜色格式无效")
+            if not replace and len(guest.catalog) >= 50:
+                raise Problem(429, "CATALOG_CAPACITY", "临时衣柜最多 50 件服装")
+            guest.catalog[body.garment_id] = body
+            value = public_item(body, str(request.base_url) + "api/v1/assets/")
+        return JSONResponse(value, 200 if replace else 201, headers={"Cache-Control": "no-store"})
+
+    @app.post("/api/v1/garments", status_code=201)
+    def add_garment(request: Request, body: GarmentWrite):
+        return save_garment(request, body, replace=False)
+
+    @app.put("/api/v1/garments/{gid}")
+    def update_garment(request: Request, gid: str, body: GarmentWrite):
+        if gid != body.garment_id:
+            raise Problem(400, "INVALID_REQUEST", "路径与服装编号不一致")
+        return save_garment(request, body, replace=True)
+
+    @app.delete("/api/v1/garments/{gid}", status_code=204)
+    def delete_garment(request: Request, gid: str):
+        with store.lock:
+            guest = store.guest(auth(request))
+            if guest.catalog.pop(gid, None) is None:
+                raise Problem(404, "RESOURCE_NOT_FOUND", "服装不存在")
+        return Response(status_code=204, headers={"Cache-Control": "no-store"})
 
     @app.post("/api/v1/uploads", status_code=201)
     async def upload(request: Request):
@@ -453,9 +494,9 @@ def create_app(mode: Mode = "success", *, clock=time.time, ttl=1800) -> FastAPI:
     def asset(request: Request, gid: str):
         with store.lock:
             store.guest(auth(request))
-        if gid not in CATALOG:
+        if gid not in ASSET_SPECS:
             raise Problem(404, "RESOURCE_NOT_FOUND", "服装图片不存在")
-        return Response((ASSETS / f"{gid}.png").read_bytes(), media_type="image/png", headers={"Cache-Control": "no-store"})
+        return Response((ASSETS / ASSET_SPECS[gid]["file"]).read_bytes(), media_type="image/png", headers={"Cache-Control": "no-store"})
 
     @app.get("/api/v1/results/{jid}.png")
     def result(request: Request, jid: str):

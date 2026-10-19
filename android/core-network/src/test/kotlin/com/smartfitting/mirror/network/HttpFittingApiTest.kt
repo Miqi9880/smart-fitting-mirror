@@ -11,6 +11,25 @@ import java.io.IOException
 import java.util.concurrent.TimeUnit
 
 class HttpFittingApiTest {
+    @Test fun truncatedAssetFailsAndTheNextAssetCanBeDownloaded() = runBlocking {
+        MockWebServer().use { server ->
+            // Linux may resolve localhost to both loopback families. After the
+            // injected disconnect OkHttp can choose ::1, which this server did
+            // not bind. Pin both ends so this checks body recovery, not DNS.
+            server.start(java.net.InetAddress.getByName("127.0.0.1"),0)
+            val base = "http://127.0.0.1:${server.port}/"
+            HttpFittingApi(base).use { api ->
+                server.enqueue(MockResponse().setHeader("Content-Type","image/png")
+                    .setBody(okio.Buffer().write(ByteArray(8192) { 17 })).setSocketPolicy(SocketPolicy.DISCONNECT_DURING_RESPONSE_BODY))
+                try { api.download("test","${base}asset.png"); fail("Truncated image must fail") }
+                catch (_: IOException) { }
+                assertEquals("/asset.png",server.takeRequest(3,TimeUnit.SECONDS)?.path)
+                server.enqueue(MockResponse().setHeader("Content-Type","image/png").setBody("complete"))
+                assertArrayEquals("complete".toByteArray(),api.download("test","${base}asset.png"))
+                assertEquals(2,server.requestCount)
+            }
+        }
+    }
     private fun fixture(name: String) = javaClass.classLoader!!.getResource(name)!!.readText()
     private fun json(name: String, status: Int = 200) = MockResponse().setResponseCode(status)
         .setHeader("Content-Type", "application/json").setBody(fixture(name))

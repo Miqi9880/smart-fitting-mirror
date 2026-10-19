@@ -1,0 +1,441 @@
+{
+  "date": "2026-10-19",
+  "baseline_commit": "0db06f4055a54c77a33dc58813fd08b4c1538d61",
+  "upstream_commit": "11b667b6ec8c367395db146a7048fc047d874696",
+  "jvm": {
+    "core-contracts": [
+      {
+        "suite": "com.smartfitting.mirror.contracts.ContractsTest",
+        "tests": 11,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "cases": [
+          "onlySuccessCarriesResult",
+          "trackingRequiresFourTorsoAnchors",
+          "capabilitiesRejectUnsupportedSchemaVersionOnDecode",
+          "releasedPhotoIsZeroedAndUnavailable",
+          "allThirteenSharedFixturesMapWithoutFieldLoss",
+          "invalidCoordinatesAndMirroredMetadataAreRejected",
+          "bufferIdentifiersCannotBeBlank",
+          "alignedDepthMustHaveRgbDimensions",
+          "fitCenterPreservesAspectAndMirrorsPixelCenters",
+          "declaredTrackingStateMustMatchReliableKeypoints",
+          "optionalGarmentDetailsAndWriteRequestRoundTripAlongsideLegacyCatalog"
+        ]
+      },
+      {
+        "suite": "com.smartfitting.mirror.contracts.LifecycleTest",
+        "tests": 4,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "cases": [
+          "restartAndStopRejectAllOldResults",
+          "latestSlotReleasesReplacedFrameButHonorsConsumer",
+          "asyncConsumerRetainsUntilDoneAndCannotResurrect",
+          "concurrentConsumersDisposeExactlyOnce"
+        ]
+      }
+    ],
+    "core-vision": [
+      {
+        "suite": "com.smartfitting.mirror.vision.PoseMapperTest",
+        "tests": 4,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "cases": [
+          "lowConfidenceAloneDoesNotClaimPersonIsOutOfFrame",
+          "missingTorsoIsPartialAndNoPersonIsLost",
+          "rejectsOffscreenLowConfidenceAndNanRatherThanClamping",
+          "normalizesUnmirroredCoordinatesAndPreservesAnatomicalNames"
+        ]
+      },
+      {
+        "suite": "com.smartfitting.mirror.vision.PoseStabilizerTest",
+        "tests": 8,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "cases": [
+          "lostFrameHasNoStalePointsAndReappearanceStartsAtTheNewPerson",
+          "stalledOrNonIncreasingTimestampsStartFresh",
+          "missingJointIsNullImmediatelyAndReturnsWithoutAnOldPosition",
+          "aNewImageGeometryCannotBlendOldCoordinateAxes",
+          "lowConfidenceCurrentJointCannotBeRevivedFromHistory",
+          "currentMeasurementIsBlendedAndItsConfidenceIsNotInflated",
+          "resetAndIndependentCameraRunsHaveNoSharedHistory",
+          "alternatingMeasurementNoiseHasLessFrameToFrameMovement"
+        ]
+      },
+      {
+        "suite": "com.smartfitting.mirror.vision.SyntheticSceneTest",
+        "tests": 6,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "cases": [
+          "allScenariosAreRepeatableAndHaveValidCoordinates",
+          "portraitAndLandscapePreservePixelBodyAspectAndStateAcrossScenarios",
+          "fixedScenariosDoNotMoveWithTime",
+          "translationKeepsDimensionsAndAnatomicalSides",
+          "scaleKeepsCenterAndChangesTorsoSize",
+          "recoveryHasFourExplicitPhasesAndRepeats"
+        ]
+      }
+    ],
+    "core-network": [
+      {
+        "suite": "com.smartfitting.mirror.network.FittingSessionTest",
+        "tests": 8,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "cases": [
+          "cancelHonorsServerSuccessWinner",
+          "failedRemoteCleanupIsNotReportedAsSuccessAndCanRetry",
+          "successfulFlowClearsPhotoAndImagesOnEnd",
+          "unknownCreateOutcomeRetriesOriginalKeyAndNeverReuploads",
+          "endingBeforeQueuedUploadStartsStillClosesPhotoAndStopsWork",
+          "backgroundPausesPollingAndForegroundResumesOriginalJob",
+          "failedDownloadRetriesSameResultWithoutCreatingAnotherJob",
+          "catalogSaveSelectsNewItemDeleteFallsBackAndReadRetryDoesNotReplayWrites"
+        ]
+      },
+      {
+        "suite": "com.smartfitting.mirror.network.HttpFittingApiTest",
+        "tests": 6,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "cases": [
+          "oversizedResponseAndNonImageContentAreRejected",
+          "rateLimitPreservesRetryAfterAndStructuredError",
+          "truncatedAssetFailsAndTheNextAssetCanBeDownloaded",
+          "mapsSessionUploadAndIdempotentCreate",
+          "credentialsNeverFollowImageRedirectOrCrossOriginUrl",
+          "cancellationStopsPendingCallAndLeavesOriginalOwnershipWithCaller"
+        ]
+      }
+    ],
+    "feature-tryon": [
+      {
+        "suite": "com.smartfitting.mirror.tryon.GarmentMeshTest",
+        "tests": 4,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "cases": [
+          "currentArmMovesSleevesAndMissingArmHidesItsFaces",
+          "metricDepthComparisonHandlesPaddingUnknownAndTolerance",
+          "suppliedModelLoadsAndMovesWithTheCurrentBody",
+          "objQuadsAndNegativeIndicesAreTriangulatedAndMalformedInputIsRejected"
+        ]
+      },
+      {
+        "suite": "com.smartfitting.mirror.tryon.TorsoWarpTest",
+        "tests": 4,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "cases": [
+          "scaleAndInputDimensionsPreserveNormalizedCorrespondences",
+          "degenerateAssetCannotProduceExplodingPerspective",
+          "translationKeepsSizeAndMovesEveryAnchor",
+          "missingLostAndCrossedTorsoNeverRenderOldGarment"
+        ]
+      }
+    ]
+  },
+  "instrumented": {
+    "app": [
+      {
+        "suite": "com.smartfitting.mirror.LaunchTest",
+        "tests": 17,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "cases": [
+          "launchPauseResumeAndRecreatePreservesStopAndMirrorChoices",
+          "rgbCameraRunsInferenceAndRecoversAfterBackground",
+          "displayControlsSurviveRecreationAndStopStillDisablesCapture",
+          "inventoryReportsSystemFactsAndExplicitCapabilityLimits",
+          "mirrorCanBeChosenAsHomeWithoutChangingTheCurrentDefault",
+          "realGarmentKeepsShapeAcrossValidV07ViewportsAndOriginalPixelsStayClean",
+          "nativeBrowserSearchDetailsAndCreateEditDeleteUseTheSameBackend",
+          "rapidSourceChangesAndStopDoNotShowOldCaptures",
+          "sceneViewportPauseAndStepSurviveRecreation",
+          "objProjectionDrawsCurrentBodyAndHidesLost",
+          "currentLandmarksMirrorWithoutMutatingOriginalAndDisappearOnLost",
+          "drawsGarmentMirrorsWholeFrameHidesLostAndClearsLeases",
+          "metricDepthClipsOnlyGarmentAndUnknownDistanceDoesNotInventOcclusion",
+          "rotationAndBackgroundRetainOneJobThenCancel",
+          "successPreviewOnlySelectionComparisonAndCleanup",
+          "rateLimitRetriesAndEndingPendingJobPreventsLateResult",
+          "failureIsVisibleAndAllowsAnotherCapture"
+        ]
+      }
+    ],
+    "core-vision": [
+      {
+        "suite": "com.smartfitting.mirror.vision.BitmapAndSourceTest",
+        "tests": 6,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "cases": [
+          "rotateToUprightWithoutMirroring",
+          "syntheticCaptureRejectsResultAfterSourceClosed",
+          "syntheticCaptureContainsRawPixelsAndStopsCallbacks",
+          "stopFromReadyCallbackDoesNotRestartTheTimer",
+          "restartingDuringCaptureRejectsOldSessionAndReleasesOldPixels",
+          "pauseStepSeekAndViewportKeepFrameContract"
+        ]
+      }
+    ]
+  },
+  "lint": {
+    "app": [
+      {
+        "id": "UseSwitchCompatOrMaterialCode",
+        "severity": "Warning"
+      },
+      {
+        "id": "GradleDependency",
+        "severity": "Warning"
+      },
+      {
+        "id": "GradleDependency",
+        "severity": "Warning"
+      },
+      {
+        "id": "GradleDependency",
+        "severity": "Warning"
+      },
+      {
+        "id": "GradleDependency",
+        "severity": "Warning"
+      },
+      {
+        "id": "GradleDependency",
+        "severity": "Warning"
+      },
+      {
+        "id": "GradleDependency",
+        "severity": "Warning"
+      },
+      {
+        "id": "GradleDependency",
+        "severity": "Warning"
+      },
+      {
+        "id": "DataExtractionRules",
+        "severity": "Warning"
+      },
+      {
+        "id": "DrawAllocation",
+        "severity": "Warning"
+      },
+      {
+        "id": "DrawAllocation",
+        "severity": "Warning"
+      },
+      {
+        "id": "MissingApplicationIcon",
+        "severity": "Warning"
+      },
+      {
+        "id": "ViewConstructor",
+        "severity": "Warning"
+      },
+      {
+        "id": "UseKtx",
+        "severity": "Warning"
+      },
+      {
+        "id": "UseKtx",
+        "severity": "Warning"
+      },
+      {
+        "id": "UseKtx",
+        "severity": "Warning"
+      },
+      {
+        "id": "UseKtx",
+        "severity": "Warning"
+      },
+      {
+        "id": "UseKtx",
+        "severity": "Warning"
+      },
+      {
+        "id": "SetTextI18n",
+        "severity": "Warning"
+      },
+      {
+        "id": "SetTextI18n",
+        "severity": "Warning"
+      },
+      {
+        "id": "SetTextI18n",
+        "severity": "Warning"
+      },
+      {
+        "id": "SetTextI18n",
+        "severity": "Warning"
+      },
+      {
+        "id": "SetTextI18n",
+        "severity": "Warning"
+      },
+      {
+        "id": "SetTextI18n",
+        "severity": "Warning"
+      },
+      {
+        "id": "SetTextI18n",
+        "severity": "Warning"
+      },
+      {
+        "id": "SetTextI18n",
+        "severity": "Warning"
+      },
+      {
+        "id": "SetTextI18n",
+        "severity": "Warning"
+      }
+    ],
+    "core-vision": [
+      {
+        "id": "GradleDependency",
+        "severity": "Warning"
+      },
+      {
+        "id": "GradleDependency",
+        "severity": "Warning"
+      },
+      {
+        "id": "GradleDependency",
+        "severity": "Warning"
+      },
+      {
+        "id": "GradleDependency",
+        "severity": "Warning"
+      },
+      {
+        "id": "GradleDependency",
+        "severity": "Warning"
+      },
+      {
+        "id": "GradleDependency",
+        "severity": "Warning"
+      },
+      {
+        "id": "UseKtx",
+        "severity": "Warning"
+      }
+    ],
+    "core-network": [],
+    "feature-tryon": [
+      {
+        "id": "GradleDependency",
+        "severity": "Warning"
+      },
+      {
+        "id": "GradleDependency",
+        "severity": "Warning"
+      },
+      {
+        "id": "DrawAllocation",
+        "severity": "Warning"
+      }
+    ]
+  },
+  "backend": {
+    "tests": 46,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "apk": {
+    "bytes": 90177810,
+    "sha256": "48e2aa48a6214cae336a66c5465626af060ad002a1450839d45475c49bd5bce6"
+  },
+  "obj_sha256": "d87c8d2e1988db92453637748d8cfb4527c9fd8c4aa72187b378f329ebdb783a",
+  "responsive_ui": {
+    "resolution": [
+      1920,
+      1080
+    ],
+    "density_dpi": 320,
+    "footer_buttons": [
+      {
+        "label": "新增衣服",
+        "bounds": [
+          64,
+          880,
+          661,
+          976
+        ],
+        "enabled": true
+      },
+      {
+        "label": "刷新衣柜",
+        "bounds": [
+          661,
+          880,
+          1258,
+          976
+        ],
+        "enabled": true
+      },
+      {
+        "label": "返回试衣",
+        "bounds": [
+          1258,
+          880,
+          1856,
+          976
+        ],
+        "enabled": true
+      }
+    ],
+    "physical_mirror_tested": false
+  },
+  "v07": {
+    "portrait": {
+      "width": 480,
+      "height": 640,
+      "garment_id": "real_white_tee",
+      "bbox": [
+        106,
+        100,
+        383,
+        467
+      ],
+      "ratio": 0.7547684,
+      "anchor_error_max_px": 3.0517578e-05,
+      "mirror_bbox_checked": true
+    },
+    "landscape": {
+      "width": 640,
+      "height": 480,
+      "garment_id": "real_white_tee",
+      "bbox": [
+        219,
+        75,
+        427,
+        350
+      ],
+      "ratio": 0.75636363,
+      "anchor_error_max_px": 3.0517578e-05,
+      "mirror_bbox_checked": true
+    }
+  },
+  "additional_validation": {
+    "ReferenceCatalogTest": "2/2 passed after layout update and strengthened mirror/anchor assertions",
+    "same_app_production_sources": "Complete App 17/17 and vision 6/6 passed; only browser layout/sort changed afterward, covered by the focused native UI/HTTP rerun",
+    "lint": "app 0 errors/27 warnings, core-vision 0/7, core-network 0/0, feature-tryon 0/3"
+  }
+}

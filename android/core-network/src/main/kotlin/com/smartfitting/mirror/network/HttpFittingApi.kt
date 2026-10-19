@@ -16,6 +16,10 @@ import kotlin.coroutines.resumeWithException
 interface FittingTransport : FittingApi, AutoCloseable {
     /** The caller owns the returned encoded bytes and must clear them after use. */
     suspend fun download(sessionToken: String, url: String): ByteArray
+    suspend fun saveGarment(sessionToken: String, item: GarmentWrite, replace: Boolean): Garment =
+        throw IOException("服务尚未提供衣柜编辑")
+    suspend fun deleteGarment(sessionToken: String, id: String): Unit =
+        throw IOException("服务尚未提供衣柜编辑")
 }
 
 class ApiFailure(val status: Int, val code: String, override val message: String,
@@ -35,6 +39,17 @@ class HttpFittingApi internal constructor(baseUrl: String, private val client: O
 
     override suspend fun createSession(): Session = json(request("sessions").post(emptyBody).build())
     override suspend fun garments(sessionToken: String): GarmentList = json(request("garments", sessionToken).get().build())
+    override suspend fun saveGarment(sessionToken: String, item: GarmentWrite, replace: Boolean): Garment {
+        val body = ContractJson.encodeToString(item).toRequestBody(jsonType)
+        val url = root.newBuilder().addPathSegments("api/v1/garments")
+            .apply { if (replace) addPathSegment(item.garmentId) }.build()
+        return json(Request.Builder().url(url).header("Authorization", "Bearer $sessionToken")
+            .apply { if (replace) put(body) else post(body) }.build())
+    }
+    override suspend fun deleteGarment(sessionToken: String, id: String) {
+        val url = root.newBuilder().addPathSegments("api/v1/garments").addPathSegment(id).build()
+        exchange(Request.Builder().url(url).header("Authorization", "Bearer $sessionToken").delete().build(), 1024).fill(0)
+    }
     override suspend fun upload(sessionToken: String, photo: CapturedPhoto): Upload {
         require(photo.mimeType in setOf("image/png", "image/jpeg") && photo.bytes.size <= 10 * 1024 * 1024)
         // Call cancellation resumes the caller before the socket writer necessarily finishes.

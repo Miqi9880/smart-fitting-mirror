@@ -17,7 +17,8 @@ object SyntheticScene {
     const val CYCLE_STEPS = 80L
     const val STEP_MS = 100L
 
-    fun sample(scenario: SyntheticScenario, step: Long): Keypoints {
+    fun sample(scenario: SyntheticScenario, step: Long,
+               viewport: SyntheticViewport = SyntheticViewport.PORTRAIT): Keypoints {
         require(step >= 0)
         val phase = step % CYCLE_STEPS
         if (scenario == SyntheticScenario.LOST ||
@@ -33,8 +34,15 @@ object SyntheticScene {
         val points = Keypoints(point(.65f, .25f), point(.35f, .25f),
             point(.7f, .43f), point(.3f, .43f), point(.72f, .6f), point(.28f, .6f),
             point(.6f, .65f), point(.4f, .65f))
-        return if (scenario == SyntheticScenario.PARTIAL ||
+        val current = if (scenario == SyntheticScenario.PARTIAL ||
             (scenario == SyntheticScenario.RECOVERY && phase in 20L..39L)) points.copy(leftShoulder = null)
         else points
+        // Fit the same pixel-space body into each canvas before normalizing. V07:
+        // equal normalized x/y on different aspect ratios would stretch the person.
+        val scaleToFit = minOf((viewport.width - 1) / 479f, (viewport.height - 1) / 639f)
+        return Keypoints.fromMap(current.asMap().mapValues { (_, p) -> p?.let {
+            Landmark(.5f + (it.x - .5f) * 479f * scaleToFit / (viewport.width - 1),
+                .5f + (it.y - .5f) * 639f * scaleToFit / (viewport.height - 1), it.confidence)
+        } })
     }
 }

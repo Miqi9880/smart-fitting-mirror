@@ -17,11 +17,15 @@ class TryOnModel : ViewModel() {
         private set
     private var bridge: Job? = null
     var baseUrl = "http://10.0.2.2:8000"
-    var rgb = false
-    var running = true
+    var rgb = true
+    var running = false
     var mirrored = true
     var synthetic = SyntheticSettings()
     var playing = true
+    var showLandmarks = false
+    var meshMode = false
+    var catalogQuery = ""
+    var catalogAssets = emptyList<com.smartfitting.mirror.contracts.Garment>()
 
     fun connect(url: String) {
         val api = HttpFittingApi(url.trim()) // Validate before replacing an existing controller.

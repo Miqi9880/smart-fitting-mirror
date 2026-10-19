@@ -11,10 +11,21 @@ import kotlinx.serialization.Serializable
     @SerialName("right_hip") val rightHip: Anchor)
 @Serializable data class PreviewImage(val url: String, val width: Int, val height: Int, val anchors: GarmentAnchors)
 @Serializable enum class GarmentCategory { @SerialName("upper_body") UPPER_BODY }
+/** Optional metadata adapted from SmartMirror Clothing; old servers remain compatible. */
+@Serializable data class GarmentDetails(val brand: String = "", val material: String = "",
+    val description: String = "", val sizes: List<String> = emptyList(), val colors: List<String> = emptyList(),
+    val season: String = "", @SerialName("care_instructions") val careInstructions: String = "",
+    @SerialName("price_cents") val priceCents: Int? = null)
+@Serializable data class GarmentWrite(@SerialName("garment_id") val garmentId: String, val name: String,
+    val category: GarmentCategory = GarmentCategory.UPPER_BODY, val tags: List<String> = emptyList(),
+    @SerialName("asset_id") val assetId: String, val details: GarmentDetails = GarmentDetails())
 @Serializable data class Garment(@SerialName("garment_id") val garmentId: String, val name: String,
     val category: GarmentCategory, val tags: List<String>, @SerialName("thumbnail_url") val thumbnailUrl: String,
     @SerialName("preview_image") val previewImage: PreviewImage,
-    @SerialName("generation_reference_url") val generationReferenceUrl: String?)
+    @SerialName("generation_reference_url") val generationReferenceUrl: String?,
+    @OptIn(kotlinx.serialization.ExperimentalSerializationApi::class)
+    @kotlinx.serialization.EncodeDefault(kotlinx.serialization.EncodeDefault.Mode.NEVER)
+    val details: GarmentDetails = GarmentDetails())
 @Serializable data class GarmentList(val items: List<Garment>)
 @Serializable data class Upload(@SerialName("upload_id") val uploadId: String, val width: Int, val height: Int,
     @SerialName("expires_at") val expiresAt: String)

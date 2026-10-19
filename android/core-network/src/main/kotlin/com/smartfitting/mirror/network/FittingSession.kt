@@ -9,7 +9,7 @@ import java.io.IOException
 import java.util.UUID
 
 enum class FittingPhase { IDLE, CONNECTING, READY, UPLOADING, CREATING, WAITING, DOWNLOADING, SUCCEEDED, FAILED, CANCELLED, ENDING, CLOSED, ERROR }
-enum class RetryAction { NONE, CONNECT, CREATE, POLL, RESULT, CANCEL, END }
+enum class RetryAction { NONE, CONNECT, CREATE, POLL, RESULT, CANCEL, END, CATALOG }
 data class FittingState(
     val phase: FittingPhase = FittingPhase.IDLE,
     val garments: List<Garment> = emptyList(), val selectedId: String? = null,
@@ -48,7 +48,8 @@ class FittingSession(private val api: FittingTransport, private val scope: Corou
             mutable.value = state.value.copy(connected = true)
             val garments = api.garments(created.sessionToken).items
             if (!current(ticket)) return@begin
-            val selected = garments.firstOrNull { it.generationReferenceUrl != null } ?: garments.firstOrNull()
+            val selected = garments.firstOrNull { "photo" in it.tags && it.generationReferenceUrl != null }
+                ?: garments.firstOrNull { it.generationReferenceUrl != null } ?: garments.firstOrNull()
             mutable.value = FittingState(FittingPhase.READY, garments, selected?.garmentId,
                 message = "选择上衣；拍摄生成会上传未镜像原图至当前服务", connected = true,
                 canCapture = selected?.generationReferenceUrl != null)
@@ -59,6 +60,47 @@ class FittingSession(private val api: FittingTransport, private val scope: Corou
         val value = state.value
         if (!value.canSelect || value.garments.none { it.garmentId == id }) return
         mutable.value = value.copy(selectedId = id, canCapture = value.garments.first { it.garmentId == id }.generationReferenceUrl != null)
+    }
+
+    /** Catalog thumbnails share origin/auth and lifetime checks with preview downloads. */
+    suspend fun thumbnail(garment: Garment): ByteArray {
+        val active = session ?: throw IllegalStateException("请先连接服务")
+        val bytes = api.download(active.sessionToken, garment.thumbnailUrl)
+        if (disposed || session !== active) { bytes.fill(0); throw CancellationException("会话已结束") }
+        return bytes
+    }
+
+    fun saveGarment(item: GarmentWrite, replace: Boolean) {
+        if (!state.value.canSelect) return
+        begin(RetryAction.CATALOG) { ticket ->
+            mutable.value = state.value.copy(phase = FittingPhase.CONNECTING, canCapture = false, message = "正在保存临时衣柜")
+            api.saveGarment(session!!.sessionToken, item, replace)
+            reloadCatalog(ticket, item.garmentId)
+        }
+    }
+    fun deleteGarment(id: String) {
+        if (!state.value.canSelect) return
+        begin(RetryAction.CATALOG) { ticket ->
+            mutable.value = state.value.copy(phase = FittingPhase.CONNECTING, canCapture = false, message = "正在移除临时衣柜条目")
+            api.deleteGarment(session!!.sessionToken, id)
+            reloadCatalog(ticket, state.value.selectedId)
+        }
+    }
+    fun refreshCatalog() {
+        if (!state.value.canSelect) return
+        begin(RetryAction.CATALOG) { ticket ->
+            mutable.value = state.value.copy(phase=FittingPhase.CONNECTING,canCapture=false,message="正在刷新衣柜")
+            reloadCatalog(ticket,state.value.selectedId)
+        }
+    }
+    private suspend fun reloadCatalog(ticket: Long, preferred: String?) {
+        if (!current(ticket)) return
+        val active = session ?: return
+        val items = api.garments(active.sessionToken).items
+        if (!current(ticket) || session !== active) return
+        val selected = items.firstOrNull { it.garmentId == preferred } ?: items.firstOrNull()
+        mutable.value = state.value.copy(phase = FittingPhase.READY, garments = items, selectedId = selected?.garmentId,
+            canCapture = selected?.generationReferenceUrl != null, retry = RetryAction.NONE, message = "临时衣柜已更新；结束会话后恢复初始目录")
     }
 
     suspend fun preview(garment: Garment): ByteArray {
@@ -113,7 +155,8 @@ class FittingSession(private val api: FittingTransport, private val scope: Corou
                 if (session == null) connect() else begin(RetryAction.CONNECT) { ticket ->
                     val items = retryRequest { api.garments(session!!.sessionToken).items }
                     if (current(ticket)) {
-                        val selected = items.firstOrNull { it.generationReferenceUrl != null } ?: items.firstOrNull()
+                        val selected = items.firstOrNull { "photo" in it.tags && it.generationReferenceUrl != null }
+                            ?: items.firstOrNull { it.generationReferenceUrl != null } ?: items.firstOrNull()
                         mutable.value = state.value.copy(phase = FittingPhase.READY, garments = items, selectedId = selected?.garmentId,
                             retry = RetryAction.NONE, canCapture = selected?.generationReferenceUrl != null, message = "服务已连接")
                     }
@@ -129,6 +172,7 @@ class FittingSession(private val api: FittingTransport, private val scope: Corou
             }
             RetryAction.CANCEL -> cancel()
             RetryAction.END -> end()
+            RetryAction.CATALOG -> begin(RetryAction.CATALOG) { reloadCatalog(it, state.value.selectedId) }
             RetryAction.NONE -> Unit
         }
     }
@@ -235,6 +279,11 @@ class FittingSession(private val api: FittingTransport, private val scope: Corou
         if (error is ApiFailure && error.status == 401) {
             clearImages(); session = null; attempt = null
             mutable.value = FittingState(FittingPhase.CLOSED, message = "服务会话已失效，请重新连接")
+            return
+        }
+        if (retry == RetryAction.CATALOG && error is ApiFailure && !error.retryable) {
+            mutable.value = state.value.copy(phase=FittingPhase.READY,message=error.message,retry=RetryAction.NONE,
+                canCapture=state.value.selected?.generationReferenceUrl != null)
             return
         }
         val canRetry = error !is ApiFailure || error.retryable

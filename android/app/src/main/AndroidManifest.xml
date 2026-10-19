@@ -4,10 +4,17 @@
         android:label="智能穿衣镜 · 联调版" android:allowBackup="false" android:supportsRtl="true"
         android:usesCleartextTraffic="false">
         <activity android:name=".MainActivity" android:exported="false" />
-        <activity android:name=".TryOnActivity" android:exported="true">
+        <activity android:name=".TryOnActivity" android:exported="true" android:launchMode="singleTask">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <!-- Adapted from upstream boot-entry use case. User/admin explicitly
+                 selects the HOME role; no unreliable background auto-launch. -->
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.HOME" />
+                <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
         </activity>
     </application>

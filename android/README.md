@@ -1,6 +1,6 @@
 # Android 模拟试衣联调版
 
-本工程实现公共类型、RGB/合成视觉、HTTP 网络状态、四点上衣叠加及首版试衣页。默认合成输入；连接本地模拟服务后可选衣、拍原图上传、等待模拟结果并对比/清理。尚无真实 AI、深度、分割和遮挡。完整步骤见 [试衣联调](../docs/tryon-integration.md)，[验证证据](../docs/tryon-validation.md)。
+本工程实现公共类型、RGB/合成视觉、衣柜目录/详情/编辑、HTTP 网络状态、四点上衣叠加和可选 OBJ 网格实验。默认等待用户开启 RGB；合成样例需显式选择。连接本地服务后可选衣、拍原图上传、等待模拟结果并对比/清理。真实 AI、分割和目标设备深度源未接入；可选深度遮挡的软件检查不能替代实物验收。[本轮功能与复现](../docs/reference-full-migration.md)，[原试衣联调](../docs/tryon-integration.md)。
 
 RGB 模型输出已适配参考项目的关键点平滑，缺点/丢失仍立即清理，保留当前置信度和独立相机会话；不影响合成回归数据。来源、其余迁移决策与边界见 [参考复用说明](../docs/reference-reuse.md)。
 
@@ -71,7 +71,7 @@ adb shell am start -n com.smartfitting.mirror/.TryOnActivity
 
 | 模块 | 状态与接入点 |
 | --- | --- |
-| core-contracts | 纯 JVM Kotlin；对应 13 份公共 JSON 样例的 DTO、帧引用管理、接口与 FIT_CENTER 变换 |
+| core-contracts | 纯 JVM Kotlin；对应 15 份公共 JSON 样例的 DTO、帧引用管理、接口与 FIT_CENTER 变换 |
 | core-vision | CameraRgbSource、SyntheticVisionSource、BitmapPixels、PoseMapper |
 | core-network | HttpFittingApi、FittingSession；haiyangniu191-design 接手网络与状态维护 |
 | feature-tryon | TorsoWarp、TryOnView；lyf-bee 接手素材/形变/渲染维护 |
@@ -89,7 +89,7 @@ adb shell am start -n com.smartfitting.mirror/.TryOnActivity
 
 ## 验证
 
-主机测试覆盖 13 份 JSON 双向映射、无效坐标/深度/任务状态、帧引用计数、跨线程释放、最新帧替换、旧会话拒绝及姿态归一化。
+主机测试覆盖 15 份 JSON 双向映射、无效坐标/深度/任务状态、帧引用计数、跨线程释放、最新帧替换、旧会话拒绝及姿态归一化。
 
 连接设备后：
 

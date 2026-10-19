@@ -22,6 +22,9 @@ class FittingSessionTest {
         var nextStatus = JobStatus.SUCCEEDED
         var uploads = 0
         var polls = 0
+        var items = listOf(garment)
+        var catalogReadFails = false
+        var saves = 0
         var ends = 0
         val keys = mutableListOf<String>()
         val time = "2026-10-09T10:00:00Z"
@@ -29,7 +32,17 @@ class FittingSessionTest {
             if (status == JobStatus.SUCCEEDED) JobResult("http://localhost/result.png", 2, 2, time) else null,
             if (status == JobStatus.FAILED) ErrorDetail("MOCK_FAILURE", "模拟失败", false, "test") else null)
         override suspend fun createSession() = Session("session_one", "private", time)
-        override suspend fun garments(sessionToken: String) = GarmentList(listOf(garment))
+        override suspend fun garments(sessionToken: String): GarmentList {
+            if (catalogReadFails) throw IOException("Catalog disconnected")
+            return GarmentList(items)
+        }
+        override suspend fun saveGarment(sessionToken: String, item: GarmentWrite, replace: Boolean): Garment {
+            saves++
+            val next = garment.copy(garmentId=item.garmentId,name=item.name,tags=item.tags,details=item.details)
+            items = items.filterNot { it.garmentId == next.garmentId }+next
+            return next
+        }
+        override suspend fun deleteGarment(sessionToken: String, id: String) { items = items.filterNot { it.garmentId == id } }
         override suspend fun upload(sessionToken: String, photo: CapturedPhoto): Upload { photo.bytes; uploads++; return Upload("upload_one", 2,2,time) }
         override suspend fun createJob(sessionToken: String, request: CreateJob, idempotencyKey: String): TryOnJob {
             keys += idempotencyKey
@@ -44,6 +57,28 @@ class FittingSessionTest {
             return byteArrayOf(4,5,6)
         }
         override fun close() { }
+    }
+
+    @Test fun catalogSaveSelectsNewItemDeleteFallsBackAndReadRetryDoesNotReplayWrites() = runTest {
+        val fake = Fake(); val controller = FittingSession(fake,this,nowMs={testScheduler.currentTime})
+        controller.connect(); runCurrent()
+        val input = GarmentWrite("my_tee","My tee",assetId="upper_blue",details=GarmentDetails(material="cotton"))
+        controller.saveGarment(input,false); runCurrent()
+        assertEquals("my_tee",controller.state.value.selectedId)
+        assertEquals("cotton",controller.state.value.selected!!.details.material)
+        controller.deleteGarment("my_tee"); runCurrent()
+        assertEquals("upper_blue",controller.state.value.selectedId)
+        fake.catalogReadFails = true
+        controller.saveGarment(input,false); runCurrent()
+        assertEquals(RetryAction.CATALOG,controller.state.value.retry)
+        assertEquals(2,fake.saves)
+        fake.catalogReadFails = false
+        controller.retry(); runCurrent()
+        assertEquals(FittingPhase.READY,controller.state.value.phase)
+        assertEquals(2,fake.saves)
+        assertTrue(controller.state.value.garments.any { it.garmentId == "my_tee" })
+        controller.end(); runCurrent()
+        assertTrue(controller.state.value.garments.isEmpty())
     }
 
     @Test fun successfulFlowClearsPhotoAndImagesOnEnd() = runTest {

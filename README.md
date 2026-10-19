@@ -2,7 +2,7 @@
 
 面向 Android 大屏与深度摄像机的课程设计项目，由四人合作开发实时试衣与云端高清试衣功能。
 
-当前版本具备人体视觉、可运行模拟后端、Android 网络状态、透明上衣四点叠加及首版试衣页面，可联调选衣、原图上传、模拟生成、前后对比和结束清理。真实 AI、深度和遮挡尚未接入；硬件型号、SDK 与老师最终验收范围仍需核对。
+当前版本具备人体视觉、衣柜搜索/详情/编辑、SQLite 基础目录、透明上衣叠加与 OBJ 网格实验，可联调选衣、原图上传、模拟生成、前后对比和结束清理。真实 AI 和目标设备的深度管线尚未接入；可选深度遮挡已有软件接口/测试，不表示真机已验证。[完整迁移与验证入口](docs/reference-full-migration.md)。
 
 构建从 [Android 开发说明](android/README.md) 开始；完整操作和成员接入点见 [模拟试衣联调](docs/tryon-integration.md)。默认进入首版试衣页，页底保留硬件诊断入口。
 
@@ -34,7 +34,7 @@
 | lyf-bee | 实时试衣效果 | feature-tryon；衣服定位/形变/跟随，后续遮挡 |
 | yyyrrrxxx | Android 交互与集成 | app；选衣/生成/对比页面、生命周期装配、完整演示 |
 
-当前按 [10 月 19–25 日任务](docs/weekly-2026-10-19.md) 推进真实服装照片与真人 RGB 预览；[实拍原图和接入说明](docs/materials/README.md) 已准备，功能由后续 PR 实现和验收。先看 [四人任务](docs/tasks.md)、[新成员环境与 Git 入门](docs/getting-started.md) 和 [第 6–18 周计划](docs/semester-plan.md)。第 18 周开始考核，第 14 周前集成确认核心功能，第 16–17 周冻结与演练；学校当前周次待核对。
+当前按 [10 月 19–25 日任务](docs/weekly-2026-10-19.md) 推进真实服装照片与真人 RGB 预览；[实拍来源素材及处理说明](backend/assets/real/README.md) 已接入，成员继续复核保真度、真人贴合和设备兼容。先看 [四人任务](docs/tasks.md)、[新成员环境与 Git 入门](docs/getting-started.md) 和 [第 6–18 周计划](docs/semester-plan.md)。第 18 周开始考核，第 14 周前集成确认核心功能，第 16–17 周冻结与演练；学校当前周次待核对。
 
 负责人先行补位的实现及交接点见 [已有基础](docs/task-handoff.md)；成员无需重复开发。[当前设备记录](docs/hardware-status.md) 已于 2026-10-14 更正：负责人报告 ZC-3588A、Android 15、8 GB / 128 GB、触摸可用；有线摄像头已找到但接口尚未匹配，安装权限和相机能力仍待核验。后续按 [现场核对表](docs/hardware-intake.md) 收集实际参数与 SDK。
 

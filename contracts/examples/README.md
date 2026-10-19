@@ -6,6 +6,8 @@
 
 网络：session → garments → upload → create-job → job-queued → job-running → job-succeeded。job-failed、job-cancelled 和 error 分别验证失败、取消与请求错误。所有任务 is_mock=true。
 
+HTTP 0.1.1 新增 garment-details.json 与 garment-write.json：包含可选详情及临时衣柜编辑请求。详情样例是实拍来源、辅助去背景服装的元数据，不含人像，图片地址仍为不可下载的 .invalid 占位。本目录现在共 15 份 JSON；原有 13 份仍保留兼容检查。
+
 T03 负责人实现运行中的模拟服务，并提供可访问的演示图片；本目录只给出结构和状态。T05 可先用这些 JSON 和原创/授权素材进行本地 UI 联调。
 
 校验方式见 [协作规则](../../CONTRIBUTING.md)。
