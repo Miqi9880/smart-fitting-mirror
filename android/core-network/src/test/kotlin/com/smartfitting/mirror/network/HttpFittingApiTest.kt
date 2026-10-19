@@ -11,6 +11,20 @@ import java.io.IOException
 import java.util.concurrent.TimeUnit
 
 class HttpFittingApiTest {
+    @Test fun truncatedAssetFailsAndTheNextAssetCanBeDownloaded() = runBlocking {
+        MockWebServer().use { server ->
+            server.start()
+            HttpFittingApi(server.url("/").toString()).use { api ->
+                server.enqueue(MockResponse().setHeader("Content-Type","image/png")
+                    .setBody(okio.Buffer().write(ByteArray(8192) { 17 })).setSocketPolicy(SocketPolicy.DISCONNECT_DURING_RESPONSE_BODY))
+                try { api.download("test",server.url("/asset.png").toString()); fail("Truncated image must fail") }
+                catch (_: IOException) { }
+                server.enqueue(MockResponse().setHeader("Content-Type","image/png").setBody("complete"))
+                assertArrayEquals("complete".toByteArray(),api.download("test",server.url("/asset.png").toString()))
+                assertEquals(2,server.requestCount)
+            }
+        }
+    }
     private fun fixture(name: String) = javaClass.classLoader!!.getResource(name)!!.readText()
     private fun json(name: String, status: Int = 200) = MockResponse().setResponseCode(status)
         .setHeader("Content-Type", "application/json").setBody(fixture(name))

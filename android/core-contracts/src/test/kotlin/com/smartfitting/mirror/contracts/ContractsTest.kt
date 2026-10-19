@@ -7,6 +7,15 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class ContractsTest {
+    @Test fun optionalGarmentDetailsAndWriteRequestRoundTripAlongsideLegacyCatalog() {
+        val garment = roundTrip<Garment>("garment-details.json")
+        assertEquals(1448,garment.previewImage.width)
+        assertTrue("photo" in garment.tags)
+        val write = roundTrip<GarmentWrite>("garment-write.json")
+        assertEquals(garment.garmentId,write.garmentId)
+        assertEquals(garment.details,write.details)
+        assertEquals(GarmentDetails(),ContractJson.decodeFromString<GarmentList>(fixture("garments.json")).items.first().details)
+    }
     private fun fixture(name: String) = checkNotNull(javaClass.classLoader!!.getResource(name)).readText()
     private inline fun <reified T> roundTrip(name: String): T {
         val original = fixture(name)

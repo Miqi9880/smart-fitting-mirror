@@ -39,7 +39,15 @@ class SyntheticPlaybackTest {
                 source.seekTo(0); assertEquals(frames.first().keypoints, frames.last().keypoints)
                 source.configure(source.settings.copy(viewport = SyntheticViewport.LANDSCAPE))
                 assertEquals(640, frames.last().image.width); assertEquals(480, frames.last().image.height)
-                assertEquals(frames.first().keypoints, frames.last().keypoints)
+                // V07: normalized X must change when the viewport changes aspect;
+                // the actual pixel-space body proportions must remain equal.
+                fun ratio(frame: VisionFrame): Float {
+                    val p = frame.keypoints
+                    return (p.leftShoulder!!.x-p.rightShoulder!!.x)*(frame.image.width-1) /
+                        ((p.leftHip!!.y-p.leftShoulder!!.y)*(frame.image.height-1))
+                }
+                assertEquals(ratio(frames.first()),ratio(frames.last()),.00001f)
+                assertEquals(frames.first().trackingState,frames.last().trackingState)
                 assertTrue(frames.zipWithNext().all { (a, b) -> b.frameId > a.frameId && b.timestampMs >= a.timestampMs })
                 assertEquals(frames.size, frames.map { it.image.bufferId }.distinct().size)
                 frames.forEach {

@@ -1,5 +1,7 @@
 # SmartMirror 参考与迁移记录
 
+本页记录 PR #19 首轮评估。随后负责人授权完整可用模块迁移，最新功能覆盖、复现和边界请先看 [完整迁移](reference-full-migration.md)；下表的“后续可用”是首轮时点记录。
+
 2026-10-19。参考源：[J0KER-N/SmartMirror @ 11b667b](https://github.com/J0KER-N/SmartMirror/tree/11b667b6ec8c367395db146a7048fc047d874696)。已阅读相机、MediaPipe 跟踪、GarmentDriver、OpenGL 渲染、试衣入口、目录/详情页、素材说明和 README；核对依据为代码及实际资源，不仅是功能列表。
 
 负责人已明确确认老师允许课程项目复用。已迁移部分保留上游归属、固定提交和适配说明，见 [第三方记录](../third_party/SmartMirror/NOTICE.md)；没有把该课程范围授权写成上游的通用开源许可证。

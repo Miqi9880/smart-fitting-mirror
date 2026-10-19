@@ -1,0 +1,47 @@
+{
+  "garment_id": "real_white_tee",
+  "name": "实拍白色 T 恤（辅助去背景）",
+  "category": "upper_body",
+  "tags": [
+    "photo",
+    "white",
+    "background-edited"
+  ],
+  "thumbnail_url": "https://assets.example.invalid/real_white_tee.png",
+  "preview_image": {
+    "url": "https://assets.example.invalid/real_white_tee.png",
+    "width": 1448,
+    "height": 1086,
+    "anchors": {
+      "left_shoulder": {
+        "x": 0.72,
+        "y": 0.13
+      },
+      "right_shoulder": {
+        "x": 0.25,
+        "y": 0.13
+      },
+      "left_hip": {
+        "x": 0.7,
+        "y": 0.78
+      },
+      "right_hip": {
+        "x": 0.3,
+        "y": 0.78
+      }
+    }
+  },
+  "generation_reference_url": "https://assets.example.invalid/real_white_tee.png",
+  "details": {
+    "brand": "",
+    "material": "",
+    "description": "源自 Elkagye 的公有领域实拍照片；使用 imagegen 辅助去背景，非逐像素无损抠图。用于试衣原型，非商品精确展示。",
+    "sizes": [],
+    "colors": [
+      "白色"
+    ],
+    "season": "",
+    "care_instructions": "",
+    "price_cents": null
+  }
+}

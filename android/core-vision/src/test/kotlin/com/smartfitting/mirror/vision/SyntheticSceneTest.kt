@@ -5,6 +5,28 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class SyntheticSceneTest {
+    @Test fun portraitAndLandscapePreservePixelBodyAspectAndStateAcrossScenarios() {
+        for (scenario in SyntheticScenario.entries) for (step in 0L..79L) {
+            val portrait = SyntheticScene.sample(scenario, step, SyntheticViewport.PORTRAIT)
+            val landscape = SyntheticScene.sample(scenario, step, SyntheticViewport.LANDSCAPE)
+            assertEquals(portrait.state(),landscape.state())
+            fun ratio(p: Keypoints,w: Int,h: Int): Float? {
+                val ls = p.leftShoulder ?: return null; val rs = p.rightShoulder ?: return null
+                val lh = p.leftHip ?: return null
+                return (ls.x-rs.x)*(w-1)/((lh.y-ls.y)*(h-1))
+            }
+            val expected = ratio(portrait,480,640)
+            if (expected != null) assertEquals(expected,ratio(landscape,640,480)!!,.00001f)
+            for ((name, p) in portrait.asMap()) {
+                val l = landscape.asMap()[name]
+                if (p == null) assertNull(l) else {
+                    assertNotNull(l)
+                    assertEquals((p.x-.5f)*479*479/639f,(l!!.x-.5f)*639,.0001f)
+                    assertEquals((p.y-.5f)*479,(l.y-.5f)*479,.0001f)
+                }
+            }
+        }
+    }
     @Test fun recoveryHasFourExplicitPhasesAndRepeats() {
         val expected = listOf(TrackingState.TRACKING, TrackingState.PARTIAL, TrackingState.LOST, TrackingState.TRACKING)
         for (step in 0L..159L) {

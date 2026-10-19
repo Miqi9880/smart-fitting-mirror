@@ -82,7 +82,8 @@ def main():
         vision_semantics(frame)
 
     fixture_schemas = {'garments.json': 'GarmentList', 'session.json': 'Session', 'upload.json': 'Upload',
-                       'create-job.json': 'CreateJob', 'error.json': 'ErrorResponse'}
+                       'create-job.json': 'CreateJob', 'error.json': 'ErrorResponse',
+                       'garment-details.json': 'Garment', 'garment-write.json': 'GarmentWrite'}
     fixture_schemas.update({f'job-{s}.json': 'Job' for s in ['queued', 'running', 'succeeded', 'failed', 'cancelled']})
     seen = set()
     for path in sorted(EX.glob('vision-*.json')):

@@ -36,6 +36,7 @@ class MainActivity : ComponentActivity() {
     private var activeSession: String? = null
     private var visible = false
     private var captureDialog: AlertDialog? = null
+    private var hardwareDialog: AlertDialog? = null
     private var previewBitmap: Bitmap? = null
     private var captureButton: Button? = null
     private var captureBusy = false
@@ -70,6 +71,7 @@ class MainActivity : ComponentActivity() {
         }
         root.addView(label("智能穿衣镜 · 人体视觉", 22f))
         root.addView(label("开发诊断页｜关键点、原始帧与生命周期验证", 12f))
+        root.addView(button("设备信息与 USB 枚举") { hardwareDialog?.dismiss(); hardwareDialog = HardwareInventory.show(this) })
         root.addView(row(button("合成样例") {
             pendingCameraPermission = false; selected = mock; shouldRun = true; begin()
         }, button("RGB 摄像头") { requestRgb() }))
@@ -120,7 +122,7 @@ class MainActivity : ComponentActivity() {
         outState.putBoolean("pending_permission", pendingCameraPermission)
         super.onSaveInstanceState(outState)
     }
-    override fun onStop() { visible = false; end(); super.onStop() }
+    override fun onStop() { visible = false; hardwareDialog?.dismiss(); hardwareDialog = null; end(); super.onStop() }
     override fun onDestroy() { rgb.close(); mock.close(); super.onDestroy() }
 
     private fun requestRgb() {

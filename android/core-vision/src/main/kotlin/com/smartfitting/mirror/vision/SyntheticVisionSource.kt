@@ -88,7 +88,7 @@ class SyntheticVisionSource : VisionSource<BitmapPixels> {
         if (run !== current) return
         val step = current.nextStep++
         current.lastStep = step
-        val points = SyntheticScene.sample(settings.scenario, step)
+        val points = SyntheticScene.sample(settings.scenario, step, settings.viewport)
         val width = settings.viewport.width
         val height = settings.viewport.height
         val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)

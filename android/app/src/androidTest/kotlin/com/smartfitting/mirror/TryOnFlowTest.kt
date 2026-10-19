@@ -38,10 +38,18 @@ class TryOnFlowTest {
             scenario.onActivity { okay = predicate(it) }
             if (!okay) SystemClock.sleep(100)
         }
-        assertTrue("Expected fitting state before timeout", okay)
+        var detail = ""
+        if (!okay) scenario.onActivity {
+            detail = "phase=${it.model().state.value.phase}; message=${it.model().state.value.message}; " +
+                "rgb=${it.model().rgb}; running=${it.model().running}; " +
+                "vision=${it.window.decorView.findViewWithTag<TextView>("fitting.vision").text}; " +
+                "asset=${it.window.decorView.findViewWithTag<TextView>("fitting.asset").text}"
+        }
+        assertTrue("Expected fitting state before timeout: $detail", okay)
     }
     private fun connect(scenario: ActivityScenario<TryOnActivity>, port: Int) {
         scenario.onActivity {
+            it.button("mock").performClick() // Explicit synthetic regression; the app defaults to RGB.
             it.window.decorView.findViewWithTag<EditText>("fitting.address").setText("$host:$port")
             it.button("connect").performClick()
         }

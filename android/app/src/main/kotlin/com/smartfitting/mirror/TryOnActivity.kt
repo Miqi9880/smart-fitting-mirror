@@ -48,6 +48,8 @@ class TryOnActivity : ComponentActivity() {
     private lateinit var cancel: Button
     private lateinit var finishSession: Button
     private lateinit var garments: Spinner
+    private lateinit var catalog: Button
+    private var browser: GarmentBrowser? = null
     private lateinit var before: OwnedImage
     private lateinit var after: OwnedImage
     private var listed = emptyList<Garment>()
@@ -58,7 +60,7 @@ class TryOnActivity : ComponentActivity() {
     private var visible = false
     private var pendingPermission = false
     private var assetJob: Job? = null
-    private var assetKey: Pair<FittingSession, String>? = null
+    private var assetKey: Triple<FittingSession, String, String>? = null
     private val permission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         if (!pendingPermission) return@registerForActivityResult
         pendingPermission = false
@@ -75,8 +77,8 @@ class TryOnActivity : ComponentActivity() {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(18), dp(12), dp(18), dp(12)); setBackgroundColor(Color.rgb(242, 246, 249))
         }
-        root.addView(label("智能穿衣镜 · 试衣联调", 23f))
-        root.addView(label("选择上衣，预览后主动拍摄生成。本版可连接本地模拟服务。", 13f))
+        root.addView(label("智能穿衣镜", 23f))
+        root.addView(label("选择上衣，开启摄像头预览，再拍照生成。", 13f))
         address = EditText(this).apply {
             tag = "fitting.address"; setSingleLine(); setText(model.baseUrl)
             hint = "服务地址，例如 http://10.0.2.2:8000"; contentDescription = "试衣服务地址"
@@ -102,6 +104,13 @@ class TryOnActivity : ComponentActivity() {
             override fun onNothingSelected(parent: AdapterView<*>?) = Unit
         }
         root.addView(garments)
+        catalog = button("浏览衣柜与服装详情", "fitting.catalog") {
+            val controller = model.controller ?: return@button
+            browser?.dismiss()
+            browser = GarmentBrowser(this,controller,lifecycleScope,model.catalogAssets,model.catalogQuery) { model.catalogQuery = it }
+            browser!!.show()
+        }
+        root.addView(catalog)
         root.addView(row(button("合成样例", "fitting.mock") {
             pendingPermission = false; model.rgb = false; model.running = true; beginVision()
         }, button("RGB 摄像头", "fitting.rgb") {
@@ -109,9 +118,10 @@ class TryOnActivity : ComponentActivity() {
                 pendingPermission = false; model.rgb = true; model.running = true; beginVision()
             } else { pendingPermission = true; permission.launch(Manifest.permission.CAMERA) }
         }))
-        visionStatus = label("准备数据源", 12f).apply { tag = "fitting.vision" }
+        visionStatus = label("点击 RGB 摄像头开始真人预览；合成样例用于开发检查。", 12f).apply { tag = "fitting.vision" }
         root.addView(visionStatus)
-        preview = TryOnView(this).apply { tag = "fitting.preview"; mirrored = model.mirrored; contentDescription = "实时上衣预览" }
+        preview = TryOnView(this).apply { tag = "fitting.preview"; mirrored = model.mirrored; showLandmarks = model.showLandmarks; contentDescription = "实时上衣预览" }
+        preview.mode = if (model.meshMode) TryOnView.Mode.OBJ_MESH else TryOnView.Mode.PHOTO
         val height = if (resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE) 240 else 340
         root.addView(preview, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(height)))
         assetStatus = label("连接服务后加载透明服装", 12f).apply { tag = "fitting.asset" }
@@ -120,11 +130,22 @@ class TryOnActivity : ComponentActivity() {
             text = "镜面显示"; isChecked = model.mirrored
             setOnCheckedChangeListener { _, value -> model.mirrored = value; preview.mirrored = value }
         }, button("重载服装", "fitting.reload") { loadAsset(model.state.value.selected, true) }))
+        root.addView(Switch(this).apply {
+            text = "显示关键点"; tag = "fitting.landmarks"; isChecked = model.showLandmarks
+            setOnCheckedChangeListener { _, value -> model.showLandmarks = value; preview.showLandmarks = value }
+        })
+        root.addView(Switch(this).apply {
+            text = "OBJ 网格实验（二维关键点驱动，无真实体深度）"; tag = "fitting.mesh"; isChecked = model.meshMode
+            setOnCheckedChangeListener { _, value ->
+                model.meshMode = value; preview.mode = if (value) TryOnView.Mode.OBJ_MESH else TryOnView.Mode.PHOTO
+            }
+        })
         controls = SyntheticControls(this, mock) { settings ->
             pendingPermission = false; stopVision(); model.synthetic = settings; mock.configure(settings)
             if (model.running) beginVision()
         }
         root.addView(controls)
+        controls.render(!model.rgb,model.running)
         root.addView(label("点击下方按钮会将未镜像的原始照片上传到上面的服务；实时预览不会逐帧上传。", 12f))
         generate = button("拍摄并上传生成", "fitting.generate") { capture() }
         cancel = button("取消生成", "fitting.cancel") { model.controller?.cancel() }
@@ -141,6 +162,10 @@ class TryOnActivity : ComponentActivity() {
         after = OwnedImage(afterView, lifecycleScope) { status.text = it }
         root.addView(row(button("硬件诊断", "fitting.diagnostics") { startActivity(Intent(this, MainActivity::class.java)) },
             button("权限设置", "fitting.permissions") { startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName"))) }))
+        root.addView(button("镜子主屏幕设置", "fitting.home") {
+            try { startActivity(Intent(Settings.ACTION_HOME_SETTINGS)) }
+            catch (_: android.content.ActivityNotFoundException) { visionStatus.text = "设备未开放主屏幕设置，请联系管理员配置开机入口。" }
+        })
         root.addView(label("当前没有深度测距、人体分割或遮挡。合成样例不代表真实人体识别效果。", 11f))
         val scroll = ScrollView(this).apply {
             isFillViewport = true; addView(root); setBackgroundColor(Color.rgb(242, 246, 249))
@@ -161,6 +186,7 @@ class TryOnActivity : ComponentActivity() {
         if (model.running) beginVision()
     }
     override fun onStop() {
+        browser?.dismiss(); browser = null
         visible = false; model.playing = mock.playing; model.synthetic = mock.settings
         model.controller?.setVisible(false); stopVision(); before.clear(); after.clear(); super.onStop()
     }
@@ -229,6 +255,10 @@ class TryOnActivity : ComponentActivity() {
         val position = listed.indexOfFirst { it.garmentId == value.selectedId }
         if (position >= 0 && garments.selectedItemPosition != position) garments.setSelection(position)
         garments.isEnabled = value.canSelect && !captureBusy; selecting = false
+        catalog.isEnabled = value.canSelect && !captureBusy
+        if (value.connected && value.garments.isNotEmpty())
+            model.catalogAssets = (model.catalogAssets + value.garments).distinctBy { it.previewImage.url }
+        browser?.render(value)
         mockLabel.text = when (value.job?.isMock) {
             true -> "MOCK · 模拟结果，非真实 AI 换装"
             false -> "真实生成任务"
@@ -237,13 +267,14 @@ class TryOnActivity : ComponentActivity() {
         before.update(value.original); after.update(value.result)
         if (value.phase in setOf(FittingPhase.ENDING, FittingPhase.CLOSED)) {
             model.running = false; stopVision(); before.clear(); after.clear()
+            model.catalogAssets = emptyList(); model.catalogQuery = ""; browser?.dismiss(); browser = null
             assetStatus.text = "会话结束，服装与本地图像已清理"
         } else if (model.running) loadAsset(value.selected)
     }
     private fun loadAsset(garment: Garment?, force: Boolean = false) {
         val controller = model.controller ?: return
         if (!visible || !model.running) return
-        val key = garment?.let { controller to it.garmentId }
+        val key = garment?.let { Triple(controller, it.garmentId, it.previewImage.url) }
         if (!force && key == assetKey) return
         assetJob?.cancel(); assetKey = key; preview.setAsset(null, null)
         if (garment == null) return

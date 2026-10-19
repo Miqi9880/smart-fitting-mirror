@@ -1,4 +1,4 @@
-# 后端与服装接口 V0.1
+# 后端与服装接口 V0.1.1
 
 [OpenAPI 合同](../../contracts/openapi.json) 定义字段和响应，本文定义行为。采用 [OpenAPI 3.0.3](https://spec.openapis.org/oas/v3.0.3)，合同不表示已有可运行服务。
 
@@ -16,6 +16,11 @@ POST /sessions 创建游客会话，返回本项目的 session_token；其余业
 | --- | --- | --- |
 | POST /sessions | 创建游客会话 | 201 Session |
 | GET /garments | 上衣目录，首版不分页 | 200 GarmentList |
+| GET /garments?q=...&tag=... | 名称/品牌/材质/标签搜索及标签筛选 | 200 GarmentList |
+| GET /garments/{garment_id} | 当前会话服装详情 | 200 Garment |
+| POST /garments | 在当前临时衣柜新增，使用 GarmentWrite | 201 Garment |
+| PUT /garments/{garment_id} | 编辑当前临时衣柜条目，路径/正文 ID 一致 | 200 Garment |
+| DELETE /garments/{garment_id} | 从当前临时衣柜移除 | 204，无正文 |
 | POST /uploads | multipart 上传原始照片，字段 file | 201 Upload |
 | POST /tryon-jobs | upload_id、garment_id 创建任务 | 202 Job；幂等重放 200 Job |
 | GET /tryon-jobs/{job_id} | 轮询状态 | 200 Job |
@@ -27,6 +32,12 @@ POST /sessions 创建游客会话，返回本项目的 session_token；其余业
 ## 素材与上传
 
 Garment 包含编号、名称、upper_body 类别、标签、缩略图、preview_image 和 generation_reference_url。preview_image 指定图片 URL、宽高及双肩双髋四个归一化锚点，供初版躯干对齐。
+
+0.1.1 新增可选 `details`：brand、material、description、sizes、colors、season、care_instructions、price_cents（整数分或 null）。旧目录不带此字段仍可读取；空默认详情不改变旧 JSON 的双向映射。`GarmentWrite` 指定 garment_id、name、现有素材库 asset_id，可附 category/tags/details；不接受任意远程图片 URL。重复 ID 返回 409 GARMENT_EXISTS，不存在返回 404，非法素材返回 422 INVALID_ASSET；每会话最多 50 件。
+
+搜索以空格分词并要求各词匹配，忽略大小写；中文多字词允许字符宽松匹配。tag 是精确标签。空查询返回全部。目录更改按会话隔离，结束/过期时清理；已创建任务固定其素材快照，后续编辑/删除目录不改变在途任务。
+
+CLI 运行后端默认使用 SQLite 保存内置基础目录，管理方式见 [完整迁移说明](../reference-full-migration.md)。本机持久化基础目录与游客 API 临时编辑分开；新会话读取基础目录快照。它不保存人像/令牌，也不新增公开的无授权管理接口。
 
 预览素材为正面、未镜像、透明背景 PNG。锚点左右指假设穿着者的解剖学左右，髋锚点是身体对齐位置，不强制位于下摆。尺寸和锚点必须对照真实素材校验。云端参考图可与预览素材不同。
 

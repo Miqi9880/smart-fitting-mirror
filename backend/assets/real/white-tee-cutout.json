@@ -1,0 +1,36 @@
+{
+  "asset_id": "real_white_tee",
+  "file": "white-tee-cutout.png",
+  "width": 1448,
+  "height": 1086,
+  "source": "https://commons.wikimedia.org/wiki/File:T-shirt2.jpg",
+  "source_author": "Elkagye",
+  "source_license": "PD-self",
+  "original_sha256": "77f7caa3b19fad9231f777a9d0623a1a4d3fe609a7456c63309f60e65e95c25f",
+  "cutout_sha256": "48edd37fb737eaf1c7db7640f664932198dd1b48fee06b31ca7baf0db4690ae1",
+  "processing": "Built-in image_gen background extraction plus a second cleanup edit; not pixel-identical manual segmentation. Photographic source retained separately. No Python image editing.",
+  "anchors": {
+    "left_shoulder": {
+      "x": 0.72,
+      "y": 0.13
+    },
+    "right_shoulder": {
+      "x": 0.25,
+      "y": 0.13
+    },
+    "left_hip": {
+      "x": 0.7,
+      "y": 0.78
+    },
+    "right_hip": {
+      "x": 0.3,
+      "y": 0.78
+    }
+  },
+  "anchor_rationale": "Shoulders follow upper torso/sleeve seam region; hips are above the hem. Anatomical left is image right. Initial manual alignment for prototype, requires live-body fit check.",
+  "limitations": [
+    "AI-assisted extraction can alter cloth detail and boundaries; not an exact product representation",
+    "Initial anchors require live-person validation",
+    "No real AI try-on generation is provided by this asset"
+  ]
+}
