@@ -1,0 +1,112 @@
+{
+  "date": "2026-10-19",
+  "baseline_commit": "8ef81d8d08d5ccf6adaf89efc516009d2cdc37f2",
+  "source_commit": "11b667b6ec8c367395db146a7048fc047d874696",
+  "course_reuse_permission": "Confirmed by project lead: teacher explicitly allows course project reuse",
+  "jvm": [
+    {
+      "suite": "com.smartfitting.mirror.vision.PoseMapperTest",
+      "tests": 4,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "cases": [
+        "lowConfidenceAloneDoesNotClaimPersonIsOutOfFrame",
+        "missingTorsoIsPartialAndNoPersonIsLost",
+        "rejectsOffscreenLowConfidenceAndNanRatherThanClamping",
+        "normalizesUnmirroredCoordinatesAndPreservesAnatomicalNames"
+      ]
+    },
+    {
+      "suite": "com.smartfitting.mirror.vision.PoseStabilizerTest",
+      "tests": 8,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "cases": [
+        "lostFrameHasNoStalePointsAndReappearanceStartsAtTheNewPerson",
+        "stalledOrNonIncreasingTimestampsStartFresh",
+        "missingJointIsNullImmediatelyAndReturnsWithoutAnOldPosition",
+        "aNewImageGeometryCannotBlendOldCoordinateAxes",
+        "lowConfidenceCurrentJointCannotBeRevivedFromHistory",
+        "currentMeasurementIsBlendedAndItsConfidenceIsNotInflated",
+        "resetAndIndependentCameraRunsHaveNoSharedHistory",
+        "alternatingMeasurementNoiseHasLessFrameToFrameMovement"
+      ]
+    },
+    {
+      "suite": "com.smartfitting.mirror.vision.SyntheticSceneTest",
+      "tests": 5,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "cases": [
+        "allScenariosAreRepeatableAndHaveValidCoordinates",
+        "fixedScenariosDoNotMoveWithTime",
+        "translationKeepsDimensionsAndAnatomicalSides",
+        "scaleKeepsCenterAndChangesTorsoSize",
+        "recoveryHasFourExplicitPhasesAndRepeats"
+      ]
+    }
+  ],
+  "android_launch_tests": [
+    {
+      "suite": "com.smartfitting.mirror.LaunchTest",
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "cases": [
+        "launchPauseResumeAndRecreatePreservesStopAndMirrorChoices",
+        "rgbCameraRunsInferenceAndRecoversAfterBackground"
+      ]
+    }
+  ],
+  "lint_issues": [
+    {
+      "id": "GradleDependency",
+      "severity": "Warning"
+    },
+    {
+      "id": "GradleDependency",
+      "severity": "Warning"
+    },
+    {
+      "id": "GradleDependency",
+      "severity": "Warning"
+    },
+    {
+      "id": "GradleDependency",
+      "severity": "Warning"
+    },
+    {
+      "id": "GradleDependency",
+      "severity": "Warning"
+    },
+    {
+      "id": "GradleDependency",
+      "severity": "Warning"
+    },
+    {
+      "id": "UseKtx",
+      "severity": "Warning"
+    }
+  ],
+  "apk": {
+    "sha256": "63a45c9ac73db2e433b170027331e877c065db817e466f2c16e958a4470c782c",
+    "bytes": 90088063
+  },
+  "manual": {
+    "input": "Pexels 6311639 static real-person photograph injected as emulator front camera",
+    "source_sha256": "3b98aed2f9237d2b26d32c3b48fca619ced2cfcc0a366f9bc220df6bd15f8d69",
+    "observed": "RGB camera preview displays source pixels and TRACKING",
+    "environment": "API 35 / Android 15 / x86_64 / 1080x2400",
+    "not_proven": [
+      "live-person motion",
+      "smoothing benefit/latency on real motion",
+      "ZC-3588A compatibility",
+      "real garment alignment",
+      "depth or occlusion"
+    ]
+  }
+}

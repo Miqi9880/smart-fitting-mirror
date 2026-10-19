@@ -47,6 +47,7 @@
 - [OpenAPI 合同](contracts/openapi.json) · [视觉 Schema](contracts/vision.schema.json) · [合成样例](contracts/examples)
 - [Git、PR 与接口变更规则](CONTRIBUTING.md)
 - [首阶段验证与验收清单](docs/milestones.md)
+- [老师参考仓库的迁移清单与来源](docs/reference-reuse.md)
 
 先读自己的任务，再读对应接口。合成样例不含照片或真实 AI 结果；`.invalid` 地址为不可访问的占位地址。
 
