@@ -13,6 +13,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.smartfitting.mirror.contracts.*
 import com.smartfitting.mirror.tryon.TryOnView
+import com.smartfitting.mirror.tryon.OutfitFit
 import com.smartfitting.mirror.vision.*
 import org.junit.Assert.*
 import org.junit.Assume.assumeTrue
@@ -22,6 +23,59 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class OutfitPreviewTest {
     private val instrumentation = InstrumentationRegistry.getInstrumentation()
+    @Test fun trousersCoverMoreOnBothSidesOfEachLegWithoutMovingTheirCentresOrLength() {
+        instrumentation.runOnMainSync {
+            val view=TryOnView(instrumentation.targetContext).apply { layout(0,0,480,640); mirrored=false }
+            val controls=mapOf("right_hip" to Anchor(.3f,.12f),"left_hip" to Anchor(.7f,.12f),
+                "right_knee" to Anchor(.3f,.55f),"left_knee" to Anchor(.7f,.55f),
+                "right_ankle" to Anchor(.3f,.94f),"left_ankle" to Anchor(.7f,.94f))
+            val pants=Garment("coverage","coverage",GarmentCategory.LOWER_BODY,emptyList(),"http://localhost/pants.png",
+                PreviewImage("http://localhost/pants.png",100,140,null,controls),null)
+            val pixels=Bitmap.createBitmap(100,140,Bitmap.Config.ARGB_8888)
+            Canvas(pixels).apply {
+                val paint=android.graphics.Paint().apply { color=Color.RED }
+                drawRect(20f,0f,40f,140f,paint); drawRect(60f,0f,80f,140f,paint)
+            }
+            val original=Bitmap.createBitmap(480,640,Bitmap.Config.ARGB_8888).apply { eraseColor(Color.BLACK) }
+            val output=Bitmap.createBitmap(480,640,Bitmap.Config.ARGB_8888)
+            val points=Keypoints(rightHip=Landmark(.35f,.4f,.95f),leftHip=Landmark(.65f,.4f,.95f),
+                rightKnee=Landmark(.35f,.65f,.95f),leftKnee=Landmark(.65f,.65f,.95f),
+                rightAnkle=Landmark(.35f,.92f,.95f),leftAnkle=Landmark(.65f,.92f,.95f))
+            val lease=FrameLease(VisionFrame(sessionId="coverage",frameId=1,timestampMs=1,
+                image=ImageMetadata("coverage",480,640),trackingState=points.state(),keypoints=points),BitmapPixels(original)) {}
+            view.setOutfit(listOf(pants));view.setLayerAsset(pants,pixels);view.submit(lease,pants);lease.release()
+            fun runs(y: Int): List<IntRange> {
+                val result=mutableListOf<IntRange>(); var start: Int?=null
+                for (x in 0..479) {
+                    // Adjacent clipped triangles have antialiased boundaries;
+                    // distinguish actual fabric coverage from exact solid red.
+                    val color=output.getPixel(x,y)
+                    val red=Color.red(color)>=180 && Color.green(color)==0 && Color.blue(color)==0
+                    if (red && start==null) start=x
+                    if (!red && start!=null) { result+=start until x;start=null }
+                }
+                if (start!=null) result+=start..479
+                return result
+            }
+            view.outfitFits=mapOf(GarmentCategory.LOWER_BODY to OutfitFit())
+            view.draw(Canvas(output)); val before=listOf(350,500).map { runs(it) }
+            val oldY=(0..639).filter { runs(it).isNotEmpty() }
+            view.outfitFits=mapOf(GarmentCategory.LOWER_BODY to OutfitFit(width=1.12f));view.draw(Canvas(output))
+            for ((i,y) in listOf(350,500).withIndex()) {
+                val after=runs(y); assertEquals("raw y=$y runs=${before[i]}",2,before[i].size);assertEquals("eased y=$y runs=$after",2,after.size)
+                for ((a,b) in before[i].zip(after)) {
+                    assertTrue("Both edges must expand",b.first<a.first && b.last>a.last)
+                    assertEquals("Do not spread the leg axes",(a.first+a.last)/2f,(b.first+b.last)/2f,1f)
+                }
+            }
+            assertEquals(oldY,(0..639).filter { runs(it).isNotEmpty() })
+            view.outfitFits=emptyMap();view.draw(Canvas(output))
+            val extendedY=(0..639).filter { runs(it).isNotEmpty() }
+            assertTrue("The final default also extends the trouser legs",extendedY.last()>oldY.last()+20)
+            assertEquals(Color.BLACK,original.getPixel(168,500))
+            view.clear();assertTrue(pixels.isRecycled);original.recycle();output.recycle()
+        }
+    }
     @Test fun independentLayersHideMissingRegionsMirrorTogetherAndRecycleOnRemoval() {
         instrumentation.runOnMainSync {
             val context=instrumentation.targetContext
