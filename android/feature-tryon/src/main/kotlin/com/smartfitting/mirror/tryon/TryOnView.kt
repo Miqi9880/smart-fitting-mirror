@@ -37,8 +37,11 @@ class TryOnView(context: Context) : View(context), TryOnRenderer<BitmapPixels> {
     var mode: Mode = Mode.PHOTO
         set(value) { field = value; invalidate() }
     private val landmarkPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.YELLOW; strokeWidth = 2f }
+    private val landmarkOutline = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.BLACK }
     var showLandmarks: Boolean = false
         set(value) { field = value; invalidate() }
+    var outfitFits: Map<GarmentCategory, OutfitFit> = emptyMap()
+        set(value) { field = value.toMap(); invalidate() }
     var mirrored: Boolean = true
         set(value) { field = value; invalidate() }
 
@@ -109,12 +112,12 @@ class TryOnView(context: Context) : View(context), TryOnRenderer<BitmapPixels> {
                 } else if (mode == Mode.OBJ_MESH) drawMesh(canvas, metadata)
                 else if (selected != null && bitmap != null && assetId == selected.garmentId) drawPhoto(canvas,metadata,selected,bitmap)
                 if (mask != null) { canvas.drawBitmap(mask,0f,0f,maskPaint); canvas.restore() }
-                if (showLandmarks) drawLandmarks(canvas, metadata)
+                if (showLandmarks) drawLandmarks(canvas, metadata, fit.scale)
             } finally { canvas.restore() }
         } finally { frame.release() }
     }
     private fun drawPhoto(canvas: Canvas, frame: VisionFrame, item: Garment, bitmap: Bitmap) {
-        for (patch in OutfitPlacement.patches(frame,item)) {
+        for (patch in OutfitPlacement.patches(frame,item,outfitFits[item.category] ?: OutfitFit.defaultFor(item.category))) {
             val count = patch.source.size/2
             if (!warp.setPolyToPoly(patch.source,0,patch.destination,0,count)) continue
             canvas.save()
@@ -157,7 +160,11 @@ class TryOnView(context: Context) : View(context), TryOnRenderer<BitmapPixels> {
             canvas.drawPath(meshPath,meshPaint)
         }
     }
-    private fun drawLandmarks(canvas: Canvas, frame: VisionFrame) {
+    private fun drawLandmarks(canvas: Canvas, frame: VisionFrame, sceneScale: Float) {
+        // Keep points legible when a high-resolution camera frame is fitted down.
+        val unit = resources.displayMetrics.density / sceneScale
+        landmarkPaint.strokeWidth = 1.5f * unit
+        landmarkOutline.strokeWidth = 3f * unit
         val points = frame.keypoints.asMap().mapValues { (_, p) -> p?.takeIf { it.confidence >= .5f } }
         fun x(p: Landmark) = .5f + p.x * (frame.image.width - 1)
         fun y(p: Landmark) = .5f + p.y * (frame.image.height - 1)
@@ -172,9 +179,13 @@ class TryOnView(context: Context) : View(context), TryOnRenderer<BitmapPixels> {
         for ((a, b) in edges) {
             val start = points[a] ?: continue
             val end = points[b] ?: continue
+            canvas.drawLine(x(start), y(start), x(end), y(end), landmarkOutline)
             canvas.drawLine(x(start), y(start), x(end), y(end), landmarkPaint)
         }
-        points.values.filterNotNull().forEach { canvas.drawCircle(x(it), y(it), 5f, landmarkPaint) }
+        points.values.filterNotNull().forEach {
+            canvas.drawCircle(x(it), y(it), 4.5f * unit, landmarkOutline)
+            canvas.drawCircle(x(it), y(it), 3f * unit, landmarkPaint)
+        }
     }
     override fun clear() {
         latest.clear()

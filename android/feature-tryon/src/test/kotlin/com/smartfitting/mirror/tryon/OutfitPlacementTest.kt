@@ -34,16 +34,44 @@ class OutfitPlacementTest {
     @Test fun hatUsesHeadIndependentlyOfTheTorsoAndNeverUsesStalePoints() {
         val ears=Keypoints(leftEar=Landmark(.6f,.2f,.95f),rightEar=Landmark(.4f,.2f,.95f))
         assertEquals(TrackingState.PARTIAL,ears.state())
-        val patch=OutfitPlacement.patches(frame(ears),hat).single()
+        val patch=OutfitPlacement.patches(frame(ears),hat,OutfitFit()).single()
         assertEquals(4,patch.source.size)
         assertArrayEquals(floatArrayOf(.5f+.4f*479,.5f+.2f*639,.5f+.6f*479,.5f+.2f*639),patch.destination,.001f)
         assertTrue(OutfitPlacement.patches(frame(ears.copy(leftEar=null)),hat).isEmpty())
         assertTrue(OutfitPlacement.patches(frame(Keypoints()),hat).isEmpty())
+    }
+    @Test fun defaultHatIsWiderThanTheEarSpanAndLiftedAboveItIncludingHeadRoll() {
+        val ears=Keypoints(leftEar=Landmark(.6f,.23f,.95f),rightEar=Landmark(.4f,.17f,.95f))
+        val baseline=OutfitPlacement.patches(frame(ears),hat,OutfitFit()).single().destination
+        val fitted=OutfitPlacement.patches(frame(ears),hat).single().destination
+        val dx=baseline[2]-baseline[0]; val dy=baseline[3]-baseline[1]
+        val span=kotlin.math.hypot(dx,dy)
+        assertEquals(span*1.35f,kotlin.math.hypot(fitted[2]-fitted[0],fitted[3]-fitted[1]),.001f)
+        val cx=(baseline[0]+baseline[2])/2; val cy=(baseline[1]+baseline[3])/2
+        val fx=(fitted[0]+fitted[2])/2; val fy=(fitted[1]+fitted[3])/2
+        assertEquals(-.38f*span,(-(fx-cx)*dy+(fy-cy)*dx)/span,.001f)
+        assertTrue(fy<cy)
+        val unreliable=ears.copy(leftEar=ears.leftEar!!.copy(confidence=.5f))
+        assertTrue(OutfitPlacement.patches(frame(unreliable),hat).isEmpty())
     }
     @Test fun accessoriesDoNotAcceptTorsoAnchorsOrDegenerateMetadata() {
         assertTrue(OutfitPlacement.patches(frame(),hat.copy(previewImage=hat.previewImage.copy(attachmentAnchors=emptyMap()))).isEmpty())
         val bad=pants.previewImage.attachmentAnchors.toMutableMap().apply { this["left_hip"]=getValue("right_hip") }
         assertTrue(OutfitPlacement.patches(frame(),pants.copy(previewImage=pants.previewImage.copy(attachmentAnchors=bad))).isEmpty())
         assertNull(TorsoWarp.points(frame(),hat))
+    }
+    @Test fun upperBodyAddsHorizontalEaseWithoutLengtheningOrLoweringTheShirt() {
+        val shirt=item(GarmentCategory.UPPER_BODY,emptyMap()).let {
+            it.copy(previewImage=it.previewImage.copy(anchors=GarmentAnchors(
+                Anchor(.75f,.15f),Anchor(.25f,.15f),Anchor(.7f,.85f),Anchor(.3f,.85f))))
+        }
+        val raw=OutfitPlacement.patches(frame(),shirt,OutfitFit()).single().destination
+        val fitted=OutfitPlacement.patches(frame(),shirt).single().destination
+        val centre=(raw[0]+raw[2])/2
+        for (i in raw.indices step 2) {
+            assertEquals(centre+(raw[i]-centre)*1.25f,fitted[i],.001f)
+            assertEquals(raw[i+1],fitted[i+1],.001f)
+        }
+        assertTrue(OutfitPlacement.patches(frame(Keypoints()),shirt).isEmpty())
     }
 }

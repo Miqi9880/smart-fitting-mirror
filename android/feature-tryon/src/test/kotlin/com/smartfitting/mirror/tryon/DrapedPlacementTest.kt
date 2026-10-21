@@ -78,6 +78,23 @@ class DrapedPlacementTest {
         // Symmetric leg movement does not alter any continuous skirt panel.
         for ((a,b) in before.zip(after)) assertArrayEquals(a.destination,b.destination,.002f)
     }
+    @Test fun lowerGarmentsHaveEaseAndUserTuningDoesNotMutateRawPlacement() {
+        for (category in listOf(GarmentCategory.DRESS,GarmentCategory.SKIRT,GarmentCategory.SHORTS)) {
+            val garment=item(category,if (category==GarmentCategory.SHORTS) .8f else 1.7f)
+            val raw=OutfitPlacement.patches(frame(),garment,OutfitFit())
+            val copy=raw.map { it.destination.copyOf() }
+            val default=OutfitPlacement.patches(frame(),garment)
+            fun span(p: List<OutfitPlacement.Patch>): Float {
+                val xs=p.flatMap { it.destination.toList().filterIndexed { i,_ -> i%2==0 } }
+                return xs.max()-xs.min()
+            }
+            assertTrue("$category should cover more than skeletal joint width",span(default)>span(raw)*1.2f)
+            val wider=OutfitPlacement.patches(frame(),garment,OutfitFit(1.8f,1.1f,-.2f))
+            assertTrue(span(wider)>span(default))
+            for ((p,original) in raw.zip(copy)) assertArrayEquals(original,p.destination,0f)
+            assertTrue(OutfitPlacement.patches(frame(Keypoints()),garment,OutfitFit(2f,1.2f)).isEmpty())
+        }
+    }
     @Test fun invalidHemsAndDegeneratePosesNeverRender() {
         val garment=item(GarmentCategory.DRESS)
         val bad=garment.previewImage.attachmentAnchors.toMutableMap().apply { this["left_hem"]=getValue("right_hem") }
