@@ -8,6 +8,8 @@
 
 生成主线继续由 haiyangniu191-design 接入外部试衣 API。Miqi9880 的预训练模型微调是独立探索，模型就绪后再接公共后端，其他成员不等待；当前生成仍为 MOCK，双引擎尚未实现。见 [模型路线](docs/model-strategy.md)。
 
+素材准备已扩展为 [51 张官网来源图、17 款各 3 色](docs/wardrobe-library.md)，上衣／长裤各 5 款，另含裙装、短裤和三款帽子。原图在本地包，尚未作为新增商品接入 App；来源图、透明预览、真人贴合与多件叠穿分别交付。
+
 构建从 [Android 开发说明](android/README.md) 开始；完整操作和成员接入点见 [模拟试衣联调](docs/tryon-integration.md)。默认进入首版试衣页，页底保留硬件诊断入口。
 
 模拟服务从 [后端启动说明](backend/README.md) 开始；[35 项后端验证记录](docs/backend-validation.md) 记录后端证据，Android 闭环另见 [本轮验证](docs/tryon-validation.md)。
