@@ -14,13 +14,14 @@ object OutfitPlacement {
         operator fun times(t: Float) = P(x*t,y*t)
         fun length() = hypot(x,y)
     }
-    fun patches(frame: VisionFrame, item: Garment): List<Patch> = when (item.category) {
+    fun patches(frame: VisionFrame, item: Garment,
+                fit: OutfitFit = OutfitFit.defaultFor(item.category)): List<Patch> = FitPlacement.apply(when (item.category) {
         GarmentCategory.UPPER_BODY -> TorsoWarp.points(frame,item)?.let { listOf(Patch(it.source,it.destination)) } ?: emptyList()
         GarmentCategory.HEADWEAR -> head(frame,item)
         GarmentCategory.LOWER_BODY -> legs(frame,item)
         GarmentCategory.DRESS, GarmentCategory.SKIRT -> DrapedPlacement.patches(frame,item)
         GarmentCategory.SHORTS -> DrapedPlacement.shorts(frame,item)
-    }
+    }, frame, item, fit)
     private fun source(item: Garment, key: String): P? = item.previewImage.attachmentAnchors[key]?.let {
         P(.5f+it.x*(item.previewImage.width-1),.5f+it.y*(item.previewImage.height-1))
     }

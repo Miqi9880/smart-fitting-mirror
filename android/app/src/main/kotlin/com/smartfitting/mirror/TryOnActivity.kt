@@ -26,6 +26,7 @@ import com.smartfitting.mirror.contracts.*
 import com.smartfitting.mirror.network.*
 import com.smartfitting.mirror.tryon.TryOnView
 import com.smartfitting.mirror.tryon.OutfitSelection
+import com.smartfitting.mirror.tryon.OutfitFit
 import com.smartfitting.mirror.vision.*
 import kotlinx.coroutines.*
 import java.util.UUID
@@ -37,6 +38,7 @@ class TryOnActivity : ComponentActivity() {
     private lateinit var rgb: CameraRgbSource
     private val source: VisionSource<BitmapPixels> get() = if (model.rgb) rgb else mock
     private lateinit var preview: TryOnView
+    private lateinit var fitControls: FitControls
     private lateinit var controls: SyntheticControls
     private lateinit var status: TextView
     private lateinit var visionStatus: TextView
@@ -83,7 +85,7 @@ class TryOnActivity : ComponentActivity() {
             setPadding(dp(18), dp(12), dp(18), dp(12)); setBackgroundColor(Color.rgb(242, 246, 249))
         }
         root.addView(label("智能穿衣镜", 23f))
-        root.addView(label("选择上衣、裤子或帽子，开启摄像头组合试穿。", 13f))
+        root.addView(label("选择衣服、裙裤或帽子，开启摄像头组合试穿。", 13f))
         address = EditText(this).apply {
             tag = "fitting.address"; setSingleLine(); setText(model.baseUrl)
             hint = "服务地址，例如 http://10.0.2.2:8000"; contentDescription = "试衣服务地址"
@@ -101,7 +103,7 @@ class TryOnActivity : ComponentActivity() {
         root.addView(row(connect, finishSession))
         status = label("连接服务以加载衣服", 14f).apply { tag = "fitting.status" }
         root.addView(status)
-        garments = Spinner(this).apply { tag = "fitting.garments"; contentDescription = "选择试穿上衣" }
+        garments = Spinner(this).apply { tag = "fitting.garments"; contentDescription = "选择试穿单品" }
         garments.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
             override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
                 if (!selecting) listed.getOrNull(position)?.let { model.controller?.select(it.garmentId) }
@@ -132,20 +134,29 @@ class TryOnActivity : ComponentActivity() {
         }))
         visionStatus = label("点击 RGB 摄像头开始真人预览；合成样例用于开发检查。", 12f).apply { tag = "fitting.vision" }
         root.addView(visionStatus)
-        preview = TryOnView(this).apply { tag = "fitting.preview"; mirrored = model.mirrored; showLandmarks = model.showLandmarks; contentDescription = "实时上衣预览" }
+        preview = TryOnView(this).apply {
+            tag = "fitting.preview"; mirrored = model.mirrored; showLandmarks = model.showLandmarks
+            outfitFits = model.outfitFits; contentDescription = "实时组合试衣预览"
+        }
         preview.mode = if (model.meshMode) TryOnView.Mode.OBJ_MESH else TryOnView.Mode.PHOTO
+        // Keep both switches before the tall preview so landmarks are discoverable.
+        root.addView(row(Switch(this).apply {
+            text = "镜面显示"; isChecked = model.mirrored
+            setOnCheckedChangeListener { _, value -> model.mirrored = value; preview.mirrored = value }
+        }, Switch(this).apply {
+            text = "显示关键点"; tag = "fitting.landmarks"; isChecked = model.showLandmarks
+            setOnCheckedChangeListener { _, value -> model.showLandmarks = value; preview.showLandmarks = value }
+        }))
+        fitControls = FitControls(this) { category, fit ->
+            model.outfitFits = model.outfitFits + (category to fit)
+            preview.outfitFits = model.outfitFits
+        }
+        root.addView(fitControls)
         val height = if (resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE) 240 else 340
         root.addView(preview, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(height)))
         assetStatus = label("连接服务后加载透明服装", 12f).apply { tag = "fitting.asset" }
         root.addView(assetStatus)
-        root.addView(row(Switch(this).apply {
-            text = "镜面显示"; isChecked = model.mirrored
-            setOnCheckedChangeListener { _, value -> model.mirrored = value; preview.mirrored = value }
-        }, button("重载服装", "fitting.reload") { loadOutfit(true) }))
-        root.addView(Switch(this).apply {
-            text = "显示关键点"; tag = "fitting.landmarks"; isChecked = model.showLandmarks
-            setOnCheckedChangeListener { _, value -> model.showLandmarks = value; preview.showLandmarks = value }
-        })
+        root.addView(button("重载服装", "fitting.reload") { loadOutfit(true) })
         root.addView(Switch(this).apply {
             text = "OBJ 网格实验（二维关键点驱动，无真实体深度）"; tag = "fitting.mesh"; isChecked = model.meshMode
             setOnCheckedChangeListener { _, value ->
@@ -281,6 +292,7 @@ class TryOnActivity : ComponentActivity() {
             model.running = false; stopVision(); before.clear(); after.clear()
             model.catalogAssets = emptyList(); model.catalogQuery = ""; model.outfit = emptyMap(); model.lastOutfitSelection = null
             outfitStatus.text = "当前搭配已清空"; browser?.dismiss(); browser = null
+            fitControls.render(null,OutfitFit())
             assetStatus.text = "会话结束，服装与本地图像已清理"
         } else {
             val current = value.garments.associateBy { it.garmentId }
@@ -295,6 +307,8 @@ class TryOnActivity : ComponentActivity() {
     }
     private fun renderOutfit() {
         outfitStatus.text = "当前搭配：" + model.outfit.values.joinToString(" ＋ ") { "${it.category.label}：${it.name}" }.ifBlank { "无" }
+        val category = model.state.value.selected?.category
+        fitControls.render(category,category?.let { model.outfitFits[it] ?: OutfitFit.defaultFor(it) } ?: OutfitFit())
         loadOutfit()
     }
     private fun loadOutfit(force: Boolean = false) {

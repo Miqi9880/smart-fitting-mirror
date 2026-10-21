@@ -6,6 +6,7 @@ import com.smartfitting.mirror.network.*
 import com.smartfitting.mirror.vision.*
 import com.smartfitting.mirror.contracts.Garment
 import com.smartfitting.mirror.contracts.GarmentCategory
+import com.smartfitting.mirror.tryon.OutfitFit
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -24,7 +25,8 @@ class TryOnModel : ViewModel() {
     var mirrored = true
     var synthetic = SyntheticSettings()
     var playing = true
-    var showLandmarks = false
+    var showLandmarks = true
+    var outfitFits = emptyMap<GarmentCategory, OutfitFit>()
     var meshMode = false
     var catalogQuery = ""
     var catalogAssets = emptyList<com.smartfitting.mirror.contracts.Garment>()
