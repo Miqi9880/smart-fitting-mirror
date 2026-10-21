@@ -12,7 +12,7 @@ from backend.service import create_app
 @pytest.fixture
 def wardrobe():
     now = [1_790_409_600.0]
-    with TestClient(create_app(clock=lambda: now[0])) as client:
+    with TestClient(create_app(clock=lambda: now[0],catalog_profile="regression")) as client:
         def session():
             token = client.post('/api/v1/sessions').json()['session_token']
             return {'Authorization': 'Bearer ' + token}
@@ -41,6 +41,19 @@ def test_create_search_detail_edit_delete_and_session_isolation(wardrobe):
     assert c.delete('/api/v1/garments/my_tee', headers=first).status_code == 204
     assert c.get('/api/v1/garments/my_tee', headers=first).status_code == 404
     assert c.get('/api/v1/garments/upper_blue', headers=other).status_code == 200
+
+
+def test_guest_capacity_allows_one_hundred_and_rejects_new_item_without_blocking_updates(wardrobe):
+    c, session, _=wardrobe; headers=session()
+    for i in range(96):
+        assert c.post('/api/v1/garments',headers=headers,json=entry(garment_id=f'custom_{i}')).status_code==201
+    assert len(c.get('/api/v1/garments',headers=headers).json()['items'])==100
+    response=c.post('/api/v1/garments',headers=headers,json=entry(garment_id='too_many'))
+    assert response.status_code==429 and response.json()['error']['code']=='CATALOG_CAPACITY'
+    assert c.put('/api/v1/garments/custom_0',headers=headers,json=entry(garment_id='custom_0',name='Edited')).status_code==200
+    assert c.delete('/api/v1/garments/custom_1',headers=headers).status_code==204
+    assert c.post('/api/v1/garments',headers=headers,json=entry(garment_id='replacement')).status_code==201
+    assert len(c.get('/api/v1/garments',headers=session()).json()['items'])==4
 
 
 @pytest.mark.parametrize('changes,status', [({'garment_id': '../escape'},400),

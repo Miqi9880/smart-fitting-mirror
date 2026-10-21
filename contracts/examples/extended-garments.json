@@ -1,0 +1,168 @@
+{
+  "items": [
+    {
+      "garment_id": "example_dress",
+      "name": "dress synthetic contract example",
+      "category": "dress",
+      "tags": [
+        "photo",
+        "official-studio",
+        "upper_body"
+      ],
+      "thumbnail_url": "http://127.0.0.1:8000/api/v1/assets/example_dress.png",
+      "preview_image": {
+        "url": "http://127.0.0.1:8000/api/v1/assets/example_dress.png",
+        "width": 1000,
+        "height": 1400,
+        "anchors": {
+          "right_shoulder": {
+            "x": 0.3,
+            "y": 0.12
+          },
+          "left_shoulder": {
+            "x": 0.7,
+            "y": 0.12
+          },
+          "right_hip": {
+            "x": 0.32,
+            "y": 0.45
+          },
+          "left_hip": {
+            "x": 0.68,
+            "y": 0.45
+          }
+        },
+        "attachment_anchors": {
+          "right_hip": {
+            "x": 0.32,
+            "y": 0.45
+          },
+          "left_hip": {
+            "x": 0.68,
+            "y": 0.45
+          },
+          "right_hem": {
+            "x": 0.3,
+            "y": 0.94
+          },
+          "left_hem": {
+            "x": 0.7,
+            "y": 0.94
+          }
+        },
+        "hem_ratio": 1.7
+      },
+      "generation_reference_url": null,
+      "details": {
+        "brand": "UNIQLO",
+        "material": "",
+        "description": "品牌官网商品展示图，辅助去背景的课程预览素材。https://www.uniqlo.com/us/en/products/E465185-000/00?colorDisplayCode=09",
+        "sizes": [],
+        "colors": [
+          "黑色"
+        ],
+        "season": "",
+        "care_instructions": "",
+        "price_cents": null
+      }
+    },
+    {
+      "garment_id": "example_skirt",
+      "name": "skirt synthetic contract example",
+      "category": "skirt",
+      "tags": [
+        "photo",
+        "official-studio",
+        "upper_body"
+      ],
+      "thumbnail_url": "http://127.0.0.1:8000/api/v1/assets/example_skirt.png",
+      "preview_image": {
+        "url": "http://127.0.0.1:8000/api/v1/assets/example_skirt.png",
+        "width": 1000,
+        "height": 1400,
+        "anchors": null,
+        "attachment_anchors": {
+          "right_hip": {
+            "x": 0.32,
+            "y": 0.12
+          },
+          "left_hip": {
+            "x": 0.68,
+            "y": 0.12
+          },
+          "right_hem": {
+            "x": 0.3,
+            "y": 0.94
+          },
+          "left_hem": {
+            "x": 0.7,
+            "y": 0.94
+          }
+        },
+        "hem_ratio": 0.65
+      },
+      "generation_reference_url": null,
+      "details": {
+        "brand": "UNIQLO",
+        "material": "",
+        "description": "品牌官网商品展示图，辅助去背景的课程预览素材。https://www.uniqlo.com/us/en/products/E465185-000/00?colorDisplayCode=09",
+        "sizes": [],
+        "colors": [
+          "黑色"
+        ],
+        "season": "",
+        "care_instructions": "",
+        "price_cents": null
+      }
+    },
+    {
+      "garment_id": "example_shorts",
+      "name": "shorts synthetic contract example",
+      "category": "shorts",
+      "tags": [
+        "photo",
+        "official-studio",
+        "upper_body"
+      ],
+      "thumbnail_url": "http://127.0.0.1:8000/api/v1/assets/example_shorts.png",
+      "preview_image": {
+        "url": "http://127.0.0.1:8000/api/v1/assets/example_shorts.png",
+        "width": 1000,
+        "height": 1400,
+        "anchors": null,
+        "attachment_anchors": {
+          "right_hip": {
+            "x": 0.32,
+            "y": 0.12
+          },
+          "left_hip": {
+            "x": 0.68,
+            "y": 0.12
+          },
+          "right_hem": {
+            "x": 0.3,
+            "y": 0.94
+          },
+          "left_hem": {
+            "x": 0.7,
+            "y": 0.94
+          }
+        },
+        "hem_ratio": 0.85
+      },
+      "generation_reference_url": null,
+      "details": {
+        "brand": "UNIQLO",
+        "material": "",
+        "description": "品牌官网商品展示图，辅助去背景的课程预览素材。https://www.uniqlo.com/us/en/products/E465185-000/00?colorDisplayCode=09",
+        "sizes": [],
+        "colors": [
+          "黑色"
+        ],
+        "season": "",
+        "care_instructions": "",
+        "price_cents": null
+      }
+    }
+  ]
+}

@@ -60,6 +60,25 @@ def job_semantics(job):
     require((job['error'] is not None) == (status == 'failed'), 'Error must exist only on failure')
 
 
+def garment_semantics(item):
+    image = item['preview_image']
+    category = item['category']
+    if category == 'upper_body':
+        require(image['anchors'] is not None, 'Upper-body photo requires torso anchors')
+    elif category in {'dress', 'skirt', 'shorts'}:
+        require({'left_hip','right_hip','left_hem','right_hem'} <= image.get('attachment_anchors', {}).keys(),
+                'Draped items and shorts require hip/hem controls')
+        require((image['anchors'] is not None) == (category == 'dress'), 'Only dresses use additional torso anchors')
+        ratio = image.get('hem_ratio')
+        require(isinstance(ratio,(int,float)) and .1 <= ratio <= (1 if category == 'shorts' else 2),
+                'Required hem ratio must describe the actual supported leg segment')
+    else:
+        required = {'left_ear', 'right_ear'} if item['category'] == 'headwear' else {
+            'left_hip', 'right_hip', 'left_knee', 'right_knee', 'left_ankle', 'right_ankle'}
+        require(image['anchors'] is None and required <= image.get('attachment_anchors', {}).keys(),
+                'Non-torso item requires its own anatomical anchors')
+
+
 def expect_rejected(fn, value):
     try:
         fn(value)
@@ -83,7 +102,8 @@ def main():
 
     fixture_schemas = {'garments.json': 'GarmentList', 'session.json': 'Session', 'upload.json': 'Upload',
                        'create-job.json': 'CreateJob', 'error.json': 'ErrorResponse',
-                       'garment-details.json': 'Garment', 'garment-write.json': 'GarmentWrite'}
+                       'garment-details.json': 'Garment', 'garment-write.json': 'GarmentWrite',
+                       'outfit-garments.json': 'GarmentList', 'extended-garments.json': 'GarmentList'}
     fixture_schemas.update({f'job-{s}.json': 'Job' for s in ['queued', 'running', 'succeeded', 'failed', 'cancelled']})
     seen = set()
     for path in sorted(EX.glob('vision-*.json')):
@@ -95,6 +115,8 @@ def main():
         schema = expand_refs(spec['components']['schemas'][schema_name], spec)
         data = read(EX / name)
         OAS30Validator(schema, format_checker=OAS30Validator.FORMAT_CHECKER).validate(data)
+        for item in data['items'] if schema_name == 'GarmentList' else [data] if schema_name == 'Garment' else []:
+            garment_semantics(item)
         if schema_name == 'Job':
             job_semantics(data)
             require(data['is_mock'], 'Repository result examples must be explicitly synthetic')
@@ -118,6 +140,12 @@ def main():
     bad = read(EX / 'job-succeeded.json')
     bad['result'] = None
     expect_rejected(job_semantics, bad)
+    for category, mutate in [('dress', lambda image: image.pop('hem_ratio')),
+                             ('shorts', lambda image: image.update(hem_ratio=1.7)),
+                             ('skirt', lambda image: image.update(anchors=read(EX / 'outfit-garments.json')['items'][0]['preview_image']['anchors']))]:
+        item = next(i for i in read(EX / 'extended-garments.json')['items'] if i['category'] == category)
+        mutate(item['preview_image'])
+        expect_rejected(garment_semantics, item)
 
     markdowns = [ROOT / 'README.md', ROOT / 'CONTRIBUTING.md', *sorted((ROOT / 'docs').rglob('*.md')),
                  EX / 'README.md']
@@ -125,7 +153,7 @@ def main():
         for target in re.findall(r'\]\(([^)]+)\)', path.read_text(encoding='utf-8')):
             if '://' not in target and not target.startswith('#'):
                 require((path.parent / target.split('#')[0]).exists(), f'Broken link: {path}: {target}')
-    print(f'PASS: OpenAPI 3.0.3, 2 JSON schemas, {len(seen)} fixtures, 5 rejection cases, local doc links.')
+    print(f'PASS: OpenAPI 3.0.3, 2 JSON schemas, {len(seen)} fixtures, 8 rejection cases, local doc links.')
     print('No Android build, camera, mock server or real AI service was tested.')
 
 

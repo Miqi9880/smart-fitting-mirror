@@ -1,14 +1,16 @@
 # 四人协作约定
 
-更新：2026-10-09，第 6 周。总目标和第 18 周考核安排见 [学期计划](semester-plan.md)。
+更新：2026-10-21。取消原学期交付与冻结周约束；总目标和连续推进方式见 [企业交付计划](delivery-plan.md)。
 
-2026-10-19 补充：当前按 [真实服装与真人预览周计划](weekly-2026-10-19.md) 开发。长期四人职责保持；lyf-bee 额外负责 `backend/assets/real/` 的照片去背景、锚点与来源交付，后端负责人负责消费素材/目录校验，双方避免同时编辑同一文件。`TryOnView.showLandmarks: Boolean` 作为本周模块调试接入点，由渲染提供、app 控制；公共合同和坐标约定不变。
+当前任务以 [10/21 修订计划](weekly-2026-10-19.md) 为准：外部试衣 API 由 haiyangniu191-design 推进；Miqi9880 的预训练模型微调独立进行、完成后再接。每人当前项有验证并提交可审阅成果后，可更新 Issue 接下一项，不等下周；工时不作进度上限，依赖与公共接口规则保持。
+
+长期四人职责保持。素材目前按 [官网目录与本地包](studio-outfits.md) 接手，新增款去背景、初始定位和接入转由 Miqi9880 委托 Codex；lyf-bee 负责实时效果与稳定性验证，后端负责人消费接口和校验，双方避免同时编辑同一文件；旧 `backend/assets/real/` 白 T 恤保留作历史回归。关键点开关由渲染提供、app 控制；HTTP合同为0.3.0、视觉帧为0.2.0，不为微调探索提前改公共接口。
 
 | 维护人 | 文件边界 | 对其他成员交付 |
 | --- | --- | --- |
-| Miqi9880 | android/core-vision、协调 core-contracts 和共享配置 | 同帧 RGB/关键点、原始拍照、真实硬件能力、公共接口 |
-| haiyangniu191-design | backend、android/core-network | HTTP 服务、服装目录、生成状态、结果下载和清理 |
-| lyf-bee | android/feature-tryon | 衣服叠加 View/Renderer、素材锚点与形变、后续遮挡 |
+| Miqi9880 | android/core-vision、协调 core-contracts 和共享配置；微调探索独立环境 | 同帧 RGB/关键点、原始拍照、真实硬件能力、公共接口；模型就绪后另交推理接入 |
+| haiyangniu191-design | backend、android/core-network | 公共 HTTP 服务、外部试衣 API、服装目录、生成状态、结果下载和清理 |
+| lyf-bee | android/feature-tryon | 实时效果、抖动／缺点恢复、渲染稳定性和验收；本批新素材制作／初始定位／接入由负责人承接 |
 | yyyrrrxxx | android/app | 交互页面、模块装配、前后对比、生命周期集成与演示 |
 
 Miqi9880 组织跨模块联调、审查公共接口并合并 PR。每人负责本模块测试与说明。负责人先行实现部分基础属于补位，不能据此认定整项职责已转移；当前实现状态见 [交接清单](task-handoff.md)。
@@ -19,7 +21,7 @@ Miqi9880 组织跨模块联调、审查公共接口并合并 PR。每人负责�
 - 网络负责人不写整套产品 UI，渲染负责人不重开摄像头，页面负责人不重复实现 HTTP/采集。公共接口改动先说明调用方和兼容性。
 - 深度、mask、距离未真实可用时保持 null/unknown；没有深度仍应能演示。普通人体分割不等同手臂/躯干分割。
 - 工程方向为 Kotlin/Android；后端当前 Python 3.12 + FastAPI 模拟服务。工具版本见 Android/后端 README。厂商 SDK 与真实 AI 提供方需实证确认。
-- 各自从最新 main 开功能分支；每周一次同版本联调，小 PR 尽早提交。第一周按 [任务](tasks.md) 做一个可验证增量。
+- 各自从最新 main 开功能分支；每周至少一次同版本联调，依赖齐备可提前。按 [任务](tasks.md) 连续交付小 PR，不重复开发已有实现；微调模型未就绪不阻塞其他成员。
 
 ## 主分支保护
 

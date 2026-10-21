@@ -16,7 +16,8 @@ val ContractJson = Json { encodeDefaults = true; explicitNulls = true; ignoreUnk
 @Serializable enum class VisionSourceKind {
     @SerialName("mock") MOCK, @SerialName("rgb_camera") RGB_CAMERA, @SerialName("depth_camera") DEPTH_CAMERA
 }
-enum class KeypointName { LEFT_SHOULDER, RIGHT_SHOULDER, LEFT_ELBOW, RIGHT_ELBOW, LEFT_WRIST, RIGHT_WRIST, LEFT_HIP, RIGHT_HIP }
+enum class KeypointName { LEFT_SHOULDER, RIGHT_SHOULDER, LEFT_ELBOW, RIGHT_ELBOW, LEFT_WRIST, RIGHT_WRIST, LEFT_HIP, RIGHT_HIP,
+    LEFT_KNEE, RIGHT_KNEE, LEFT_ANKLE, RIGHT_ANKLE, LEFT_EAR, RIGHT_EAR }
 
 @Serializable data class Landmark(val x: Float, val y: Float, val confidence: Float) {
     init { require(x in 0f..1f && y in 0f..1f && confidence in 0f..1f) }
@@ -30,9 +31,16 @@ enum class KeypointName { LEFT_SHOULDER, RIGHT_SHOULDER, LEFT_ELBOW, RIGHT_ELBOW
     @SerialName("right_wrist") val rightWrist: Landmark? = null,
     @SerialName("left_hip") val leftHip: Landmark? = null,
     @SerialName("right_hip") val rightHip: Landmark? = null,
+    @SerialName("left_knee") val leftKnee: Landmark? = null,
+    @SerialName("right_knee") val rightKnee: Landmark? = null,
+    @SerialName("left_ankle") val leftAnkle: Landmark? = null,
+    @SerialName("right_ankle") val rightAnkle: Landmark? = null,
+    @SerialName("left_ear") val leftEar: Landmark? = null,
+    @SerialName("right_ear") val rightEar: Landmark? = null,
 ) {
     fun asMap(): Map<KeypointName, Landmark?> = KeypointName.entries.zip(listOf(
-        leftShoulder, rightShoulder, leftElbow, rightElbow, leftWrist, rightWrist, leftHip, rightHip
+        leftShoulder, rightShoulder, leftElbow, rightElbow, leftWrist, rightWrist, leftHip, rightHip,
+        leftKnee, rightKnee, leftAnkle, rightAnkle, leftEar, rightEar
     )).toMap()
     fun torso() = listOf(leftShoulder, rightShoulder, leftHip, rightHip)
     fun state(threshold: Float = .5f): TrackingState = when {
@@ -45,7 +53,10 @@ enum class KeypointName { LEFT_SHOULDER, RIGHT_SHOULDER, LEFT_ELBOW, RIGHT_ELBOW
             points[KeypointName.LEFT_SHOULDER], points[KeypointName.RIGHT_SHOULDER],
             points[KeypointName.LEFT_ELBOW], points[KeypointName.RIGHT_ELBOW],
             points[KeypointName.LEFT_WRIST], points[KeypointName.RIGHT_WRIST],
-            points[KeypointName.LEFT_HIP], points[KeypointName.RIGHT_HIP])
+            points[KeypointName.LEFT_HIP], points[KeypointName.RIGHT_HIP],
+            points[KeypointName.LEFT_KNEE], points[KeypointName.RIGHT_KNEE],
+            points[KeypointName.LEFT_ANKLE], points[KeypointName.RIGHT_ANKLE],
+            points[KeypointName.LEFT_EAR], points[KeypointName.RIGHT_EAR])
     }
 }
 @Serializable data class ImageMetadata(
@@ -64,7 +75,7 @@ enum class KeypointName { LEFT_SHOULDER, RIGHT_SHOULDER, LEFT_ELBOW, RIGHT_ELBOW
 ) { init { require(bufferId.isNotBlank() && width > 0 && height > 0 && rowStrideBytes.toLong() >= width.toLong() * 2 && format == "depth_uint16_le_mm" && invalidValue == 0) } }
 
 @Serializable data class VisionFrame(
-    @SerialName("schema_version") val schemaVersion: String = "0.1.0",
+    @SerialName("schema_version") val schemaVersion: String = "0.2.0",
     @SerialName("session_id") val sessionId: String,
     @SerialName("frame_id") val frameId: Long,
     @SerialName("timestamp_ms") val timestampMs: Long,
@@ -76,7 +87,7 @@ enum class KeypointName { LEFT_SHOULDER, RIGHT_SHOULDER, LEFT_ELBOW, RIGHT_ELBOW
     val mask: PlaneMetadata? = null, val depth: DepthMetadata? = null,
 ) {
     init {
-        require(schemaVersion == "0.1.0" && sessionId.isNotBlank() && frameId >= 0 && timestampMs >= 0)
+        require(schemaVersion == "0.2.0" && sessionId.isNotBlank() && frameId >= 0 && timestampMs >= 0)
         require(distanceM == null || (distanceM.isFinite() && distanceM > 0))
         require(depth == null || (depth.width == image.width && depth.height == image.height))
         require(trackingState == keypoints.state())

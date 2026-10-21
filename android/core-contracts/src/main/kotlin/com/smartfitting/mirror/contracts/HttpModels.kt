@@ -9,8 +9,28 @@ import kotlinx.serialization.Serializable
 @Serializable data class GarmentAnchors(@SerialName("left_shoulder") val leftShoulder: Anchor,
     @SerialName("right_shoulder") val rightShoulder: Anchor, @SerialName("left_hip") val leftHip: Anchor,
     @SerialName("right_hip") val rightHip: Anchor)
-@Serializable data class PreviewImage(val url: String, val width: Int, val height: Int, val anchors: GarmentAnchors)
-@Serializable enum class GarmentCategory { @SerialName("upper_body") UPPER_BODY }
+@Serializable data class PreviewImage(val url: String, val width: Int, val height: Int,
+    val anchors: GarmentAnchors? = null,
+    @OptIn(kotlinx.serialization.ExperimentalSerializationApi::class)
+    @kotlinx.serialization.EncodeDefault(kotlinx.serialization.EncodeDefault.Mode.NEVER)
+    @SerialName("attachment_anchors") val attachmentAnchors: Map<String, Anchor> = emptyMap(),
+    @OptIn(kotlinx.serialization.ExperimentalSerializationApi::class)
+    @kotlinx.serialization.EncodeDefault(kotlinx.serialization.EncodeDefault.Mode.NEVER)
+    @SerialName("hem_ratio") val hemRatio: Float? = null) {
+    init { require(hemRatio == null || hemRatio in .1f..2f) }
+}
+@Serializable enum class GarmentCategory {
+    @SerialName("upper_body") UPPER_BODY,
+    @SerialName("lower_body") LOWER_BODY,
+    @SerialName("headwear") HEADWEAR,
+    @SerialName("dress") DRESS,
+    @SerialName("skirt") SKIRT,
+    @SerialName("shorts") SHORTS;
+    val label: String get() = when (this) {
+        UPPER_BODY -> "上衣"; LOWER_BODY -> "长裤"; HEADWEAR -> "帽子"
+        DRESS -> "连衣裙"; SKIRT -> "半裙"; SHORTS -> "短裤"
+    }
+}
 /** Optional metadata adapted from SmartMirror Clothing; old servers remain compatible. */
 @Serializable data class GarmentDetails(val brand: String = "", val material: String = "",
     val description: String = "", val sizes: List<String> = emptyList(), val colors: List<String> = emptyList(),

@@ -53,7 +53,7 @@ class TryOnFlowTest {
             it.window.decorView.findViewWithTag<EditText>("fitting.address").setText("$host:$port")
             it.button("connect").performClick()
         }
-        waitFor(scenario) { it.button("generate").isEnabled && it.window.decorView.findViewWithTag<TextView>("fitting.asset").text.contains("四点形变") }
+        waitFor(scenario) { it.button("generate").isEnabled && it.window.decorView.findViewWithTag<TextView>("fitting.asset").text.contains("已加载") }
     }
     private fun end(scenario: ActivityScenario<TryOnActivity>) {
         scenario.onActivity { it.button("end").performClick() }

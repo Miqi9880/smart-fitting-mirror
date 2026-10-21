@@ -1,5 +1,5 @@
 {
-  "schema_version": "0.1.0",
+  "schema_version": "0.2.0",
   "session_id": "session_mock_01",
   "frame_id": 1,
   "timestamp_ms": 1000,
@@ -51,7 +51,13 @@
       "x": 0.4,
       "y": 0.65,
       "confidence": 0.95
-    }
+    },
+    "left_knee": null,
+    "right_knee": null,
+    "left_ankle": null,
+    "right_ankle": null,
+    "left_ear": null,
+    "right_ear": null
   },
   "standing_hint": "unknown",
   "distance_m": null,

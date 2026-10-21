@@ -55,7 +55,7 @@ def photo_bytes(size=(480, 640), format='PNG', **options):
 @pytest.fixture
 def server():
     clock = Clock()
-    app = service.create_app(clock=clock)
+    app = service.create_app(clock=clock,catalog_profile="regression")
     with TestClient(app) as client:
         yield app, client, clock
 
@@ -168,7 +168,7 @@ def test_cancel_and_completion_preserve_first_terminal_state(server, winner):
 ])
 def test_simulated_job_modes(mode, ready_after, terminal, error):
     clock = Clock()
-    with TestClient(service.create_app(mode, clock=clock)) as client:
+    with TestClient(service.create_app(mode, clock=clock,catalog_profile="regression")) as client:
         _, auth = new_session(client)
         job = validate(new_job(client, auth), 202, 'Job')
         path = '/api/v1/tryon-jobs/' + job['job_id']
@@ -182,7 +182,7 @@ def test_simulated_job_modes(mode, ready_after, terminal, error):
 
 def test_rate_limit_mode_retries_original_key_without_duplicate_job():
     clock = Clock()
-    app = service.create_app('rate-limit', clock=clock)
+    app = service.create_app('rate-limit', clock=clock,catalog_profile='regression')
     with TestClient(app) as client:
         _, auth = new_session(client)
         item = validate(upload(client, auth), 201, 'Upload')
@@ -218,7 +218,7 @@ def test_cross_session_resources_and_preview_only_garment(server):
 
 def test_session_expiry_and_idle_sweeper_remove_images():
     clock = Clock()
-    app = service.create_app(clock=clock, ttl=3)
+    app = service.create_app(clock=clock, ttl=3,catalog_profile="regression")
     with TestClient(app) as client:
         _, auth = new_session(client)
         validate(new_job(client, auth), 202, 'Job')

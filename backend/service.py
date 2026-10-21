@@ -25,7 +25,7 @@ from starlette.concurrency import run_in_threadpool
 from starlette.datastructures import UploadFile
 from starlette.exceptions import HTTPException
 from PIL import Image, ImageDraw, ImageOps, UnidentifiedImageError
-from .catalog import ASSET_SPECS, GarmentWrite, initial_catalog, public_item, matches
+from .catalog import ASSET_SPECS, CATALOG_CAPACITY, GarmentWrite, initial_catalog, regression_catalog, public_item, matches
 from .catalog_repository import CatalogRepository
 
 MAX_FILE = 10 * 1024 * 1024
@@ -144,13 +144,14 @@ class Guest:
 
 class Store:
     """One-process mock. Every terminal-state decision and ownership check shares a lock."""
-    def __init__(self, mode: Mode = "success", clock: Callable[[], float] = time.time, ttl: float = 1800, catalog_path=None):
+    def __init__(self, mode: Mode = "success", clock: Callable[[], float] = time.time, ttl: float = 1800, catalog_path=None, catalog_profile="studio"):
         self.mode, self.clock, self.ttl = mode, clock, ttl
         self.lock = threading.RLock()
         self.guests: dict[str, Guest] = {}
         self.buckets: dict[str, deque] = defaultdict(deque)
         self.secret = secrets.token_bytes(32)
-        self.catalog_repository = CatalogRepository(catalog_path) if catalog_path is not None else None
+        self.catalog_factory = regression_catalog if catalog_profile == "regression" else initial_catalog
+        self.catalog_repository = CatalogRepository(catalog_path,profile=catalog_profile) if catalog_path is not None else None
 
     def token(self, sid: str) -> str:
         return sid + "." + hmac.new(self.secret, sid.encode(), hashlib.sha256).hexdigest()
@@ -206,6 +207,8 @@ class Store:
             guest = Guest(sid, self.clock() + self.ttl)
             if self.catalog_repository is not None:
                 guest.catalog = self.catalog_repository.snapshot()
+            else:
+                guest.catalog = self.catalog_factory()
             self.guests[sid] = guest
             return {"session_id": sid, "session_token": self.token(sid), "expires_at": stamp(guest.expires)}
 
@@ -348,12 +351,14 @@ class CreateInput(BaseModel):
     garment_id: str = Field(min_length=1, max_length=128)
 
 
-def create_app(mode: Mode = "success", *, clock=time.time, ttl=1800, catalog_path=None) -> FastAPI:
+def create_app(mode: Mode = "success", *, clock=time.time, ttl=1800, catalog_path=None, catalog_profile="studio") -> FastAPI:
     if mode not in {"success", "failure", "delayed", "timeout", "rate-limit"}:
         raise ValueError("Unknown mock mode")
     if not 0 < ttl <= 1800:
         raise ValueError("Session lifetime must be between 0 and 1800 seconds")
-    store = Store(mode, clock, ttl, catalog_path)
+    if catalog_profile not in {"studio", "regression"}:
+        raise ValueError("Unknown catalog profile")
+    store = Store(mode, clock, ttl, catalog_path, catalog_profile)
 
     @asynccontextmanager
     async def lifespan(app):
@@ -434,10 +439,12 @@ def create_app(mode: Mode = "success", *, clock=time.time, ttl=1800, catalog_pat
                 raise Problem(404 if replace else 409, "RESOURCE_NOT_FOUND" if replace else "GARMENT_EXISTS", "服装不存在" if replace else "服装编号已存在")
             if body.asset_id not in ASSET_SPECS:
                 raise Problem(422, "INVALID_ASSET", "请选择目录中已有的图片素材")
+            if body.category != ASSET_SPECS[body.asset_id]["category"]:
+                raise Problem(422, "INVALID_ASSET", "品类必须与素材定位方式一致")
             if not body.name.strip() or any(not s.strip() or len(s) > 100 for s in [*body.tags, *body.details.sizes, *body.details.colors]):
                 raise Problem(400, "INVALID_REQUEST", "名称、标签、尺寸或颜色格式无效")
-            if not replace and len(guest.catalog) >= 50:
-                raise Problem(429, "CATALOG_CAPACITY", "临时衣柜最多 50 件服装")
+            if not replace and len(guest.catalog) >= CATALOG_CAPACITY:
+                raise Problem(429, "CATALOG_CAPACITY", f"临时衣柜最多 {CATALOG_CAPACITY} 件服装")
             guest.catalog[body.garment_id] = body
             value = public_item(body, str(request.base_url) + "api/v1/assets/")
         return JSONResponse(value, 200 if replace else 201, headers={"Cache-Control": "no-store"})
@@ -496,7 +503,10 @@ def create_app(mode: Mode = "success", *, clock=time.time, ttl=1800, catalog_pat
             store.guest(auth(request))
         if gid not in ASSET_SPECS:
             raise Problem(404, "RESOURCE_NOT_FOUND", "服装图片不存在")
-        return Response((ASSETS / ASSET_SPECS[gid]["file"]).read_bytes(), media_type="image/png", headers={"Cache-Control": "no-store"})
+        path = ASSETS / ASSET_SPECS[gid]["file"]
+        if not path.is_file():
+            raise Problem(503, "ASSET_NOT_INSTALLED", "请先安装本地商品素材包：python tools/install_studio_assets.py 素材包.zip", True)
+        return Response(path.read_bytes(), media_type="image/png", headers={"Cache-Control": "no-store"})
 
     @app.get("/api/v1/results/{jid}.png")
     def result(request: Request, jid: str):

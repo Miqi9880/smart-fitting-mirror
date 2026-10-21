@@ -25,6 +25,8 @@ import androidx.lifecycle.repeatOnLifecycle
 import com.smartfitting.mirror.contracts.*
 import com.smartfitting.mirror.network.*
 import com.smartfitting.mirror.tryon.TryOnView
+import com.smartfitting.mirror.tryon.OutfitSelection
+import com.smartfitting.mirror.tryon.OutfitFit
 import com.smartfitting.mirror.vision.*
 import kotlinx.coroutines.*
 import java.util.UUID
@@ -36,10 +38,12 @@ class TryOnActivity : ComponentActivity() {
     private lateinit var rgb: CameraRgbSource
     private val source: VisionSource<BitmapPixels> get() = if (model.rgb) rgb else mock
     private lateinit var preview: TryOnView
+    private lateinit var fitControls: FitControls
     private lateinit var controls: SyntheticControls
     private lateinit var status: TextView
     private lateinit var visionStatus: TextView
     private lateinit var assetStatus: TextView
+    private lateinit var outfitStatus: TextView
     private lateinit var mockLabel: TextView
     private lateinit var address: EditText
     private lateinit var connect: Button
@@ -59,8 +63,11 @@ class TryOnActivity : ComponentActivity() {
     private var captureBusy = false
     private var visible = false
     private var pendingPermission = false
-    private var assetJob: Job? = null
-    private var assetKey: Triple<FittingSession, String, String>? = null
+    private data class AssetKey(val controller: FittingSession, val item: Garment)
+    private val assetJobs = mutableMapOf<String,Job>()
+    private val assetKeys = mutableMapOf<String,AssetKey>()
+    private val loadedAssets = mutableSetOf<String>()
+    private val assetErrors = mutableMapOf<String,String>()
     private val permission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         if (!pendingPermission) return@registerForActivityResult
         pendingPermission = false
@@ -78,7 +85,7 @@ class TryOnActivity : ComponentActivity() {
             setPadding(dp(18), dp(12), dp(18), dp(12)); setBackgroundColor(Color.rgb(242, 246, 249))
         }
         root.addView(label("智能穿衣镜", 23f))
-        root.addView(label("选择上衣，开启摄像头预览，再拍照生成。", 13f))
+        root.addView(label("选择衣服、裙裤或帽子，开启摄像头组合试穿。", 13f))
         address = EditText(this).apply {
             tag = "fitting.address"; setSingleLine(); setText(model.baseUrl)
             hint = "服务地址，例如 http://10.0.2.2:8000"; contentDescription = "试衣服务地址"
@@ -86,7 +93,7 @@ class TryOnActivity : ComponentActivity() {
         }
         root.addView(address)
         connect = button("连接服务", "fitting.connect") {
-            try { model.connect(address.text.toString()); model.running = true; beginVision() }
+            try { model.connect(address.text.toString()); if (model.running) beginVision() }
             catch (error: IllegalArgumentException) { status.text = "地址无效：${error.message}" }
         }
         finishSession = button("结束并清理", "fitting.end") {
@@ -96,7 +103,7 @@ class TryOnActivity : ComponentActivity() {
         root.addView(row(connect, finishSession))
         status = label("连接服务以加载衣服", 14f).apply { tag = "fitting.status" }
         root.addView(status)
-        garments = Spinner(this).apply { tag = "fitting.garments"; contentDescription = "选择试穿上衣" }
+        garments = Spinner(this).apply { tag = "fitting.garments"; contentDescription = "选择试穿单品" }
         garments.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
             override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
                 if (!selecting) listed.getOrNull(position)?.let { model.controller?.select(it.garmentId) }
@@ -111,6 +118,13 @@ class TryOnActivity : ComponentActivity() {
             browser!!.show()
         }
         root.addView(catalog)
+        outfitStatus = label("当前搭配为空；选择单品后自动加入对应品类。",12f).apply { tag = "fitting.outfit" }
+        root.addView(outfitStatus)
+        root.addView(row(button("加入搭配","fitting.outfit.add") {
+            model.state.value.selected?.let { model.outfit = OutfitSelection.add(model.outfit,it) }; renderOutfit()
+        },button("移除本类","fitting.outfit.remove") {
+            model.state.value.selected?.let { model.outfit = model.outfit - it.category }; renderOutfit()
+        },button("清空搭配","fitting.outfit.clear") { model.outfit = emptyMap(); renderOutfit() }))
         root.addView(row(button("合成样例", "fitting.mock") {
             pendingPermission = false; model.rgb = false; model.running = true; beginVision()
         }, button("RGB 摄像头", "fitting.rgb") {
@@ -120,20 +134,29 @@ class TryOnActivity : ComponentActivity() {
         }))
         visionStatus = label("点击 RGB 摄像头开始真人预览；合成样例用于开发检查。", 12f).apply { tag = "fitting.vision" }
         root.addView(visionStatus)
-        preview = TryOnView(this).apply { tag = "fitting.preview"; mirrored = model.mirrored; showLandmarks = model.showLandmarks; contentDescription = "实时上衣预览" }
+        preview = TryOnView(this).apply {
+            tag = "fitting.preview"; mirrored = model.mirrored; showLandmarks = model.showLandmarks
+            outfitFits = model.outfitFits; contentDescription = "实时组合试衣预览"
+        }
         preview.mode = if (model.meshMode) TryOnView.Mode.OBJ_MESH else TryOnView.Mode.PHOTO
+        // Keep both switches before the tall preview so landmarks are discoverable.
+        root.addView(row(Switch(this).apply {
+            text = "镜面显示"; isChecked = model.mirrored
+            setOnCheckedChangeListener { _, value -> model.mirrored = value; preview.mirrored = value }
+        }, Switch(this).apply {
+            text = "显示关键点"; tag = "fitting.landmarks"; isChecked = model.showLandmarks
+            setOnCheckedChangeListener { _, value -> model.showLandmarks = value; preview.showLandmarks = value }
+        }))
+        fitControls = FitControls(this) { category, fit ->
+            model.outfitFits = model.outfitFits + (category to fit)
+            preview.outfitFits = model.outfitFits
+        }
+        root.addView(fitControls)
         val height = if (resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE) 240 else 340
         root.addView(preview, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(height)))
         assetStatus = label("连接服务后加载透明服装", 12f).apply { tag = "fitting.asset" }
         root.addView(assetStatus)
-        root.addView(row(Switch(this).apply {
-            text = "镜面显示"; isChecked = model.mirrored
-            setOnCheckedChangeListener { _, value -> model.mirrored = value; preview.mirrored = value }
-        }, button("重载服装", "fitting.reload") { loadAsset(model.state.value.selected, true) }))
-        root.addView(Switch(this).apply {
-            text = "显示关键点"; tag = "fitting.landmarks"; isChecked = model.showLandmarks
-            setOnCheckedChangeListener { _, value -> model.showLandmarks = value; preview.showLandmarks = value }
-        })
+        root.addView(button("重载服装", "fitting.reload") { loadOutfit(true) })
         root.addView(Switch(this).apply {
             text = "OBJ 网格实验（二维关键点驱动，无真实体深度）"; tag = "fitting.mesh"; isChecked = model.meshMode
             setOnCheckedChangeListener { _, value ->
@@ -213,11 +236,11 @@ class TryOnActivity : ComponentActivity() {
                 visionStatus.text = update.message ?: update.state.name
             }
         })
-        loadAsset(model.state.value.selected, true)
+        loadOutfit(true)
     }
     private fun stopVision() {
         activeVision = null; hasFrame = false; captureBusy = false
-        assetJob?.cancel(); assetJob = null; assetKey = null
+        assetJobs.values.forEach { it.cancel() }; assetJobs.clear(); assetKeys.clear(); loadedAssets.clear(); assetErrors.clear()
         mock.stop(); rgb.stop(); preview.clear(); generate.isEnabled = false
         visionStatus.text = "采集已停止，临时预览帧已清理"
         controls.render(!model.rgb, false)
@@ -267,34 +290,70 @@ class TryOnActivity : ComponentActivity() {
         before.update(value.original); after.update(value.result)
         if (value.phase in setOf(FittingPhase.ENDING, FittingPhase.CLOSED)) {
             model.running = false; stopVision(); before.clear(); after.clear()
-            model.catalogAssets = emptyList(); model.catalogQuery = ""; browser?.dismiss(); browser = null
+            model.catalogAssets = emptyList(); model.catalogQuery = ""; model.outfit = emptyMap(); model.lastOutfitSelection = null
+            outfitStatus.text = "当前搭配已清空"; browser?.dismiss(); browser = null
+            fitControls.render(null,OutfitFit())
             assetStatus.text = "会话结束，服装与本地图像已清理"
-        } else if (model.running) loadAsset(value.selected)
+        } else {
+            val current = value.garments.associateBy { it.garmentId }
+            model.outfit = model.outfit.values.mapNotNull { current[it.garmentId] }
+                .fold(emptyMap()) { selection, item -> OutfitSelection.add(selection,item) }
+            if (value.selected != model.lastOutfitSelection) {
+                value.selected?.let { model.outfit = OutfitSelection.add(model.outfit,it) }
+                model.lastOutfitSelection = value.selected
+            }
+            renderOutfit()
+        }
     }
-    private fun loadAsset(garment: Garment?, force: Boolean = false) {
+    private fun renderOutfit() {
+        outfitStatus.text = "当前搭配：" + model.outfit.values.joinToString(" ＋ ") { "${it.category.label}：${it.name}" }.ifBlank { "无" }
+        val category = model.state.value.selected?.category
+        fitControls.render(category,category?.let { model.outfitFits[it] ?: OutfitFit.defaultFor(it) } ?: OutfitFit())
+        loadOutfit()
+    }
+    private fun loadOutfit(force: Boolean = false) {
         val controller = model.controller ?: return
         if (!visible || !model.running) return
-        val key = garment?.let { Triple(controller, it.garmentId, it.previewImage.url) }
-        if (!force && key == assetKey) return
-        assetJob?.cancel(); assetKey = key; preview.setAsset(null, null)
-        if (garment == null) return
-        assetStatus.text = "正在加载服装"
-        assetJob = lifecycleScope.launch {
-            var bytes: ByteArray? = null
-            var decoded: Bitmap? = null
-            try {
-                bytes = controller.preview(garment)
-                withContext(Dispatchers.Default) { decoded = decodeBounded(bytes!!) }
-                ensureActive()
-                if (visible && key == assetKey) {
-                    preview.setAsset(garment, decoded); decoded = null
-                    assetStatus.text = "${garment.name} · 四点形变预览 · 未启用遮挡"
-                }
-            } catch (error: Exception) {
-                if (error is CancellationException) throw error
-                assetStatus.text = "服装加载失败：${error.message}；可点击重载"
-            } finally { bytes?.fill(0); decoded?.recycle() }
+        val items = model.outfit.values.toList()
+        val wanted = items.associate { it.garmentId to AssetKey(controller,it) }
+        for (id in assetKeys.keys.toList()) if (force || assetKeys[id] != wanted[id]) {
+            assetJobs.remove(id)?.cancel(); assetKeys.remove(id); loadedAssets.remove(id); assetErrors.remove(id)
         }
+        if (force) preview.setOutfit(emptyList())
+        preview.setOutfit(items)
+        if (items.isEmpty()) { assetStatus.text = "搭配已清空；选择单品或点击加入搭配"; return }
+        for (garment in items) {
+            val key = wanted.getValue(garment.garmentId)
+            if (assetKeys[garment.garmentId] == key) continue
+            assetKeys[garment.garmentId] = key
+            assetErrors.remove(garment.garmentId)
+            assetStatus.text = "正在加载搭配素材"
+            assetJobs[garment.garmentId] = lifecycleScope.launch {
+                var bytes: ByteArray? = null
+                var decoded: Bitmap? = null
+                try {
+                    bytes = controller.outfitPreview(garment)
+                    withContext(Dispatchers.Default) { decoded = decodeBounded(bytes!!) }
+                    ensureActive()
+                    if (visible && key == assetKeys[garment.garmentId]) {
+                        preview.setLayerAsset(garment, requireNotNull(decoded)); decoded = null
+                        loadedAssets += garment.garmentId
+                        renderAssetStatus()
+                    }
+                } catch (error: Exception) {
+                    if (error is CancellationException) throw error
+                    if (key == assetKeys[garment.garmentId]) {
+                        assetKeys.remove(garment.garmentId)
+                        assetErrors[garment.garmentId] = "${garment.name}：${error.message}"
+                        renderAssetStatus()
+                    }
+                } finally { bytes?.fill(0); decoded?.recycle() }
+            }
+        }
+    }
+    private fun renderAssetStatus() {
+        assetStatus.text = "已加载 ${loadedAssets.size}/${model.outfit.size} 件 · 长裤／长裙需完整腿部，短款需髋膝，帽子需双耳 · 未启用遮挡" +
+            if (assetErrors.isEmpty()) "" else "\n未加载：${assetErrors.values.joinToString("；")}；可点击重载"
     }
     private fun dp(value: Int) = (value * resources.displayMetrics.density).toInt()
     private fun label(value: String, size: Float) = TextView(this).apply { text = value; textSize = size; setTextColor(Color.rgb(26, 43, 55)); setPadding(0, dp(4), 0, dp(4)) }

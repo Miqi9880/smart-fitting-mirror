@@ -1,0 +1,147 @@
+{
+  "items": [
+    {
+      "garment_id": "studio_black_tee",
+      "name": "UNIQLO 黑色宽松 T 恤",
+      "category": "upper_body",
+      "tags": [
+        "photo",
+        "official-studio",
+        "upper_body"
+      ],
+      "thumbnail_url": "http://127.0.0.1:8000/api/v1/assets/studio_black_tee.png",
+      "preview_image": {
+        "url": "http://127.0.0.1:8000/api/v1/assets/studio_black_tee.png",
+        "width": 1086,
+        "height": 1448,
+        "anchors": {
+          "right_shoulder": {
+            "x": 0.23448,
+            "y": 0.28232
+          },
+          "left_shoulder": {
+            "x": 0.76552,
+            "y": 0.28232
+          },
+          "right_hip": {
+            "x": 0.27382,
+            "y": 0.81175
+          },
+          "left_hip": {
+            "x": 0.72618,
+            "y": 0.81175
+          }
+        }
+      },
+      "generation_reference_url": "http://127.0.0.1:8000/api/v1/assets/studio_black_tee.png",
+      "details": {
+        "brand": "UNIQLO",
+        "material": "",
+        "description": "品牌官网商品展示图，辅助去背景的课程预览素材。https://www.uniqlo.com/us/en/products/E465185-000/00?colorDisplayCode=09",
+        "sizes": [],
+        "colors": [
+          "黑色"
+        ],
+        "season": "",
+        "care_instructions": "",
+        "price_cents": null
+      }
+    },
+    {
+      "garment_id": "studio_black_pants",
+      "name": "UNIQLO 黑色褶裥长裤",
+      "category": "lower_body",
+      "tags": [
+        "photo",
+        "official-studio",
+        "lower_body"
+      ],
+      "thumbnail_url": "http://127.0.0.1:8000/api/v1/assets/studio_black_pants.png",
+      "preview_image": {
+        "url": "http://127.0.0.1:8000/api/v1/assets/studio_black_pants.png",
+        "width": 1086,
+        "height": 1448,
+        "anchors": null,
+        "attachment_anchors": {
+          "right_hip": {
+            "x": 0.33,
+            "y": 0.12
+          },
+          "left_hip": {
+            "x": 0.68,
+            "y": 0.12
+          },
+          "right_knee": {
+            "x": 0.37,
+            "y": 0.55
+          },
+          "left_knee": {
+            "x": 0.64,
+            "y": 0.55
+          },
+          "right_ankle": {
+            "x": 0.36,
+            "y": 0.94
+          },
+          "left_ankle": {
+            "x": 0.65,
+            "y": 0.94
+          }
+        }
+      },
+      "generation_reference_url": null,
+      "details": {
+        "brand": "UNIQLO",
+        "material": "",
+        "description": "品牌官网商品展示图，辅助去背景的课程预览素材。https://www.uniqlo.com/us/en/products/E462197-000/00?colorDisplayCode=09",
+        "sizes": [],
+        "colors": [
+          "黑色"
+        ],
+        "season": "",
+        "care_instructions": "",
+        "price_cents": null
+      }
+    },
+    {
+      "garment_id": "studio_black_beanie",
+      "name": "UNIQLO 黑色针织帽",
+      "category": "headwear",
+      "tags": [
+        "photo",
+        "official-studio",
+        "headwear"
+      ],
+      "thumbnail_url": "http://127.0.0.1:8000/api/v1/assets/studio_black_beanie.png",
+      "preview_image": {
+        "url": "http://127.0.0.1:8000/api/v1/assets/studio_black_beanie.png",
+        "width": 1330,
+        "height": 1182,
+        "anchors": null,
+        "attachment_anchors": {
+          "right_ear": {
+            "x": 0.12,
+            "y": 0.92
+          },
+          "left_ear": {
+            "x": 0.88,
+            "y": 0.92
+          }
+        }
+      },
+      "generation_reference_url": null,
+      "details": {
+        "brand": "UNIQLO",
+        "material": "",
+        "description": "品牌官网商品展示图，辅助去背景的课程预览素材。https://www.uniqlo.com/us/en/products/E478303-000/00?colorDisplayCode=09",
+        "sizes": [],
+        "colors": [
+          "黑色"
+        ],
+        "season": "",
+        "care_instructions": "",
+        "price_cents": null
+      }
+    }
+  ]
+}

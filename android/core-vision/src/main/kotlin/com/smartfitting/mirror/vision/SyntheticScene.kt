@@ -31,9 +31,12 @@ object SyntheticScene {
             .7f + .5f * (if (phase <= 40) phase else 80 - phase) / 40f else 1f
         fun point(x: Float, y: Float) = Landmark(.5f + (x - .5f) * scale + shift,
             .45f + (y - .45f) * scale, .95f)
-        val points = Keypoints(point(.65f, .25f), point(.35f, .25f),
-            point(.7f, .43f), point(.3f, .43f), point(.72f, .6f), point(.28f, .6f),
-            point(.6f, .65f), point(.4f, .65f))
+        // Full body stays inside the image even at the largest 1.2x sample.
+        val points = Keypoints(point(.65f, .24f), point(.35f, .24f),
+            point(.7f, .36f), point(.3f, .36f), point(.72f, .5f), point(.28f, .5f),
+            point(.6f, .5f), point(.4f, .5f),
+            point(.6f, .7f), point(.4f, .7f), point(.6f, .87f), point(.4f, .87f),
+            point(.57f, .14f), point(.43f, .14f))
         val current = if (scenario == SyntheticScenario.PARTIAL ||
             (scenario == SyntheticScenario.RECOVERY && phase in 20L..39L)) points.copy(leftShoulder = null)
         else points

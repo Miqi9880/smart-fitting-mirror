@@ -65,7 +65,10 @@ class FittingSession(private val api: FittingTransport, private val scope: Corou
     /** Catalog thumbnails share origin/auth and lifetime checks with preview downloads. */
     suspend fun thumbnail(garment: Garment): ByteArray {
         val active = session ?: throw IllegalStateException("请先连接服务")
-        val bytes = api.download(active.sessionToken, garment.thumbnailUrl)
+        val bytes = retryRequest {
+            if (disposed || session !== active) throw CancellationException("会话已结束")
+            api.download(active.sessionToken, garment.thumbnailUrl)
+        }
         if (disposed || session !== active) { bytes.fill(0); throw CancellationException("会话已结束") }
         return bytes
     }
@@ -110,6 +113,24 @@ class FittingSession(private val api: FittingTransport, private val scope: Corou
         if (disposed || session !== active || state.value.selectedId != garment.garmentId) {
             bytes.fill(0)
             throw CancellationException("服装或会话已切换")
+        }
+        return bytes
+    }
+
+    /** Multiple selected regions share one session, without the single-item selection guard. */
+    suspend fun outfitPreview(garment: Garment): ByteArray {
+        val active = session ?: throw IllegalStateException("请先连接服务")
+        require(state.value.garments.any { it == garment }) { "单品不在当前衣柜" }
+        // An idle HTTP keep-alive may close between selection and loading. GET
+        // can be retried safely; mutation/upload replay remains disabled.
+        val bytes = retryRequest {
+            if (disposed || session !== active || state.value.garments.none { it == garment })
+                throw CancellationException("单品资料或会话已变更")
+            api.download(active.sessionToken,garment.previewImage.url)
+        }
+        if (disposed || session !== active || state.value.garments.none { it == garment }) {
+            bytes.fill(0)
+            throw CancellationException("单品资料或会话已变更")
         }
         return bytes
     }

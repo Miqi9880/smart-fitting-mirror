@@ -1,0 +1,109 @@
+{
+  "date": "2026-10-21",
+  "base_commit": "d885376d3ca25686584235fa90023c2395f74141",
+  "pull_request": "https://github.com/Miqi9880/smart-fitting-mirror/pull/23",
+  "android_implementation_commit": "173bbd8a985c69c441aafe1d0d6c4c9528c5b47d",
+  "environment": {
+    "python": "3.12.14",
+    "pillow": "12.3.0",
+    "jdk": "21.0.10",
+    "android_api": 35,
+    "abi": "x86_64",
+    "camera": "emulated, not physical"
+  },
+  "backend": {
+    "tests": 51,
+    "failures": 0,
+    "skipped": 0,
+    "warnings": 1
+  },
+  "jvm": {
+    "core-contracts": {
+      "tests": 16,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "core-vision": {
+      "tests": 18,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "core-network": {
+      "tests": 16,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "feature-tryon": {
+      "tests": 12,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    }
+  },
+  "instrumentation": {
+    "app": 19,
+    "core_vision": 6,
+    "failures": 0,
+    "skipped": 0
+  },
+  "lint": {
+    "app": {
+      "Error": 0,
+      "Warning": 28
+    },
+    "core-vision": {
+      "Error": 0,
+      "Warning": 7
+    },
+    "core-network": {
+      "Error": 0,
+      "Warning": 0
+    },
+    "feature-tryon": {
+      "Error": 0,
+      "Warning": 3
+    }
+  },
+  "contracts": {
+    "http": "0.2.0",
+    "vision": "0.2.0",
+    "capabilities": "0.1.0",
+    "fixtures": 16,
+    "schemas": 2,
+    "rejection_cases": 5
+  },
+  "manual_preview": {
+    "input": "synthetic sample 1",
+    "selected": [
+      "studio_blue_tee",
+      "studio_black_pants",
+      "studio_black_beanie"
+    ],
+    "loaded": 3,
+    "landmarks": true,
+    "mirrored": true,
+    "physical_camera_opened": false
+  },
+  "apk": {
+    "bytes": 90195645,
+    "sha256": "ea9c691e73c75776841c0492dd2de218bc53d9f208f988dd340fd537b2412b4c"
+  },
+  "local_asset_pack": {
+    "file": "smart-fitting-mirror-studio-assets-20261021.zip",
+    "bytes": 7724688,
+    "sha256": "439bcf996a5ed406cca66dbea7114d72f85bc9501d3f030d9a97180bcbc0cf07",
+    "images": 5,
+    "images_committed": false
+  },
+  "unverified": [
+    "new wardrobe live-person fit",
+    "target mirror camera SDK and ABI",
+    "frame rate and long-term stability",
+    "precise hair/limb occlusion",
+    "belt or earrings",
+    "real AI outfit generation"
+  ]
+}
