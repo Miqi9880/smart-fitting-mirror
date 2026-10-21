@@ -53,4 +53,4 @@ python -m backend --port 8000 --catalog-db data/catalog.sqlite3
 
 ## 当前交接
 
-[负责人任务 #26](https://github.com/Miqi9880/smart-fitting-mirror/issues/26) 负责这批素材制作、初始标定和接入，lyf-bee 对应任务已取消；他继续实际效果、跟随／丢失恢复和稳定性验收。haiyangniu191-design继续公共后端和外部API，yyyrrrxxx继续交互、大屏与生成页面。软件验证不记为成员本人真人交付。按 [企业计划](delivery-plan.md) 连续推进，原第18周限制已取消。
+[负责人任务 #26](https://github.com/Miqi9880/smart-fitting-mirror/issues/26) 已完成这批素材初始制作／标定／接入，继续残边和初始位置查漏；lyf-bee 不重复制作或重做已完成的静态报告，当前接面片细暗接缝的软件复现／修正。现场、真人和目标镜子确认全部归 Miqi9880；其他成员用模拟器、合成输入和获准数据验证软件，按反馈修复。haiyangniu191-design继续真实外部API，yyyrrrxxx接可选保存贴合设置（待实现）、模拟器大屏与生成页面。软件验证不记为真人或镜子通过。按 [当前任务](tasks.md) 与 [企业计划](delivery-plan.md) 连续推进，原第18周限制已取消。

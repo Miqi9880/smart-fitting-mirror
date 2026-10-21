@@ -35,7 +35,7 @@ macOS/Linux 将 `.venv\Scripts\python` 换成 `.venv/bin/python`。仅运行服�
 
 按 [HTTP 合同](../contracts/openapi.json) 和 [行为约定](../docs/interfaces/backend.md) 调用。创建会话后，在目录、上传、任务、素材图和结果图请求中都携带服务返回的 `Authorization: Bearer ...`。图片地址也受会话授权保护；不要把授权头转发到不同来源的 URL。
 
-默认目录为三款官网平铺上衣、长裤和针织帽，[元数据](assets/studio/manifest.json) 入 Git，PNG 从本地素材包安装。裤子与帽子仅支持实时预览，创建生成任务返回 `422 GARMENT_NOT_GENERATABLE`；上衣生成仍为单件 MOCK，不生成整套搭配。旧三件合成上衣及白 T 恤仅在显式 `--catalog-profile regression` 下出现，自动化回归使用独立数据库（如 `--catalog-db data/catalog-regression.sqlite3`），不要与正常演示目录混用。
+默认目录为六品类51件官网商品，上衣15、长裤15、连衣裙3、半裙6、短裤3、帽子9，[元数据](assets/studio/manifest.json) 入Git，PNG从v3透明运行包安装。当前只有上衣可发起单件MOCK生成，其他预览品类创建生成任务返回 `422 GARMENT_NOT_GENERATABLE`，不生成整套搭配。旧三件合成上衣及白T恤仅在显式 `--catalog-profile regression` 下出现，自动化回归使用独立数据库（如 `--catalog-db data/catalog-regression.sqlite3`），不要与正常演示目录混用。
 
 上传限制为 JPEG/PNG、原始文件不超过 10 MiB、解码像素不超过 1600 万；读取 EXIF 方向后转成竖正像素并去除元数据。标准化 PNG 可能大于输入文件，按内存容量管理。资源上限：100 个会话、每会话 8 次保留上传/30 个任务、输入与结果总计 128 MiB（不含解码和框架临时内存）。每分钟同 IP 创建会话 20 次、每会话保存上传 10 次、创建新任务尝试 6 次；已成功绑定的幂等重放不消耗新建配额。
 
