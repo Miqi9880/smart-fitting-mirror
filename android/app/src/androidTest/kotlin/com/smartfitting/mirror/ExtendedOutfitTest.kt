@@ -3,6 +3,7 @@ package com.smartfitting.mirror
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.Paint
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.smartfitting.mirror.contracts.*
@@ -24,6 +25,7 @@ class ExtendedOutfitTest {
             val dress=Garment("dress","dress",GarmentCategory.DRESS,emptyList(),"http://localhost/dress.png",
                 PreviewImage("http://localhost/dress.png",100,140,anchors,controls,1.7f),null)
             val pixels=Bitmap.createBitmap(100,140,Bitmap.Config.ARGB_8888).apply { eraseColor(Color.GREEN) }
+            Canvas(pixels).drawRect(49f,15f,51f,65f,Paint().apply { color=Color.RED })
             val background=Bitmap.createBitmap(480,640,Bitmap.Config.ARGB_8888).apply { eraseColor(Color.BLACK) }
             val output=Bitmap.createBitmap(480,640,Bitmap.Config.ARGB_8888)
             var sequence=0L
@@ -35,6 +37,9 @@ class ExtendedOutfitTest {
             view.setOutfit(listOf(dress));view.setLayerAsset(dress,pixels)
             val pose=SyntheticScene.sample(SyntheticScenario.STILL,0)
             draw(pose)
+            // A vertical centre stripe must stay straight through the tapered torso;
+            // splitting the strip into two coarse affine triangles folds it sideways.
+            for (y in 180..300 step 3) assertEquals(Color.RED,output.getPixel(240,y))
             // A skirt remains filled through the centre below the knees.
             for (x in 225..255) assertEquals(Color.GREEN,output.getPixel(x,500))
             assertEquals(Color.BLACK,background.getPixel(240,500))

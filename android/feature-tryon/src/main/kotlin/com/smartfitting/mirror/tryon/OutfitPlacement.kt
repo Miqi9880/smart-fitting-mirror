@@ -6,7 +6,8 @@ import kotlin.math.hypot
 
 /** 2-D photo placement. Every patch uses only reliable joints from this frame. */
 object OutfitPlacement {
-    data class Patch(val source: FloatArray, val destination: FloatArray)
+    data class Patch(val source: FloatArray, val destination: FloatArray,
+                     val clipToDestination: Boolean = source.size == 6)
     private data class P(val x: Float, val y: Float) {
         operator fun plus(p: P) = P(x+p.x,y+p.y)
         operator fun minus(p: P) = P(x-p.x,y-p.y)

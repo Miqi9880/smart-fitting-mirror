@@ -43,10 +43,11 @@ class DrapedPlacementTest {
                 Anchor(.3f,.12f),Anchor(.68f,y),Anchor(.32f,y)) else null,controls,ratio),null)
     }
     @Test fun dressesAndSkirtsStayContinuousAndFollowTheCurrentFrame() {
-        for ((category,count) in listOf(GarmentCategory.DRESS to 8,GarmentCategory.SKIRT to 6,GarmentCategory.SHORTS to 12)) {
+        for ((category,count) in listOf(GarmentCategory.DRESS to 4,GarmentCategory.SKIRT to 3,GarmentCategory.SHORTS to 12)) {
             val garment=item(category,if (category==GarmentCategory.SHORTS) .8f else 1.7f)
             val before=OutfitPlacement.patches(frame(),garment)
             assertEquals(count,before.size)
+            if (category!=GarmentCategory.SHORTS) assertTrue(before.all { it.source.size==8 && it.clipToDestination })
             val after=OutfitPlacement.patches(frame(SyntheticScene.sample(SyntheticScenario.TRANSLATE,20)),garment)
             assertEquals(count,after.size)
             for ((a,b) in before.zip(after)) for (i in a.destination.indices) {

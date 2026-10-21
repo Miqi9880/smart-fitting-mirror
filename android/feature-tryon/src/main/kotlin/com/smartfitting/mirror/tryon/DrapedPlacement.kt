@@ -105,6 +105,20 @@ internal object DrapedPlacement {
         val result=mutableListOf<OutfitPlacement.Patch>()
         for (row in 0 until rows.size-1) for (col in 0 until columns-1) {
             val a=row*columns+col; val b=a+1; val c=a+columns; val e=c+1
+            if (!split) {
+                val quad=intArrayOf(a,b,e,c)
+                // A projective strip preserves fabric lines across the whole skirt;
+                // two large affine triangles introduce an artificial diagonal crease.
+                for (i in 0..3) {
+                    val u=d[quad[(i+1)%4]]-d[quad[i]]
+                    val v=d[quad[(i+2)%4]]-d[quad[(i+1)%4]]
+                    val cross=u.x*v.y-u.y*v.x
+                    if (!cross.isFinite() || cross<1) return emptyList()
+                }
+                fun flatten(p: List<P>)=quad.flatMap { listOf(p[it].x,p[it].y) }.toFloatArray()
+                result+=OutfitPlacement.Patch(flatten(s),flatten(d),clipToDestination=true)
+                continue
+            }
             for (indices in listOf(intArrayOf(a,b,e),intArrayOf(a,e,c))) {
                 fun cross(p: List<P>): Float {
                     val u=p[indices[1]]-p[indices[0]]; val v=p[indices[2]]-p[indices[0]]

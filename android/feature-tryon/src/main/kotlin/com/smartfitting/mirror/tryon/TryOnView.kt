@@ -119,9 +119,10 @@ class TryOnView(context: Context) : View(context), TryOnRenderer<BitmapPixels> {
             if (!warp.setPolyToPoly(patch.source,0,patch.destination,0,count)) continue
             canvas.save()
             try {
-                if (count == 3) {
+                if (patch.clipToDestination) {
                     patchPath.reset(); patchPath.moveTo(patch.destination[0],patch.destination[1])
-                    patchPath.lineTo(patch.destination[2],patch.destination[3]); patchPath.lineTo(patch.destination[4],patch.destination[5]); patchPath.close()
+                    for (i in 1 until count) patchPath.lineTo(patch.destination[i*2],patch.destination[i*2+1])
+                    patchPath.close()
                     canvas.clipPath(patchPath)
                 }
                 canvas.drawBitmap(bitmap,warp,paint)
