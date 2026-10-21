@@ -28,7 +28,7 @@ class GarmentWrite(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
     garment_id: str = Field(pattern=r"^[a-z][a-z0-9_]{0,63}$")
     name: str = Field(min_length=1, max_length=100)
-    category: Literal["upper_body", "lower_body", "headwear"] = "upper_body"
+    category: Literal["upper_body", "lower_body", "headwear", "dress", "skirt", "shorts"] = "upper_body"
     tags: list[str] = Field(default_factory=list, max_length=20)
     asset_id: str = Field(pattern=r"^[a-z][a-z0-9_]{0,63}$")
     details: GarmentDetails = Field(default_factory=GarmentDetails)
@@ -44,6 +44,7 @@ ASSET_SPECS["real_white_tee"] = {"file":"real/white-tee-cutout.png", "width":144
                "left_hip":{"x":.70,"y":.78},"right_hip":{"x":.30,"y":.78}}, "generatable":True}
 
 
+CATALOG_CAPACITY = 100
 STUDIO_MANIFEST = json.loads((Path(__file__).parent / "assets/studio/manifest.json").read_text(encoding="utf-8"))
 for _item in STUDIO_MANIFEST["items"]:
     ASSET_SPECS[_item["garment_id"]] = {**_item, "file": "studio/" + _item["file"]}
@@ -77,7 +78,8 @@ def public_item(item: GarmentWrite, root: str):
             "tags": item.tags, "thumbnail_url": url,
             "preview_image": {"url": url, "width": asset["width"], "height": asset["height"],
                               "anchors": deepcopy(asset["anchors"]),
-                              **({"attachment_anchors":deepcopy(asset["attachment_anchors"])} if asset.get("attachment_anchors") else {})},
+                              **({"attachment_anchors":deepcopy(asset["attachment_anchors"])} if asset.get("attachment_anchors") else {}),
+                              **({"hem_ratio":asset["hem_ratio"]} if asset.get("hem_ratio") is not None else {})},
             "generation_reference_url": url if asset["generatable"] else None,
             "details": item.details.model_dump()}
 

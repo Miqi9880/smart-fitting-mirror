@@ -7,6 +7,14 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class ContractsTest {
+    @Test fun extendedCategoriesAndHemCalibrationRoundTripWithoutChangingVision() {
+        val items=roundTrip<GarmentList>("extended-garments.json").items
+        assertEquals(setOf(GarmentCategory.DRESS,GarmentCategory.SKIRT,GarmentCategory.SHORTS),items.map { it.category }.toSet())
+        assertEquals(1.7f,items.first().previewImage.hemRatio!!,0f)
+        for (value in listOf(Float.NaN,Float.POSITIVE_INFINITY,0f,2.01f)) {
+            assertThrows(IllegalArgumentException::class.java) { items.first().previewImage.copy(hemRatio=value) }
+        }
+    }
     @Test fun outfitCategoriesAndAnatomicalAttachmentAnchorsRoundTrip() {
         val items=roundTrip<GarmentList>("outfit-garments.json").items
         assertEquals(setOf(GarmentCategory.UPPER_BODY,GarmentCategory.LOWER_BODY,GarmentCategory.HEADWEAR),items.map { it.category }.toSet())

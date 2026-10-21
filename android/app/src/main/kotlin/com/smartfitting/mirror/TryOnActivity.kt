@@ -25,6 +25,7 @@ import androidx.lifecycle.repeatOnLifecycle
 import com.smartfitting.mirror.contracts.*
 import com.smartfitting.mirror.network.*
 import com.smartfitting.mirror.tryon.TryOnView
+import com.smartfitting.mirror.tryon.OutfitSelection
 import com.smartfitting.mirror.vision.*
 import kotlinx.coroutines.*
 import java.util.UUID
@@ -118,7 +119,7 @@ class TryOnActivity : ComponentActivity() {
         outfitStatus = label("当前搭配为空；选择单品后自动加入对应品类。",12f).apply { tag = "fitting.outfit" }
         root.addView(outfitStatus)
         root.addView(row(button("加入搭配","fitting.outfit.add") {
-            model.state.value.selected?.let { model.outfit = model.outfit + (it.category to it) }; renderOutfit()
+            model.state.value.selected?.let { model.outfit = OutfitSelection.add(model.outfit,it) }; renderOutfit()
         },button("移除本类","fitting.outfit.remove") {
             model.state.value.selected?.let { model.outfit = model.outfit - it.category }; renderOutfit()
         },button("清空搭配","fitting.outfit.clear") { model.outfit = emptyMap(); renderOutfit() }))
@@ -283,9 +284,10 @@ class TryOnActivity : ComponentActivity() {
             assetStatus.text = "会话结束，服装与本地图像已清理"
         } else {
             val current = value.garments.associateBy { it.garmentId }
-            model.outfit = model.outfit.mapNotNull { (_,item) -> current[item.garmentId]?.let { it.category to it } }.toMap()
+            model.outfit = model.outfit.values.mapNotNull { current[it.garmentId] }
+                .fold(emptyMap()) { selection, item -> OutfitSelection.add(selection,item) }
             if (value.selected != model.lastOutfitSelection) {
-                value.selected?.let { model.outfit = model.outfit + (it.category to it) }
+                value.selected?.let { model.outfit = OutfitSelection.add(model.outfit,it) }
                 model.lastOutfitSelection = value.selected
             }
             renderOutfit()
@@ -336,7 +338,7 @@ class TryOnActivity : ComponentActivity() {
         }
     }
     private fun renderAssetStatus() {
-        assetStatus.text = "已加载 ${loadedAssets.size}/${model.outfit.size} 件 · 裤子需完整腿部，帽子需双耳 · 未启用遮挡" +
+        assetStatus.text = "已加载 ${loadedAssets.size}/${model.outfit.size} 件 · 长裤／长裙需完整腿部，短款需髋膝，帽子需双耳 · 未启用遮挡" +
             if (assetErrors.isEmpty()) "" else "\n未加载：${assetErrors.values.joinToString("；")}；可点击重载"
     }
     private fun dp(value: Int) = (value * resources.displayMetrics.density).toInt()

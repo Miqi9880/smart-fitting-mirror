@@ -1,3 +1,5 @@
+当前为revision3／51件，安装和已知限制见 [运行说明](../../../docs/studio-outfits.md)，新增提示词见 [处理记录](../../../docs/materials/cutout-processing-2026-10-21.md)。以下保留初版处理历史。
+
 # 本地官网商品图素材包
 
 来源与逐件校验值见 [manifest.json](manifest.json)。官网商品图及辅助提取的 PNG 不随 Git 分发，安装方法见 [组合试穿](../../../docs/studio-outfits.md)。品牌与原图权利归原权利人，未宣称开放许可。

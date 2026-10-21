@@ -17,6 +17,8 @@ object OutfitPlacement {
         GarmentCategory.UPPER_BODY -> TorsoWarp.points(frame,item)?.let { listOf(Patch(it.source,it.destination)) } ?: emptyList()
         GarmentCategory.HEADWEAR -> head(frame,item)
         GarmentCategory.LOWER_BODY -> legs(frame,item)
+        GarmentCategory.DRESS, GarmentCategory.SKIRT -> DrapedPlacement.patches(frame,item)
+        GarmentCategory.SHORTS -> DrapedPlacement.shorts(frame,item)
     }
     private fun source(item: Garment, key: String): P? = item.previewImage.attachmentAnchors[key]?.let {
         P(.5f+it.x*(item.previewImage.width-1),.5f+it.y*(item.previewImage.height-1))
