@@ -24,7 +24,7 @@ class CatalogRepository:
                     [(item.garment_id,item.model_dump_json()) for item in (regression_catalog() if profile == "regression" else initial_catalog()).values()])
                 db.execute("INSERT INTO catalog_meta VALUES ('initialized','1')")
                 db.execute("INSERT INTO catalog_meta VALUES ('studio_revision',?)",('0' if profile == "regression" else '2',))
-            elif profile == "studio" and db.execute("SELECT value FROM catalog_meta WHERE key='studio_revision'").fetchone() is None:
+            elif profile == "studio" and db.execute("SELECT value FROM catalog_meta WHERE key='studio_revision'").fetchone() != ('2',):
                 # Replace the old bundled demo wardrobe once, preserving custom entries
                 # and deliberately empty catalogs. Reopening never resurrects deletions.
                 ids = {row[0] for row in db.execute('SELECT id FROM catalog')}
@@ -33,8 +33,10 @@ class CatalogRepository:
                     for gid in old:
                         db.execute('DELETE FROM catalog WHERE id=?',(gid,))
                     for item in initial_catalog().values():
+                        if db.execute('SELECT COUNT(*) FROM catalog').fetchone()[0] >= 50:
+                            break
                         db.execute('INSERT OR IGNORE INTO catalog VALUES (?,?)',(item.garment_id,item.model_dump_json()))
-                db.execute("INSERT INTO catalog_meta VALUES ('studio_revision','2')")
+                db.execute("INSERT INTO catalog_meta VALUES ('studio_revision','2') ON CONFLICT(key) DO UPDATE SET value='2'")
 
     def snapshot(self) -> dict[str, GarmentWrite]:
         with closing(sqlite3.connect(self.path, timeout=10)) as db:

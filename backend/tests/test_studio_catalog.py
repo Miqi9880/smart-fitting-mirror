@@ -60,3 +60,14 @@ def test_missing_brand_pack_returns_actionable_error_instead_of_internal_failure
         response=c.get('/api/v1/assets/studio_black_tee.png',headers=h)
         assert response.status_code==503
         assert response.json()['error']['code']=='ASSET_NOT_INSTALLED'
+
+
+def test_upgrading_full_regression_database_preserves_custom_entries_and_capacity(tmp_path):
+    path=tmp_path/'full.sqlite3';repository=CatalogRepository(path,profile='regression')
+    sample=next(iter(regression_catalog().values()))
+    for i in range(46):repository.put(sample.model_copy(update={'garment_id':f'custom_{i}'}))
+    upgraded=CatalogRepository(path).snapshot()
+    assert len(upgraded)==50
+    assert {f'custom_{i}' for i in range(46)} <= upgraded.keys()
+    assert not set(regression_catalog()) & upgraded.keys()
+    assert len(set(initial_catalog()) & upgraded.keys())==4
