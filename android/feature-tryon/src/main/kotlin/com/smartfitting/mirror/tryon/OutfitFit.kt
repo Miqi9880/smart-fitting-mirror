@@ -11,6 +11,7 @@ data class OutfitFit(val width: Float = 1f, val length: Float = 1f, val offset: 
     companion object {
         fun defaultFor(category: GarmentCategory) = when (category) {
             GarmentCategory.HEADWEAR -> OutfitFit(1.35f, 1.35f, -.38f)
+            GarmentCategory.UPPER_BODY -> OutfitFit(1.25f)
             GarmentCategory.DRESS -> OutfitFit(1.30f, 1.05f)
             GarmentCategory.SKIRT, GarmentCategory.SHORTS -> OutfitFit(1.45f, 1.06f, -.18f)
             else -> OutfitFit()

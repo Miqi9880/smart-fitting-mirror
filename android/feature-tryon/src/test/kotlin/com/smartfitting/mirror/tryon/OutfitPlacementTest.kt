@@ -60,4 +60,18 @@ class OutfitPlacementTest {
         assertTrue(OutfitPlacement.patches(frame(),pants.copy(previewImage=pants.previewImage.copy(attachmentAnchors=bad))).isEmpty())
         assertNull(TorsoWarp.points(frame(),hat))
     }
+    @Test fun upperBodyAddsHorizontalEaseWithoutLengtheningOrLoweringTheShirt() {
+        val shirt=item(GarmentCategory.UPPER_BODY,emptyMap()).let {
+            it.copy(previewImage=it.previewImage.copy(anchors=GarmentAnchors(
+                Anchor(.75f,.15f),Anchor(.25f,.15f),Anchor(.7f,.85f),Anchor(.3f,.85f))))
+        }
+        val raw=OutfitPlacement.patches(frame(),shirt,OutfitFit()).single().destination
+        val fitted=OutfitPlacement.patches(frame(),shirt).single().destination
+        val centre=(raw[0]+raw[2])/2
+        for (i in raw.indices step 2) {
+            assertEquals(centre+(raw[i]-centre)*1.25f,fitted[i],.001f)
+            assertEquals(raw[i+1],fitted[i+1],.001f)
+        }
+        assertTrue(OutfitPlacement.patches(frame(Keypoints()),shirt).isEmpty())
+    }
 }
