@@ -1,0 +1,245 @@
+{
+  "revision": 2,
+  "items": [
+    {
+      "garment_id": "studio_black_tee",
+      "name": "UNIQLO 黑色宽松 T 恤",
+      "category": "upper_body",
+      "file": "studio_black_tee.png",
+      "width": 1086,
+      "height": 1448,
+      "anchors": {
+        "right_shoulder": {
+          "x": 0.23448,
+          "y": 0.28232
+        },
+        "left_shoulder": {
+          "x": 0.76552,
+          "y": 0.28232
+        },
+        "right_hip": {
+          "x": 0.27382,
+          "y": 0.81175
+        },
+        "left_hip": {
+          "x": 0.72618,
+          "y": 0.81175
+        }
+      },
+      "attachment_anchors": {},
+      "generatable": true,
+      "sha256": "0e552c40172d23412a8ead2158a7da08e4205e6bd5e5e47cf7ce7b3b275989f1",
+      "source_sha256": "a689f0e28c7e26304227f6b6f942d9b4387cedfe2b48a6690c655682201e8932",
+      "source_url": "https://www.uniqlo.com/us/en/products/E465185-000/00?colorDisplayCode=09",
+      "image_url": "https://image.uniqlo.com/UQ/ST3/WesternCommon/imagesgoods/465185/item/goods_09_465185_3x4.jpg?width=1000",
+      "brand": "UNIQLO",
+      "color": "黑色",
+      "processing": "Built-in image_gen background extraction and transparent framing; not a pixel-identical segmentation. Original product image retained locally.",
+      "rights": "Brand product imagery; no open redistribution license is asserted. Images stay in the local asset pack, outside Git.",
+      "alpha_bbox": [
+        0,
+        41,
+        1080,
+        1448
+      ],
+      "opaque_bbox": [
+        9,
+        217,
+        1076,
+        1281
+      ]
+    },
+    {
+      "garment_id": "studio_blue_tee",
+      "name": "UNIQLO 蓝色宽松 T 恤",
+      "category": "upper_body",
+      "file": "studio_blue_tee.png",
+      "width": 1206,
+      "height": 1304,
+      "anchors": {
+        "right_shoulder": {
+          "x": 0.23422,
+          "y": 0.20666
+        },
+        "left_shoulder": {
+          "x": 0.76661,
+          "y": 0.20666
+        },
+        "right_hip": {
+          "x": 0.27366,
+          "y": 0.86754
+        },
+        "left_hip": {
+          "x": 0.72717,
+          "y": 0.86754
+        }
+      },
+      "attachment_anchors": {},
+      "generatable": true,
+      "sha256": "41a701078e72da7e5c544d2dbfea72e062fa55225b0bbfac49c787156ac733c8",
+      "source_sha256": "241dcdab22e814bb2d0ac924bbb377c5e39876b462495a2d78157035495097d5",
+      "source_url": "https://www.uniqlo.com/us/en/products/E465185-000/00?colorDisplayCode=65",
+      "image_url": "https://image.uniqlo.com/UQ/ST3/WesternCommon/imagesgoods/465185/item/goods_65_465185_3x4.jpg?width=1000",
+      "brand": "UNIQLO",
+      "color": "蓝色",
+      "processing": "Built-in image_gen background extraction and transparent framing; not a pixel-identical segmentation. Original product image retained locally.",
+      "rights": "Brand product imagery; no open redistribution license is asserted. Images stay in the local asset pack, outside Git.",
+      "alpha_bbox": [
+        0,
+        47,
+        1205,
+        1260
+      ],
+      "opaque_bbox": [
+        9,
+        54,
+        1197,
+        1250
+      ]
+    },
+    {
+      "garment_id": "studio_red_tee",
+      "name": "UNIQLO 红色宽松 T 恤",
+      "category": "upper_body",
+      "file": "studio_red_tee.png",
+      "width": 1206,
+      "height": 1305,
+      "anchors": {
+        "right_shoulder": {
+          "x": 0.23422,
+          "y": 0.20397
+        },
+        "left_shoulder": {
+          "x": 0.76661,
+          "y": 0.20397
+        },
+        "right_hip": {
+          "x": 0.27366,
+          "y": 0.87262
+        },
+        "left_hip": {
+          "x": 0.72717,
+          "y": 0.87262
+        }
+      },
+      "attachment_anchors": {},
+      "generatable": true,
+      "sha256": "274d0d12a52ff60ebc7850f6132ad46a9bf3bf733fee8fd52dc6e4644b2e85ff",
+      "source_sha256": "fe6cd21bff1c2b3b21867d314daeb16251e0d8360d80ca95d9ba58994263f2f4",
+      "source_url": "https://www.uniqlo.com/us/en/products/E465185-000/00?colorDisplayCode=17",
+      "image_url": "https://image.uniqlo.com/UQ/ST3/WesternCommon/imagesgoods/465185/item/goods_17_465185_3x4.jpg?width=1000",
+      "brand": "UNIQLO",
+      "color": "红色",
+      "processing": "Built-in image_gen background extraction and transparent framing; not a pixel-identical segmentation. Original product image retained locally.",
+      "rights": "Brand product imagery; no open redistribution license is asserted. Images stay in the local asset pack, outside Git.",
+      "alpha_bbox": [
+        0,
+        45,
+        1206,
+        1273
+      ],
+      "opaque_bbox": [
+        9,
+        48,
+        1197,
+        1259
+      ]
+    },
+    {
+      "garment_id": "studio_black_pants",
+      "name": "UNIQLO 黑色褶裥长裤",
+      "category": "lower_body",
+      "file": "studio_black_pants.png",
+      "width": 1086,
+      "height": 1448,
+      "anchors": null,
+      "attachment_anchors": {
+        "right_hip": {
+          "x": 0.33,
+          "y": 0.12
+        },
+        "left_hip": {
+          "x": 0.68,
+          "y": 0.12
+        },
+        "right_knee": {
+          "x": 0.37,
+          "y": 0.55
+        },
+        "left_knee": {
+          "x": 0.64,
+          "y": 0.55
+        },
+        "right_ankle": {
+          "x": 0.36,
+          "y": 0.94
+        },
+        "left_ankle": {
+          "x": 0.65,
+          "y": 0.94
+        }
+      },
+      "generatable": false,
+      "sha256": "689c916606709f409bb83d35f9043d862eef0770228e7837b9808113127cf79a",
+      "source_sha256": "77df6ab474355b4ecbb78c2d8378ba3e92572833c8df90937b0acc6690b8c468",
+      "source_url": "https://www.uniqlo.com/us/en/products/E462197-000/00?colorDisplayCode=09",
+      "image_url": "https://image.uniqlo.com/UQ/ST3/WesternCommon/imagesgoods/462197/item/goods_09_462197_3x4.jpg?width=1000",
+      "brand": "UNIQLO",
+      "color": "黑色",
+      "processing": "Built-in image_gen background extraction and transparent framing; not a pixel-identical segmentation. Original product image retained locally.",
+      "rights": "Brand product imagery; no open redistribution license is asserted. Images stay in the local asset pack, outside Git.",
+      "alpha_bbox": [
+        98,
+        47,
+        1048,
+        1430
+      ],
+      "opaque_bbox": [
+        271,
+        72,
+        821,
+        1375
+      ]
+    },
+    {
+      "garment_id": "studio_black_beanie",
+      "name": "UNIQLO 黑色针织帽",
+      "category": "headwear",
+      "file": "studio_black_beanie.png",
+      "width": 1330,
+      "height": 1182,
+      "anchors": null,
+      "attachment_anchors": {
+        "right_ear": {
+          "x": 0.12,
+          "y": 0.92
+        },
+        "left_ear": {
+          "x": 0.88,
+          "y": 0.92
+        }
+      },
+      "generatable": false,
+      "sha256": "142ee7fa141bd3d4c07a43209774994de39fb199248550ca9e6134797b8226d5",
+      "source_sha256": "1bcf212a5e4b7e67b284a915b0bc6661ec3300634fc8dcc3f7da10ac892b0265",
+      "source_url": "https://www.uniqlo.com/us/en/products/E478303-000/00?colorDisplayCode=09",
+      "image_url": "https://image.uniqlo.com/UQ/ST3/WesternCommon/imagesgoods/478303/item/goods_09_478303_3x4.jpg?width=1000",
+      "brand": "UNIQLO",
+      "color": "黑色",
+      "processing": "Built-in image_gen background extraction and transparent framing; not a pixel-identical segmentation. Original product image retained locally.",
+      "rights": "Brand product imagery; no open redistribution license is asserted. Images stay in the local asset pack, outside Git.",
+      "alpha_bbox": [
+        0,
+        80,
+        1329,
+        1182
+      ],
+      "opaque_bbox": [
+        73,
+        84,
+        1256,
+        1129
+      ]
+    }
+  ]
+}

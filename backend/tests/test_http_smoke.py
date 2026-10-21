@@ -19,7 +19,7 @@ def test_cli_over_real_http(mode, expected, tmp_path):
         port = listener.getsockname()[1]
     root = Path(__file__).resolve().parents[2]
     with (tmp_path / 'server.log').open('wb') as log:
-        process = subprocess.Popen([sys.executable, '-m', 'backend', '--port', str(port), '--mode', mode,
+        process = subprocess.Popen([sys.executable, '-m', 'backend', '--port', str(port), '--mode', mode, '--catalog-profile', 'regression',
                                     '--catalog-db', str(tmp_path / 'catalog.sqlite3')], cwd=root,
                                    stdout=log, stderr=log,
                                    creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0)

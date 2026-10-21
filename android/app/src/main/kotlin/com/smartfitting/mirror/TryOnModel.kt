@@ -4,6 +4,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.smartfitting.mirror.network.*
 import com.smartfitting.mirror.vision.*
+import com.smartfitting.mirror.contracts.Garment
+import com.smartfitting.mirror.contracts.GarmentCategory
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -26,11 +28,14 @@ class TryOnModel : ViewModel() {
     var meshMode = false
     var catalogQuery = ""
     var catalogAssets = emptyList<com.smartfitting.mirror.contracts.Garment>()
+    var outfit = emptyMap<GarmentCategory,Garment>()
+    var lastOutfitSelection: Garment? = null
 
     fun connect(url: String) {
         val api = HttpFittingApi(url.trim()) // Validate before replacing an existing controller.
         bridge?.cancel()
         controller?.close()
+        outfit = emptyMap(); lastOutfitSelection = null
         baseUrl = url.trim()
         val next = FittingSession(api, viewModelScope)
         controller = next

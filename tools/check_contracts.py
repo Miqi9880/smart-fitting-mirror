@@ -60,6 +60,17 @@ def job_semantics(job):
     require((job['error'] is not None) == (status == 'failed'), 'Error must exist only on failure')
 
 
+def garment_semantics(item):
+    image = item['preview_image']
+    if item['category'] == 'upper_body':
+        require(image['anchors'] is not None, 'Upper-body photo requires torso anchors')
+    else:
+        required = {'left_ear', 'right_ear'} if item['category'] == 'headwear' else {
+            'left_hip', 'right_hip', 'left_knee', 'right_knee', 'left_ankle', 'right_ankle'}
+        require(image['anchors'] is None and required <= image.get('attachment_anchors', {}).keys(),
+                'Non-torso item requires its own anatomical anchors')
+
+
 def expect_rejected(fn, value):
     try:
         fn(value)
@@ -83,7 +94,8 @@ def main():
 
     fixture_schemas = {'garments.json': 'GarmentList', 'session.json': 'Session', 'upload.json': 'Upload',
                        'create-job.json': 'CreateJob', 'error.json': 'ErrorResponse',
-                       'garment-details.json': 'Garment', 'garment-write.json': 'GarmentWrite'}
+                       'garment-details.json': 'Garment', 'garment-write.json': 'GarmentWrite',
+                       'outfit-garments.json': 'GarmentList'}
     fixture_schemas.update({f'job-{s}.json': 'Job' for s in ['queued', 'running', 'succeeded', 'failed', 'cancelled']})
     seen = set()
     for path in sorted(EX.glob('vision-*.json')):
@@ -95,6 +107,8 @@ def main():
         schema = expand_refs(spec['components']['schemas'][schema_name], spec)
         data = read(EX / name)
         OAS30Validator(schema, format_checker=OAS30Validator.FORMAT_CHECKER).validate(data)
+        for item in data['items'] if schema_name == 'GarmentList' else [data] if schema_name == 'Garment' else []:
+            garment_semantics(item)
         if schema_name == 'Job':
             job_semantics(data)
             require(data['is_mock'], 'Repository result examples must be explicitly synthetic')

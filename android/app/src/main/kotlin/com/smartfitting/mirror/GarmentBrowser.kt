@@ -160,7 +160,7 @@ internal class GarmentBrowser(private val context: Context, private val controll
                     fun values(edit: EditText) = edit.text.toString().split(",","，").map { it.trim() }.filter { it.isNotEmpty() }
                     val asset = choices[picker.selectedItemPosition]
                     val id = item?.garmentId ?: "wardrobe_${java.util.UUID.randomUUID().toString().replace("-","")}"
-                    controller.saveGarment(GarmentWrite(id,name.text.toString().trim(),tags=values(tagsInput),
+                    controller.saveGarment(GarmentWrite(id,name.text.toString().trim(),category=asset.category,tags=values(tagsInput),
                         assetId=Uri.parse(asset.previewImage.url).lastPathSegment!!.removeSuffix(".png"),
                         details=GarmentDetails(brand.text.toString(),material.text.toString(),description.text.toString(),
                             values(sizes),values(colors),season.text.toString(),care.text.toString(),cents)),item != null)

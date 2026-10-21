@@ -1,6 +1,6 @@
 # 本地模拟试衣服务
 
-实现 HTTP 合同 V0.1.1，含原会话/上传/生成操作及衣柜查询、详情、增删改。SQLite 保存内置基础目录，游客的临时编辑隔离保存。所有生成任务仍返回 `is_mock=true`；输出是静态叠加素材并标明 MOCK 的图片，没有接入真实 AI 或付费服务。[新增目录功能、CLI 与验证](../docs/reference-full-migration.md)。
+实现 HTTP 合同 V0.2.0，含原会话/上传/生成操作、三品类衣柜及详情/增删改。SQLite 保存内置基础目录，游客的临时编辑隔离保存。所有生成任务仍返回 `is_mock=true`；输出是静态叠加素材并标明 MOCK 的图片，没有接入真实 AI 或付费服务。[当前商品素材与组合预览](../docs/studio-outfits.md)。
 
 ## 启动
 
@@ -9,6 +9,7 @@
 ```powershell
 python -m venv .venv
 .venv\Scripts\python -m pip install -r backend/requirements-dev.txt
+.venv\Scripts\python tools/install_studio_assets.py <本地商品素材包.zip>
 .venv\Scripts\python -m backend --host 127.0.0.1 --port 8000 --mode success
 ```
 
@@ -34,7 +35,7 @@ macOS/Linux 将 `.venv\Scripts\python` 换成 `.venv/bin/python`。仅运行服�
 
 按 [HTTP 合同](../contracts/openapi.json) 和 [行为约定](../docs/interfaces/backend.md) 调用。创建会话后，在目录、上传、任务、素材图和结果图请求中都携带服务返回的 `Authorization: Bearer ...`。图片地址也受会话授权保护；不要把授权头转发到不同来源的 URL。
 
-三件透明演示上衣及锚点见 [素材说明](assets/README.md)。绿色上衣只能预览，创建生成任务返回 `422 GARMENT_NOT_GENERATABLE`。真实 AI 参考图与真实商品素材仍由后端负责人后续确认。
+默认目录为三款官网平铺上衣、长裤和针织帽，[元数据](assets/studio/manifest.json) 入 Git，PNG 从本地素材包安装。裤子与帽子仅支持实时预览，创建生成任务返回 `422 GARMENT_NOT_GENERATABLE`；上衣生成仍为单件 MOCK，不生成整套搭配。旧三件合成上衣及白 T 恤仅在显式 `--catalog-profile regression` 下出现，自动化回归使用独立数据库（如 `--catalog-db data/catalog-regression.sqlite3`），不要与正常演示目录混用。
 
 上传限制为 JPEG/PNG、原始文件不超过 10 MiB、解码像素不超过 1600 万；读取 EXIF 方向后转成竖正像素并去除元数据。标准化 PNG 可能大于输入文件，按内存容量管理。资源上限：100 个会话、每会话 8 次保留上传/30 个任务、输入与结果总计 128 MiB（不含解码和框架临时内存）。每分钟同 IP 创建会话 20 次、每会话保存上传 10 次、创建新任务尝试 6 次；已成功绑定的幂等重放不消耗新建配额。
 

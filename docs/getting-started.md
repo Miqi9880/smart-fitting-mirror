@@ -26,6 +26,7 @@ haiyangniu191-design 必须配置；其他人做完整联调也需在自己的�
 python --version
 python -m venv .venv
 .venv\Scripts\python -m pip install -r backend/requirements-dev.txt
+.venv\Scripts\python tools/install_studio_assets.py "收到的商品素材包.zip"
 .venv\Scripts\python -m pytest backend/tests -q
 .venv\Scripts\python -m backend --host 127.0.0.1 --port 8000 --mode success
 ```
@@ -37,6 +38,8 @@ python -m venv .venv
 ```
 
 macOS/Linux 用 `.venv/bin/python`。成功/失败/延时/限流切换方法见 [后端 README](../backend/README.md)。重启服务会让旧会话失效，App 应重新进入会话。
+
+本轮默认展示官网上衣、裤子和帽子，PNG 由负责人另供本地素材包；不随 Git 克隆。安装及组合操作见 [商品素材说明](studio-outfits.md)。仅运行历史合成回归时才显式使用 `--catalog-profile regression` 和独立数据库，无需下载品牌图片。
 
 | 运行客户端的位置 | 服务地址与操作 |
 | --- | --- |

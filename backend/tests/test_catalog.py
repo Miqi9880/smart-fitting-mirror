@@ -12,7 +12,7 @@ from backend.service import create_app
 @pytest.fixture
 def wardrobe():
     now = [1_790_409_600.0]
-    with TestClient(create_app(clock=lambda: now[0])) as client:
+    with TestClient(create_app(clock=lambda: now[0],catalog_profile="regression")) as client:
         def session():
             token = client.post('/api/v1/sessions').json()['session_token']
             return {'Authorization': 'Bearer ' + token}

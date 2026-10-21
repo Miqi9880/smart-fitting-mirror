@@ -7,11 +7,11 @@ import kotlin.math.abs
 object TorsoWarp {
     data class Points(val source: FloatArray, val destination: FloatArray)
     fun points(frame: VisionFrame, garment: Garment): Points? {
-        if (frame.trackingState != TrackingState.TRACKING) return null
+        if (garment.category != GarmentCategory.UPPER_BODY || frame.trackingState != TrackingState.TRACKING) return null
         val pose = listOf(frame.keypoints.leftShoulder, frame.keypoints.rightShoulder,
             frame.keypoints.rightHip, frame.keypoints.leftHip).map { it ?: return null }
         if (pose.any { it.confidence < .5f }) return null
-        val anchors = garment.previewImage.anchors.let { listOf(it.leftShoulder, it.rightShoulder, it.rightHip, it.leftHip) }
+        val anchors = (garment.previewImage.anchors ?: return null).let { listOf(it.leftShoulder, it.rightShoulder, it.rightHip, it.leftHip) }
         val target = pose.flatMap { listOf(it.x, it.y) }.toFloatArray()
         val source = anchors.flatMap { listOf(it.x, it.y) }.toFloatArray()
         if (!usable(target) || !usable(source)) return null

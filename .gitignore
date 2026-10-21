@@ -41,6 +41,10 @@ logs/
 *.log
 tmp/
 
+# Brand product images are installed from the local course asset pack.
+backend/assets/studio/*.png
+backend/assets/studio/originals/
+
 # Editor / OS
 .idea/
 *.iml

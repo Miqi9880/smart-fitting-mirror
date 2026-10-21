@@ -20,6 +20,10 @@ class TryOnView(context: Context) : View(context), TryOnRenderer<BitmapPixels> {
     private var garment: Garment? = null
     private var assetId: String? = null
     private var asset: Bitmap? = null
+    private data class Layer(val item: Garment, val bitmap: Bitmap)
+    private var outfit: List<Garment>? = null
+    private val layers = mutableMapOf<String,Layer>()
+    private val patchPath = Path()
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
     private val warp = Matrix()
     private val meshDriver = context.assets.open("reference/tshirt.obj").bufferedReader().use {
@@ -41,12 +45,35 @@ class TryOnView(context: Context) : View(context), TryOnRenderer<BitmapPixels> {
     /** Ownership transfers to the view, including replacement and clear. */
     fun setAsset(item: Garment?, bitmap: Bitmap?) {
         if (bitmap != null) require(item != null && bitmap.width == item.previewImage.width && bitmap.height == item.previewImage.height)
+        clearLayers(); outfit = null
         if (asset !== bitmap) asset?.recycle()
         asset = bitmap
         assetId = item?.garmentId
         garment = item // Selection also changes on a paused input frame.
         invalidate()
     }
+    /** One selection per body region. Removed/replaced images are recycled immediately. */
+    fun setOutfit(items: List<Garment>) {
+        require(items.map { it.category }.distinct().size == items.size)
+        asset?.recycle(); asset = null; assetId = null
+        outfit = items.toList()
+        val iterator = layers.iterator()
+        while (iterator.hasNext()) {
+            val entry = iterator.next()
+            if (items.none { it.garmentId == entry.key && it.previewImage == entry.value.item.previewImage }) {
+                entry.value.bitmap.recycle(); iterator.remove()
+            }
+        }
+        invalidate()
+    }
+    /** Transfers ownership, including rejection if the selection changed during decoding. */
+    fun setLayerAsset(item: Garment, bitmap: Bitmap) {
+        require(bitmap.width == item.previewImage.width && bitmap.height == item.previewImage.height)
+        if (outfit?.none { it == item } != false) { bitmap.recycle(); return }
+        layers.put(item.garmentId,Layer(item,bitmap))?.bitmap?.takeIf { it !== bitmap }?.recycle()
+        invalidate()
+    }
+    private fun clearLayers() { layers.values.forEach { it.bitmap.recycle() }; layers.clear() }
     override fun submit(frame: FrameLease<BitmapPixels>, garment: Garment?) {
         require(frame.metadata.depth == frame.pixels.alignedDepth?.metadata) { "Depth must belong to this aligned RGB frame" }
         latest.offer(frame)
@@ -69,19 +96,36 @@ class TryOnView(context: Context) : View(context), TryOnRenderer<BitmapPixels> {
                 canvas.drawBitmap(frame.pixels.bitmap, 0f, 0f, paint)
                 val selected = garment
                 val bitmap = asset
-                val mask = prepareDepthMask(frame)
+                val mask = if (outfit?.any { it.category != GarmentCategory.UPPER_BODY } == true) null else prepareDepthMask(frame)
                 if (mask != null) canvas.saveLayer(0f,0f,metadata.image.width.toFloat(),metadata.image.height.toFloat(),null)
-                if (mode == Mode.OBJ_MESH) drawMesh(canvas, metadata)
-                else if (selected != null && bitmap != null && assetId == selected.garmentId) {
-                    val points = TorsoWarp.points(metadata, selected)
-                    if (points != null && warp.setPolyToPoly(points.source, 0, points.destination, 0, 4)) {
-                        canvas.drawBitmap(bitmap, warp, paint)
+                val currentOutfit = outfit
+                if (currentOutfit != null) {
+                    val order = listOf(GarmentCategory.LOWER_BODY,GarmentCategory.UPPER_BODY,GarmentCategory.HEADWEAR)
+                    for (category in order) currentOutfit.firstOrNull { it.category == category }?.let { item ->
+                        if (mode == Mode.OBJ_MESH && category == GarmentCategory.UPPER_BODY) drawMesh(canvas,metadata)
+                        else layers[item.garmentId]?.let { drawPhoto(canvas,metadata,item,it.bitmap) }
                     }
-                }
+                } else if (mode == Mode.OBJ_MESH) drawMesh(canvas, metadata)
+                else if (selected != null && bitmap != null && assetId == selected.garmentId) drawPhoto(canvas,metadata,selected,bitmap)
                 if (mask != null) { canvas.drawBitmap(mask,0f,0f,maskPaint); canvas.restore() }
                 if (showLandmarks) drawLandmarks(canvas, metadata)
             } finally { canvas.restore() }
         } finally { frame.release() }
+    }
+    private fun drawPhoto(canvas: Canvas, frame: VisionFrame, item: Garment, bitmap: Bitmap) {
+        for (patch in OutfitPlacement.patches(frame,item)) {
+            val count = patch.source.size/2
+            if (!warp.setPolyToPoly(patch.source,0,patch.destination,0,count)) continue
+            canvas.save()
+            try {
+                if (count == 3) {
+                    patchPath.reset(); patchPath.moveTo(patch.destination[0],patch.destination[1])
+                    patchPath.lineTo(patch.destination[2],patch.destination[3]); patchPath.lineTo(patch.destination[4],patch.destination[5]); patchPath.close()
+                    canvas.clipPath(patchPath)
+                }
+                canvas.drawBitmap(bitmap,warp,paint)
+            } finally { canvas.restore() }
+        }
     }
     private fun prepareDepthMask(frame: FrameLease<BitmapPixels>): Bitmap? {
         val depth = frame.pixels.alignedDepth
@@ -119,7 +163,10 @@ class TryOnView(context: Context) : View(context), TryOnRenderer<BitmapPixels> {
             KeypointName.LEFT_SHOULDER to KeypointName.LEFT_HIP, KeypointName.RIGHT_SHOULDER to KeypointName.RIGHT_HIP,
             KeypointName.LEFT_HIP to KeypointName.RIGHT_HIP,
             KeypointName.LEFT_SHOULDER to KeypointName.LEFT_ELBOW, KeypointName.LEFT_ELBOW to KeypointName.LEFT_WRIST,
-            KeypointName.RIGHT_SHOULDER to KeypointName.RIGHT_ELBOW, KeypointName.RIGHT_ELBOW to KeypointName.RIGHT_WRIST)
+            KeypointName.RIGHT_SHOULDER to KeypointName.RIGHT_ELBOW, KeypointName.RIGHT_ELBOW to KeypointName.RIGHT_WRIST,
+            KeypointName.LEFT_HIP to KeypointName.LEFT_KNEE,KeypointName.LEFT_KNEE to KeypointName.LEFT_ANKLE,
+            KeypointName.RIGHT_HIP to KeypointName.RIGHT_KNEE,KeypointName.RIGHT_KNEE to KeypointName.RIGHT_ANKLE,
+            KeypointName.LEFT_EAR to KeypointName.RIGHT_EAR)
         for ((a, b) in edges) {
             val start = points[a] ?: continue
             val end = points[b] ?: continue
@@ -129,6 +176,7 @@ class TryOnView(context: Context) : View(context), TryOnRenderer<BitmapPixels> {
     }
     override fun clear() {
         latest.clear()
+        clearLayers(); outfit = null
         depthMask?.recycle(); depthMask = null; depthMaskFrame = null
         garment = null
         setAsset(null, null)
