@@ -8,11 +8,11 @@ import sqlite3
 from contextlib import closing
 from pathlib import Path
 
-from .catalog import ASSET_SPECS, GarmentWrite, initial_catalog
+from .catalog import ASSET_SPECS, GarmentWrite, initial_catalog, regression_catalog
 
 
 class CatalogRepository:
-    def __init__(self, path: str | Path):
+    def __init__(self, path: str | Path, *, profile="studio"):
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with closing(sqlite3.connect(self.path, timeout=10)) as db, db:
@@ -21,8 +21,22 @@ class CatalogRepository:
             db.execute('BEGIN IMMEDIATE')
             if db.execute("SELECT value FROM catalog_meta WHERE key='initialized'").fetchone() is None:
                 db.executemany('INSERT INTO catalog VALUES (?,?)',
-                    [(item.garment_id,item.model_dump_json()) for item in initial_catalog().values()])
+                    [(item.garment_id,item.model_dump_json()) for item in (regression_catalog() if profile == "regression" else initial_catalog()).values()])
                 db.execute("INSERT INTO catalog_meta VALUES ('initialized','1')")
+                db.execute("INSERT INTO catalog_meta VALUES ('studio_revision',?)",('0' if profile == "regression" else '2',))
+            elif profile == "studio" and db.execute("SELECT value FROM catalog_meta WHERE key='studio_revision'").fetchone() != ('2',):
+                # Replace the old bundled demo wardrobe once, preserving custom entries
+                # and deliberately empty catalogs. Reopening never resurrects deletions.
+                ids = {row[0] for row in db.execute('SELECT id FROM catalog')}
+                old = {'upper_blue','upper_sand','upper_preview','real_white_tee'}
+                if ids & old:
+                    for gid in old:
+                        db.execute('DELETE FROM catalog WHERE id=?',(gid,))
+                    for item in initial_catalog().values():
+                        if db.execute('SELECT COUNT(*) FROM catalog').fetchone()[0] >= 50:
+                            break
+                        db.execute('INSERT OR IGNORE INTO catalog VALUES (?,?)',(item.garment_id,item.model_dump_json()))
+                db.execute("INSERT INTO catalog_meta VALUES ('studio_revision','2') ON CONFLICT(key) DO UPDATE SET value='2'")
 
     def snapshot(self) -> dict[str, GarmentWrite]:
         with closing(sqlite3.connect(self.path, timeout=10)) as db:
@@ -32,6 +46,8 @@ class CatalogRepository:
     def put(self, item: GarmentWrite):
         if item.asset_id not in ASSET_SPECS or not item.name.strip():
             raise ValueError('Choose an existing asset and a non-empty name')
+        if item.category != ASSET_SPECS[item.asset_id]['category']:
+            raise ValueError('Category must match the asset placement')
         if any(not value.strip() or len(value)>100 for value in [*item.tags,*item.details.sizes,*item.details.colors]):
             raise ValueError('Invalid tags, sizes or colors')
         with closing(sqlite3.connect(self.path, timeout=10)) as db, db:

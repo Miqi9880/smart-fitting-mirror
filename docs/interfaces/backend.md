@@ -1,4 +1,4 @@
-# 后端与服装接口 V0.1.1
+# 后端与服装接口 V0.2.0
 
 [OpenAPI 合同](../../contracts/openapi.json) 定义字段和响应，本文定义行为。采用 [OpenAPI 3.0.3](https://spec.openapis.org/oas/v3.0.3)，合同不表示已有可运行服务。
 
@@ -15,7 +15,7 @@ POST /sessions 创建游客会话，返回本项目的 session_token；其余业
 | 方法与路径（省略前缀） | 用途 | 成功 |
 | --- | --- | --- |
 | POST /sessions | 创建游客会话 | 201 Session |
-| GET /garments | 上衣目录，首版不分页 | 200 GarmentList |
+| GET /garments | 上衣、裤子及帽子目录，不分页 | 200 GarmentList |
 | GET /garments?q=...&tag=... | 名称/品牌/材质/标签搜索及标签筛选 | 200 GarmentList |
 | GET /garments/{garment_id} | 当前会话服装详情 | 200 Garment |
 | POST /garments | 在当前临时衣柜新增，使用 GarmentWrite | 201 Garment |
@@ -31,7 +31,15 @@ POST /sessions 创建游客会话，返回本项目的 session_token；其余业
 
 ## 素材与上传
 
-Garment 包含编号、名称、upper_body 类别、标签、缩略图、preview_image 和 generation_reference_url。preview_image 指定图片 URL、宽高及双肩双髋四个归一化锚点，供初版躯干对齐。
+Garment 包含编号、名称、category、标签、缩略图、preview_image 和 generation_reference_url。0.2.0 将 category 扩为 `upper_body`、`lower_body`、`headwear`，两端需一起更新；旧客户端不能保证识别新增枚举。
+
+| category | preview_image.anchors | preview_image.attachment_anchors |
+| --- | --- | --- |
+| upper_body | 原双肩双髋四点 | 可省略 |
+| lower_body | null | left/right_hip、left/right_knee、left/right_ankle 六个源素材点 |
+| headwear | null | left_ear、right_ear 两个源素材点 |
+
+所有点均为素材图片中的归一化坐标，解剖学左右不变。不把帽子或裤子的点塞进肩点字段。写入品类必须与 asset_id 对应的素材定位方式一致，否则 422 INVALID_ASSET。示例见 [组合目录](../../contracts/examples/outfit-garments.json)。运行中的默认目录与本地素材包见 [复现说明](../studio-outfits.md)；文件未安装时素材接口返回 503 ASSET_NOT_INSTALLED，提示安装命令，不回退到假衣服。
 
 0.1.1 新增可选 `details`：brand、material、description、sizes、colors、season、care_instructions、price_cents（整数分或 null）。旧目录不带此字段仍可读取；空默认详情不改变旧 JSON 的双向映射。`GarmentWrite` 指定 garment_id、name、现有素材库 asset_id，可附 category/tags/details；不接受任意远程图片 URL。重复 ID 返回 409 GARMENT_EXISTS，不存在返回 404，非法素材返回 422 INVALID_ASSET；每会话最多 50 件。
 

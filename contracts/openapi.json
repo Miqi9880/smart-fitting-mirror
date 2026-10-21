@@ -2,7 +2,7 @@
   "openapi": "3.0.3",
   "info": {
     "title": "Smart Fitting Mirror Course API",
-    "version": "0.1.1",
+    "version": "0.2.0",
     "description": "设备未到位阶段的接口合同，尚无可运行服务。首版仅上衣。"
   },
   "servers": [
@@ -1171,7 +1171,32 @@
               "right_shoulder",
               "left_hip",
               "right_hip"
-            ]
+            ],
+            "nullable": true
+          },
+          "attachment_anchors": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "x": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1
+                },
+                "y": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1
+                }
+              },
+              "required": [
+                "x",
+                "y"
+              ]
+            },
+            "description": "Category-specific source image landmarks. lower_body requires both hips, knees and ankles; headwear requires both ears. Anatomical names; no fake shoulders for accessories."
           }
         },
         "required": [
@@ -1179,7 +1204,8 @@
           "width",
           "height",
           "anchors"
-        ]
+        ],
+        "description": "Upper body uses anchors. Lower body and headwear use attachment_anchors and null anchors. Category and bundled asset placement must agree."
       },
       "Garment": {
         "type": "object",
@@ -1197,7 +1223,9 @@
           "category": {
             "type": "string",
             "enum": [
-              "upper_body"
+              "upper_body",
+              "lower_body",
+              "headwear"
             ]
           },
           "tags": {
@@ -1508,7 +1536,9 @@
           "category": {
             "type": "string",
             "enum": [
-              "upper_body"
+              "upper_body",
+              "lower_body",
+              "headwear"
             ]
           },
           "tags": {

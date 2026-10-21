@@ -212,6 +212,9 @@ class CameraRgbSource(
             KeypointName.RIGHT_SHOULDER to PoseLandmark.RIGHT_SHOULDER,
             KeypointName.LEFT_ELBOW to PoseLandmark.LEFT_ELBOW, KeypointName.RIGHT_ELBOW to PoseLandmark.RIGHT_ELBOW,
             KeypointName.LEFT_WRIST to PoseLandmark.LEFT_WRIST, KeypointName.RIGHT_WRIST to PoseLandmark.RIGHT_WRIST,
-            KeypointName.LEFT_HIP to PoseLandmark.LEFT_HIP, KeypointName.RIGHT_HIP to PoseLandmark.RIGHT_HIP)
+            KeypointName.LEFT_HIP to PoseLandmark.LEFT_HIP, KeypointName.RIGHT_HIP to PoseLandmark.RIGHT_HIP,
+            KeypointName.LEFT_KNEE to PoseLandmark.LEFT_KNEE, KeypointName.RIGHT_KNEE to PoseLandmark.RIGHT_KNEE,
+            KeypointName.LEFT_ANKLE to PoseLandmark.LEFT_ANKLE, KeypointName.RIGHT_ANKLE to PoseLandmark.RIGHT_ANKLE,
+            KeypointName.LEFT_EAR to PoseLandmark.LEFT_EAR, KeypointName.RIGHT_EAR to PoseLandmark.RIGHT_EAR)
     }
 }
