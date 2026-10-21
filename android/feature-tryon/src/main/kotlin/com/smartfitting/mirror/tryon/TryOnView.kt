@@ -54,7 +54,7 @@ class TryOnView(context: Context) : View(context), TryOnRenderer<BitmapPixels> {
     }
     /** One selection per body region. Removed/replaced images are recycled immediately. */
     fun setOutfit(items: List<Garment>) {
-        require(items.map { it.category }.distinct().size == items.size)
+        require(OutfitSelection.compatible(items))
         asset?.recycle(); asset = null; assetId = null
         outfit = items.toList()
         val iterator = layers.iterator()
@@ -100,7 +100,8 @@ class TryOnView(context: Context) : View(context), TryOnRenderer<BitmapPixels> {
                 if (mask != null) canvas.saveLayer(0f,0f,metadata.image.width.toFloat(),metadata.image.height.toFloat(),null)
                 val currentOutfit = outfit
                 if (currentOutfit != null) {
-                    val order = listOf(GarmentCategory.LOWER_BODY,GarmentCategory.UPPER_BODY,GarmentCategory.HEADWEAR)
+                    val order = listOf(GarmentCategory.LOWER_BODY,GarmentCategory.SHORTS,GarmentCategory.SKIRT,
+                        GarmentCategory.UPPER_BODY,GarmentCategory.DRESS,GarmentCategory.HEADWEAR)
                     for (category in order) currentOutfit.firstOrNull { it.category == category }?.let { item ->
                         if (mode == Mode.OBJ_MESH && category == GarmentCategory.UPPER_BODY) drawMesh(canvas,metadata)
                         else layers[item.garmentId]?.let { drawPhoto(canvas,metadata,item,it.bitmap) }
@@ -118,9 +119,10 @@ class TryOnView(context: Context) : View(context), TryOnRenderer<BitmapPixels> {
             if (!warp.setPolyToPoly(patch.source,0,patch.destination,0,count)) continue
             canvas.save()
             try {
-                if (count == 3) {
+                if (patch.clipToDestination) {
                     patchPath.reset(); patchPath.moveTo(patch.destination[0],patch.destination[1])
-                    patchPath.lineTo(patch.destination[2],patch.destination[3]); patchPath.lineTo(patch.destination[4],patch.destination[5]); patchPath.close()
+                    for (i in 1 until count) patchPath.lineTo(patch.destination[i*2],patch.destination[i*2+1])
+                    patchPath.close()
                     canvas.clipPath(patchPath)
                 }
                 canvas.drawBitmap(bitmap,warp,paint)

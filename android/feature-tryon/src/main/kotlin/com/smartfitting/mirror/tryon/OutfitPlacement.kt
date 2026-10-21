@@ -6,7 +6,8 @@ import kotlin.math.hypot
 
 /** 2-D photo placement. Every patch uses only reliable joints from this frame. */
 object OutfitPlacement {
-    data class Patch(val source: FloatArray, val destination: FloatArray)
+    data class Patch(val source: FloatArray, val destination: FloatArray,
+                     val clipToDestination: Boolean = source.size == 6)
     private data class P(val x: Float, val y: Float) {
         operator fun plus(p: P) = P(x+p.x,y+p.y)
         operator fun minus(p: P) = P(x-p.x,y-p.y)
@@ -17,6 +18,8 @@ object OutfitPlacement {
         GarmentCategory.UPPER_BODY -> TorsoWarp.points(frame,item)?.let { listOf(Patch(it.source,it.destination)) } ?: emptyList()
         GarmentCategory.HEADWEAR -> head(frame,item)
         GarmentCategory.LOWER_BODY -> legs(frame,item)
+        GarmentCategory.DRESS, GarmentCategory.SKIRT -> DrapedPlacement.patches(frame,item)
+        GarmentCategory.SHORTS -> DrapedPlacement.shorts(frame,item)
     }
     private fun source(item: Garment, key: String): P? = item.previewImage.attachmentAnchors[key]?.let {
         P(.5f+it.x*(item.previewImage.width-1),.5f+it.y*(item.previewImage.height-1))

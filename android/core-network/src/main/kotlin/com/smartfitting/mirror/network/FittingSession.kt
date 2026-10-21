@@ -65,7 +65,10 @@ class FittingSession(private val api: FittingTransport, private val scope: Corou
     /** Catalog thumbnails share origin/auth and lifetime checks with preview downloads. */
     suspend fun thumbnail(garment: Garment): ByteArray {
         val active = session ?: throw IllegalStateException("请先连接服务")
-        val bytes = api.download(active.sessionToken, garment.thumbnailUrl)
+        val bytes = retryRequest {
+            if (disposed || session !== active) throw CancellationException("会话已结束")
+            api.download(active.sessionToken, garment.thumbnailUrl)
+        }
         if (disposed || session !== active) { bytes.fill(0); throw CancellationException("会话已结束") }
         return bytes
     }

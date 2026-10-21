@@ -98,6 +98,24 @@ class OutfitPreviewTest {
             }
             await { it.window.decorView.findViewWithTag<TextView>("fitting.asset").text.contains("3/3") }
             scenario.onActivity { assertEquals(3,model(it).outfit.size);assertEquals("studio_blue_tee",model(it).outfit[GarmentCategory.UPPER_BODY]!!.garmentId) }
+            for (id in listOf("studio_cotton_t_dress_09","studio_cotton_t_dress_30","studio_cotton_t_dress_69")) {
+                scenario.onActivity { model(it).controller!!.select(id) }
+                await { model(it).outfit[GarmentCategory.DRESS]?.garmentId==id &&
+                    it.window.decorView.findViewWithTag<TextView>("fitting.asset").text.contains("2/2") }
+                scenario.onActivity {
+                    assertEquals(setOf(GarmentCategory.DRESS,GarmentCategory.HEADWEAR),model(it).outfit.keys)
+                    assertFalse(model(it).state.value.canCapture)
+                }
+            }
+            scenario.recreate()
+            await { model(it).outfit[GarmentCategory.DRESS]?.garmentId=="studio_cotton_t_dress_69" &&
+                it.window.decorView.findViewWithTag<TextView>("fitting.asset").text.contains("2/2") }
+            for (id in listOf("studio_mini_skirt_11","studio_blue_tee","studio_chino_shorts_62")) {
+                scenario.onActivity { model(it).controller!!.select(id) }
+                await { model(it).outfit.values.any { item -> item.garmentId==id } }
+            }
+            await { it.window.decorView.findViewWithTag<TextView>("fitting.asset").text.contains("3/3") }
+            scenario.onActivity { assertEquals(setOf(GarmentCategory.UPPER_BODY,GarmentCategory.SHORTS,GarmentCategory.HEADWEAR),model(it).outfit.keys) }
             scenario.recreate()
             await { it.window.decorView.findViewWithTag<TextView>("fitting.asset").text.contains("3/3") }
             scenario.onActivity { it.window.decorView.findViewWithTag<Button>("fitting.outfit.clear").performClick();assertTrue(model(it).outfit.isEmpty()) }

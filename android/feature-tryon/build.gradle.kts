@@ -6,6 +6,10 @@ android {
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
     kotlinOptions { jvmTarget = "17" }
     sourceSets.getByName("test").resources.srcDir("src/main/assets")
+    sourceSets.getByName("test").resources.apply {
+        srcDir("../../backend/assets/studio")
+        exclude("*.png") // Validate shared calibration metadata without distributing local brand images.
+    }
 }
 dependencies {
     api(project(":core-contracts"))

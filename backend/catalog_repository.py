@@ -8,7 +8,7 @@ import sqlite3
 from contextlib import closing
 from pathlib import Path
 
-from .catalog import ASSET_SPECS, GarmentWrite, initial_catalog, regression_catalog
+from .catalog import ASSET_SPECS, CATALOG_CAPACITY, STUDIO_MANIFEST, GarmentWrite, initial_catalog, regression_catalog
 
 
 class CatalogRepository:
@@ -23,20 +23,34 @@ class CatalogRepository:
                 db.executemany('INSERT INTO catalog VALUES (?,?)',
                     [(item.garment_id,item.model_dump_json()) for item in (regression_catalog() if profile == "regression" else initial_catalog()).values()])
                 db.execute("INSERT INTO catalog_meta VALUES ('initialized','1')")
-                db.execute("INSERT INTO catalog_meta VALUES ('studio_revision',?)",('0' if profile == "regression" else '2',))
-            elif profile == "studio" and db.execute("SELECT value FROM catalog_meta WHERE key='studio_revision'").fetchone() != ('2',):
-                # Replace the old bundled demo wardrobe once, preserving custom entries
-                # and deliberately empty catalogs. Reopening never resurrects deletions.
+                db.execute("INSERT INTO catalog_meta VALUES ('studio_revision',?)",('0' if profile == "regression" else str(STUDIO_MANIFEST['revision']),))
+                db.execute("INSERT INTO catalog_meta VALUES ('studio_seed_ids',?)",
+                           (json.dumps(list((regression_catalog() if profile == 'regression' else initial_catalog()))),))
+            elif profile == "studio" and db.execute("SELECT value FROM catalog_meta WHERE key='studio_revision'").fetchone() != (str(STUDIO_MANIFEST['revision']),):
+                # Only newly introduced defaults are added. Previously deleted defaults
+                # and custom edits survive; an intentionally empty catalog stays empty.
                 ids = {row[0] for row in db.execute('SELECT id FROM catalog')}
-                old = {'upper_blue','upper_sand','upper_preview','real_white_tee'}
-                if ids & old:
+                old = set(regression_catalog())
+                revision = db.execute("SELECT value FROM catalog_meta WHERE key='studio_revision'").fetchone()
+                seeded = db.execute("SELECT value FROM catalog_meta WHERE key='studio_seed_ids'").fetchone()
+                previous = set(json.loads(seeded[0])) if seeded else (
+                    {'studio_black_tee','studio_blue_tee','studio_red_tee','studio_black_pants','studio_black_beanie'}
+                    if revision == ('2',) else old)
+                legacy = revision in (None, ('0',), ('1',))
+                if ids and (not legacy or ids & old):
+                    if legacy:
+                        previous = old
                     for gid in old:
-                        db.execute('DELETE FROM catalog WHERE id=?',(gid,))
+                        if legacy:
+                            db.execute('DELETE FROM catalog WHERE id=?',(gid,))
                     for item in initial_catalog().values():
-                        if db.execute('SELECT COUNT(*) FROM catalog').fetchone()[0] >= 50:
+                        if item.garment_id in previous:
+                            continue
+                        if db.execute('SELECT COUNT(*) FROM catalog').fetchone()[0] >= CATALOG_CAPACITY:
                             break
                         db.execute('INSERT OR IGNORE INTO catalog VALUES (?,?)',(item.garment_id,item.model_dump_json()))
-                db.execute("INSERT INTO catalog_meta VALUES ('studio_revision','2') ON CONFLICT(key) DO UPDATE SET value='2'")
+                db.execute("INSERT INTO catalog_meta VALUES ('studio_revision',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",(str(STUDIO_MANIFEST['revision']),))
+                db.execute("INSERT INTO catalog_meta VALUES ('studio_seed_ids',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",(json.dumps(list(initial_catalog())),))
 
     def snapshot(self) -> dict[str, GarmentWrite]:
         with closing(sqlite3.connect(self.path, timeout=10)) as db:
@@ -53,8 +67,8 @@ class CatalogRepository:
         with closing(sqlite3.connect(self.path, timeout=10)) as db, db:
             db.execute('BEGIN IMMEDIATE')
             exists = db.execute('SELECT 1 FROM catalog WHERE id=?',(item.garment_id,)).fetchone()
-            if not exists and db.execute('SELECT COUNT(*) FROM catalog').fetchone()[0] >= 50:
-                raise ValueError('Catalog supports at most 50 garments')
+            if not exists and db.execute('SELECT COUNT(*) FROM catalog').fetchone()[0] >= CATALOG_CAPACITY:
+                raise ValueError(f'Catalog supports at most {CATALOG_CAPACITY} garments')
             db.execute('INSERT INTO catalog VALUES (?,?) ON CONFLICT(id) DO UPDATE SET payload=excluded.payload',
                        (item.garment_id,item.model_dump_json()))
 

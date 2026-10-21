@@ -2,7 +2,7 @@
   "openapi": "3.0.3",
   "info": {
     "title": "Smart Fitting Mirror Course API",
-    "version": "0.2.0",
+    "version": "0.3.0",
     "description": "设备未到位阶段的接口合同，尚无可运行服务。首版仅上衣。"
   },
   "servers": [
@@ -1196,7 +1196,14 @@
                 "y"
               ]
             },
-            "description": "Category-specific source image landmarks. lower_body requires both hips, knees and ankles; headwear requires both ears. Anatomical names; no fake shoulders for accessories."
+            "description": "Category-specific source coordinates. lower_body: both hips/knees/ankles; headwear: ears; dress/skirt/shorts: hips and hem. Hem is a garment edge control, not an inferred anatomical landmark. Dress additionally requires torso anchors; other non-upper categories use null torso anchors."
+          },
+          "hem_ratio": {
+            "type": "number",
+            "nullable": true,
+            "minimum": 0.1,
+            "maximum": 2,
+            "description": "Required for dress/skirt/shorts previews: 0..1 interpolates current hip to knee; 1..2 knee to ankle. Shorts must be <=1. Garment-specific initial calibration, not body measurement."
           }
         },
         "required": [
@@ -1205,7 +1212,7 @@
           "height",
           "anchors"
         ],
-        "description": "Upper body uses anchors. Lower body and headwear use attachment_anchors and null anchors. Category and bundled asset placement must agree."
+        "description": "Upper body uses torso anchors; dress adds hips/hem and hem_ratio. Skirt/shorts use hips/hem and hem_ratio with null torso anchors. Selection excludes dress with upper/lower garments and allows only one of pants/skirt/shorts. Headwear is independent. Garment and asset categories must agree."
       },
       "Garment": {
         "type": "object",
@@ -1225,7 +1232,10 @@
             "enum": [
               "upper_body",
               "lower_body",
-              "headwear"
+              "headwear",
+              "dress",
+              "skirt",
+              "shorts"
             ]
           },
           "tags": {
@@ -1269,7 +1279,8 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/Garment"
-            }
+            },
+            "maxItems": 100
           }
         },
         "required": [
@@ -1538,7 +1549,10 @@
             "enum": [
               "upper_body",
               "lower_body",
-              "headwear"
+              "headwear",
+              "dress",
+              "skirt",
+              "shorts"
             ]
           },
           "tags": {

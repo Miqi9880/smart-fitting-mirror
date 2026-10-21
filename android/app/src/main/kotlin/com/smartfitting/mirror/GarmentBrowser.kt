@@ -15,6 +15,8 @@ import android.widget.*
 import com.smartfitting.mirror.contracts.*
 import com.smartfitting.mirror.network.*
 import kotlinx.coroutines.*
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 
 /** Adapts upstream ListScreen/DetailScreen/AddClothes to existing Views and HTTP contracts.
  * Source and course reuse: third_party/SmartMirror/NOTICE.md. No second navigation/data stack.
@@ -32,6 +34,7 @@ internal class GarmentBrowser(private val context: Context, private val controll
     private var selectedTag = "全部"
     private var state = controller.state.value
     private val thumbnails = mutableListOf<Thumbnail>()
+    private val thumbnailSlots = Semaphore(3)
     private var details: AlertDialog? = null
     private var detailImage: Thumbnail? = null
     private var editor: AlertDialog? = null
@@ -172,7 +175,7 @@ internal class GarmentBrowser(private val context: Context, private val controll
     }
     private inner class Thumbnail(private val view: ImageView, item: Garment) : AutoCloseable {
         private var bitmap: Bitmap? = null
-        private val work = scope.launch {
+        private val work = scope.launch { thumbnailSlots.withPermit {
             var bytes: ByteArray? = null; var decoded: Bitmap? = null
             try {
                 bytes = controller.thumbnail(item)
@@ -188,7 +191,7 @@ internal class GarmentBrowser(private val context: Context, private val controll
                 if (failure is CancellationException) throw failure
                 view.contentDescription = "${item.name}：图片加载失败"
             } finally { bytes?.fill(0); decoded?.recycle() }
-        }
+        } }
         override fun close() { work.cancel(); view.setImageDrawable(null); bitmap?.recycle(); bitmap = null }
     }
     private fun dp(value: Int) = (value * context.resources.displayMetrics.density).toInt()

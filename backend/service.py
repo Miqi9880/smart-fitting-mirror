@@ -25,7 +25,7 @@ from starlette.concurrency import run_in_threadpool
 from starlette.datastructures import UploadFile
 from starlette.exceptions import HTTPException
 from PIL import Image, ImageDraw, ImageOps, UnidentifiedImageError
-from .catalog import ASSET_SPECS, GarmentWrite, initial_catalog, regression_catalog, public_item, matches
+from .catalog import ASSET_SPECS, CATALOG_CAPACITY, GarmentWrite, initial_catalog, regression_catalog, public_item, matches
 from .catalog_repository import CatalogRepository
 
 MAX_FILE = 10 * 1024 * 1024
@@ -443,8 +443,8 @@ def create_app(mode: Mode = "success", *, clock=time.time, ttl=1800, catalog_pat
                 raise Problem(422, "INVALID_ASSET", "品类必须与素材定位方式一致")
             if not body.name.strip() or any(not s.strip() or len(s) > 100 for s in [*body.tags, *body.details.sizes, *body.details.colors]):
                 raise Problem(400, "INVALID_REQUEST", "名称、标签、尺寸或颜色格式无效")
-            if not replace and len(guest.catalog) >= 50:
-                raise Problem(429, "CATALOG_CAPACITY", "临时衣柜最多 50 件服装")
+            if not replace and len(guest.catalog) >= CATALOG_CAPACITY:
+                raise Problem(429, "CATALOG_CAPACITY", f"临时衣柜最多 {CATALOG_CAPACITY} 件服装")
             guest.catalog[body.garment_id] = body
             value = public_item(body, str(request.base_url) + "api/v1/assets/")
         return JSONResponse(value, 200 if replace else 201, headers={"Cache-Control": "no-store"})
