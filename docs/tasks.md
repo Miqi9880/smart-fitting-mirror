@@ -1,30 +1,27 @@
-# 四人当前任务（2026-10-19 至 10-25）
+# 四人当前任务与连续交付（2026-10-21 更新）
 
-本周按负责人新要求推进 **真实服装照片＋真实人体输入**。完整总目标、完成状态、先后依赖、环境与逐项验收见 [10 月 19–25 日任务](weekly-2026-10-19.md)；素材从 [真实输入材料](materials/README.md) 开始。首次配置请读 [环境与 Git/PR 入门](getting-started.md)，长期里程碑见 [第 6–18 周路线](semester-plan.md)。不根据日期推定学校周次。
+共同目标：同一个 Android App 完成选衣／组合预览 → 主动拍摄原图 → 生成 → 对比 → 结束清理。当前生成仍为 MOCK；主线由 haiyangniu191-design 接外部试衣 API，负责人独立微调模型就绪后再接。详细范围见 [模型路线](model-strategy.md)，总体节奏见 [学期计划](semester-plan.md)。
 
-原模拟闭环、视觉回归、lyf-bee 的场景报告及 haiyangniu191-design 的网络报告已分别通过 PR #11/#13/#12/#14/#17 交付。它们可继续用于回归，本周验收改为一件实拍服装在实时真人画面上跟随；旧绘制上衣与合成点不计为本周效果。现有 APK 仍是原模拟联调版，本次任务发布和原图准备不表示已实现新功能。
+**当前必做不是进度上限。** 通过适用验证并提交可审阅 PR 后，更新原 Issue，可以直接推进下一项，不等下周；依赖未合并时只做不依赖它的部分。10/25 是本周交付检查点，不是最早完成日期；不要为等截止时间闲置或重复编写已有实现。
 
-历史进展（2026-10-13）：Miqi9880 于 10 月 13–18 日暂缓现场验证，已交付 [无硬件视觉验证与启动步骤](reports/Miqi9880-2026-10-13.md)。共同验收和硬件待办转入当前 [Issue #3](https://github.com/Miqi9880/smart-fitting-mirror/issues/3)，不将旧的暂缓安排扩展成无限期停止真人工作。
-
-2026-10-14 更正：[当前设备](hardware-status.md) 为负责人报告的 ZC-3588A / Android 15，已能操作界面，有线摄像头已找到但接口不匹配。此前 S40、电源/不开机/摄像头未找到的信息不再用于任务决策。本次仅补充设备事实，不把安装、RGB 或深度验证记为完成。
-
-| 成员 | 长期归属 | 下一周最小交付 | 详细任务 |
+| 成员／长期维护 | 当前必做 | 提前完成后的连续任务 | 原任务卡 |
 | --- | --- | --- | --- |
-| Miqi9880 | 硬件、人体视觉、公共接口、项目协调 | 真实 RGB/关键点实测、V07 等比例输入，5–7 小时 | [#3](https://github.com/Miqi9880/smart-fitting-mirror/issues/3) |
-| haiyangniu191-design | 后端、AI、Android 网络 | 真实素材目录接入与断流排查，5–7 小时 | [#5](https://github.com/Miqi9880/smart-fitting-mirror/issues/5) |
-| lyf-bee | 实时服装渲染 | 一件实拍上衣抠图/锚点/跟随及调试点显示，6–8 小时 | [#6](https://github.com/Miqi9880/smart-fitting-mirror/issues/6) |
-| yyyrrrxxx | Android 页面、模块装配与交互验收 | 真人入口/关键点开关及完整联调，5–7 小时 | [#7](https://github.com/Miqi9880/smart-fitting-mirror/issues/7) |
+| Miqi9880：硬件、人体视觉、公共接口和协调 | 新商品的真人十四点／跟随；目标镜子安装、ABI、摄像头连接与取流核对，实际未做的保留 | 在条件可用时验证镜子 RGB、权限／退出清理，再推进经确认的站位／深度；微调独立探索不阻塞主线 | [#3](https://github.com/Miqi9880/smart-fitting-mirror/issues/3) |
+| haiyangniu191-design：公共后端、网络、外部 AI | 安装素材包，复现新目录／迁移／失败恢复；同时整理一个外部 API 的接入条件 | 配置具备即完成一次真实生成 → App 显示结果 → 异常、幂等、取消、清理；不等负责人微调 | [#5](https://github.com/Miqi9880/smart-fitting-mirror/issues/5) |
+| lyf-bee：实时服装渲染 | 官网三色上衣、裤子、针织帽的素材和真人贴合；提交实际问题修正或验证证据 | 调整最明显的定位／形变／跟随问题 → 缺点恢复、不同身高、轻转身 → 有可靠数据后的遮挡 | [#6](https://github.com/Miqi9880/smart-fitting-mirror/issues/6) |
+| yyyrrrxxx：Android 页面、装配和集成 | 组合替换／移除／清空、旋转／后台／结束、大屏与遗留文案修正 | 与后端接真实生成状态、结果对比与失败恢复 → 目标设备完整操作；不做双模型入口 | [#7](https://github.com/Miqi9880/smart-fitting-mirror/issues/7) |
 
-这些是长期功能卡内的本周增量；工时含成员理解、实现和验证，不是代理执行时间。每张 Issue 包含已有交付、文件范围、环境命令、验收标准和依赖。先交一个可接入的小 PR，周末再共同验收；本周报告通过不等于长期功能卡完成。
+具体可执行步骤、环境和验收见 [10 月 19–25 日计划（10/21 修订）](weekly-2026-10-19.md)。首次配置见 [环境与 Git 入门](getting-started.md)。不根据日期推定学校周次。
 
-## 已完成的基线
+## 已有基础，避免重复开发
 
-- T01 / [#2](https://github.com/Miqi9880/smart-fitting-mirror/issues/2)：Android 骨架与公共类型，PR #8 已合并。
-- T03 / [#4](https://github.com/Miqi9880/smart-fitting-mirror/issues/4)：模拟 HTTP 服务与演示素材，PR #9 已合并、35 项测试通过；后续维护仍由 haiyangniu191-design 负责。
-- T02 的 RGB 首版和模拟器验证已交付，真实人体、企业设备和深度另行验收；所以 #3 保持打开。
+- PR #8／#9：Android 骨架、公共类型、模拟服务已交付；原 [#2](https://github.com/Miqi9880/smart-fitting-mirror/issues/2)／[#4](https://github.com/Miqi9880/smart-fitting-mirror/issues/4) 基础任务已解决。
+- PR #11／#13／#17／#20：模拟生成流程、网络、视觉与参考功能迁移已有实现，见 [交接](task-handoff.md)。后端和页面不另起整套工程。
+- PR #21 已合并；PR #22 的旧白 T 恤验证资料为已提交待审历史成果，不能记作新目录真人通过。
+- PR #23 已合并：十四点、三品类组合、本地官网素材包和 HTTP／视觉 0.2.0；新真人贴合、真实 AI 与目标镜子继续单独验收。当前安装按 [新说明](studio-outfits.md)，不再要求复做旧白 T 恤。
 
-## 本次分工变化
+## 交接与贡献记录
 
-原 T05 中 app 页面/选衣/生成/对比/主工程集成转给 yyyrrrxxx；lyf-bee 保留 feature-tryon。#7 改由 yyyrrrxxx 负责集成实现，Miqi9880 仍组织协调。后端与 core-network 保持 haiyangniu191-design。
+负责人补位提供的代码不计作其他成员本人实现／验收，成员需说明自己运行、修正或验证的部分。原 Assignee 和长期职责不变；任务卡包含“已有交付、当前必做、下一项、环境、验证、阻塞”，没有完成整项验收时保持打开。
 
-负责人先行补充了网络、渲染和首版 App 流程；交接 PR/提交与验证证据会同步到原 Issue，成员先做本周环境/复现，再基于交付代码修正，不重复搭建。见 [当前交接清单](task-handoff.md) 和 [联调说明](tryon-integration.md)。
+工时用于估算可用时间，不是必须耗满的时长，也不限制提前交付。每人优先推进一个主要任务，用小 PR 连续交付；跨模块改动先协调、按 [协作规则](../CONTRIBUTING.md) 合并。硬件事实只采用 [有效记录](hardware-status.md)，先前 S40 信息已撤回。

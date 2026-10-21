@@ -6,6 +6,8 @@
 
 2026-10-21 增加上衣＋裤子＋帽子的组合预览，默认目录替换为三款品牌官网平铺上衣、长裤及针织帽。**首次运行先安装本地素材包**；照片不随 Git 分发，步骤及接口升级见 [商品素材与组合试穿](docs/studio-outfits.md)。原三件绘制上衣和皱褶白 T 恤仅保留在历史回归中，不出现在默认衣柜。
 
+生成主线继续由 haiyangniu191-design 接入外部试衣 API。Miqi9880 的预训练模型微调是独立探索，模型就绪后再接公共后端，其他成员不等待；当前生成仍为 MOCK，双引擎尚未实现。见 [模型路线](docs/model-strategy.md)。
+
 构建从 [Android 开发说明](android/README.md) 开始；完整操作和成员接入点见 [模拟试衣联调](docs/tryon-integration.md)。默认进入首版试衣页，页底保留硬件诊断入口。
 
 模拟服务从 [后端启动说明](backend/README.md) 开始；[35 项后端验证记录](docs/backend-validation.md) 记录后端证据，Android 闭环另见 [本轮验证](docs/tryon-validation.md)。
@@ -31,12 +33,12 @@
 
 | 账号 | 角色 | 负责目录与职责 |
 | --- | --- | --- |
-| Miqi9880 | 项目负责人、硬件与人体视觉 | core-vision、公共接口协调、SDK/设备验证、审阅与合并 |
-| haiyangniu191-design | 后端与 AI | backend、core-network；服务、生成状态、结果下载 |
+| Miqi9880 | 项目负责人、硬件与人体视觉 | core-vision、公共接口协调、SDK/设备验证、审阅与合并；额外微调探索独立推进 |
+| haiyangniu191-design | 后端与外部 AI 接入 | backend、core-network；公共服务、外部试衣 API、生成状态、结果下载 |
 | lyf-bee | 实时试衣效果 | feature-tryon；衣服定位/形变/跟随，后续遮挡 |
 | yyyrrrxxx | Android 交互与集成 | app；选衣/生成/对比页面、生命周期装配、完整演示 |
 
-当前按 [10 月 19–25 日任务](docs/weekly-2026-10-19.md) 推进真实服装照片与真人 RGB 预览；[实拍来源素材及处理说明](backend/assets/real/README.md) 已接入，成员继续复核保真度、真人贴合和设备兼容。先看 [四人任务](docs/tasks.md)、[新成员环境与 Git 入门](docs/getting-started.md) 和 [第 6–18 周计划](docs/semester-plan.md)。第 18 周开始考核，第 14 周前集成确认核心功能，第 16–17 周冻结与演练；学校当前周次待核对。
+当前按 [10 月 19–25 日任务（10/21 修订）](docs/weekly-2026-10-19.md) 推进三品类真人贴合、外部 API 条件和接入。每人有“当前必做”和“提前完成后继续”，有验证和可审阅成果即可推进下一项，不等下周；工时估算不是进度上限。先看 [四人任务](docs/tasks.md)、[环境与 Git 入门](docs/getting-started.md) 和 [总体方案](docs/semester-plan.md)。第 18 周考核、第 14 周核心集成、第 16–17 周冻结与演练是最晚控制点；学校当前周次待核对。
 
 负责人先行补位的实现及交接点见 [已有基础](docs/task-handoff.md)；成员无需重复开发。[当前设备记录](docs/hardware-status.md) 已于 2026-10-14 更正：负责人报告 ZC-3588A、Android 15、8 GB / 128 GB、触摸可用；有线摄像头已找到但接口尚未匹配，安装权限和相机能力仍待核验。后续按 [现场核对表](docs/hardware-intake.md) 收集实际参数与 SDK。
 
