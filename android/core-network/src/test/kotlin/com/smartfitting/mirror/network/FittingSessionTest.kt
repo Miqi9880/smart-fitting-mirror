@@ -28,6 +28,8 @@ class FittingSessionTest {
         var ends = 0
         var onDownload: suspend () -> Unit = {}
         var lastDownload: ByteArray? = null
+        var imageFailures = 0
+        var imageDownloads = 0
         val keys = mutableListOf<String>()
         val time = "2026-10-09T10:00:00Z"
         fun job(status: JobStatus) = TryOnJob("job_one", "session_one", "upload_one", "upper_blue", status, true, time, time,
@@ -55,11 +57,24 @@ class FittingSessionTest {
         override suspend fun cancel(sessionToken: String, jobId: String) = job(if (cancelReturnsSuccess) JobStatus.SUCCEEDED else JobStatus.CANCELLED)
         override suspend fun endSession(sessionToken: String) { ends++; if (endFails) throw IOException("离线，未确认远端清理") }
         override suspend fun download(sessionToken: String, url: String): ByteArray {
+            imageDownloads++
+            if (imageFailures-- > 0) throw IOException("Idle image connection closed")
             if (resultFails) throw IOException("结果下载暂时失败")
             onDownload()
             return byteArrayOf(4,5,6).also { lastDownload=it }
         }
         override fun close() { }
+    }
+
+    @Test fun outfitImageReadRetriesTransientDisconnectWithoutReplayingUploads() = runTest {
+        val fake=Fake().apply { imageFailures=1 }
+        val controller=FittingSession(fake,this,nowMs={testScheduler.currentTime})
+        controller.connect();runCurrent()
+        val bytes=async { controller.outfitPreview(garment) }
+        advanceUntilIdle()
+        assertArrayEquals(byteArrayOf(4,5,6),bytes.await())
+        assertEquals(2,fake.imageDownloads);assertEquals(0,fake.uploads)
+        controller.end();advanceUntilIdle()
     }
 
     @Test fun outfitCanLoadOtherRegionsButEndedSessionsStillZeroReturnedBytes() = runTest {

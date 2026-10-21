@@ -64,6 +64,7 @@ class TryOnActivity : ComponentActivity() {
     private val assetJobs = mutableMapOf<String,Job>()
     private val assetKeys = mutableMapOf<String,AssetKey>()
     private val loadedAssets = mutableSetOf<String>()
+    private val assetErrors = mutableMapOf<String,String>()
     private val permission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         if (!pendingPermission) return@registerForActivityResult
         pendingPermission = false
@@ -227,7 +228,7 @@ class TryOnActivity : ComponentActivity() {
     }
     private fun stopVision() {
         activeVision = null; hasFrame = false; captureBusy = false
-        assetJobs.values.forEach { it.cancel() }; assetJobs.clear(); assetKeys.clear(); loadedAssets.clear()
+        assetJobs.values.forEach { it.cancel() }; assetJobs.clear(); assetKeys.clear(); loadedAssets.clear(); assetErrors.clear()
         mock.stop(); rgb.stop(); preview.clear(); generate.isEnabled = false
         visionStatus.text = "采集已停止，临时预览帧已清理"
         controls.render(!model.rgb, false)
@@ -300,7 +301,7 @@ class TryOnActivity : ComponentActivity() {
         val items = model.outfit.values.toList()
         val wanted = items.associate { it.garmentId to AssetKey(controller,it) }
         for (id in assetKeys.keys.toList()) if (force || assetKeys[id] != wanted[id]) {
-            assetJobs.remove(id)?.cancel(); assetKeys.remove(id); loadedAssets.remove(id)
+            assetJobs.remove(id)?.cancel(); assetKeys.remove(id); loadedAssets.remove(id); assetErrors.remove(id)
         }
         if (force) preview.setOutfit(emptyList())
         preview.setOutfit(items)
@@ -309,6 +310,7 @@ class TryOnActivity : ComponentActivity() {
             val key = wanted.getValue(garment.garmentId)
             if (assetKeys[garment.garmentId] == key) continue
             assetKeys[garment.garmentId] = key
+            assetErrors.remove(garment.garmentId)
             assetStatus.text = "正在加载搭配素材"
             assetJobs[garment.garmentId] = lifecycleScope.launch {
                 var bytes: ByteArray? = null
@@ -320,17 +322,22 @@ class TryOnActivity : ComponentActivity() {
                     if (visible && key == assetKeys[garment.garmentId]) {
                         preview.setLayerAsset(garment, requireNotNull(decoded)); decoded = null
                         loadedAssets += garment.garmentId
-                        assetStatus.text = "已加载 ${loadedAssets.size}/${model.outfit.size} 件 · 裤子需完整腿部，帽子需双耳 · 未启用遮挡"
+                        renderAssetStatus()
                     }
                 } catch (error: Exception) {
                     if (error is CancellationException) throw error
                     if (key == assetKeys[garment.garmentId]) {
                         assetKeys.remove(garment.garmentId)
-                        assetStatus.text = "${garment.name}加载失败：${error.message}；可点击重载"
+                        assetErrors[garment.garmentId] = "${garment.name}：${error.message}"
+                        renderAssetStatus()
                     }
                 } finally { bytes?.fill(0); decoded?.recycle() }
             }
         }
+    }
+    private fun renderAssetStatus() {
+        assetStatus.text = "已加载 ${loadedAssets.size}/${model.outfit.size} 件 · 裤子需完整腿部，帽子需双耳 · 未启用遮挡" +
+            if (assetErrors.isEmpty()) "" else "\n未加载：${assetErrors.values.joinToString("；")}；可点击重载"
     }
     private fun dp(value: Int) = (value * resources.displayMetrics.density).toInt()
     private fun label(value: String, size: Float) = TextView(this).apply { text = value; textSize = size; setTextColor(Color.rgb(26, 43, 55)); setPadding(0, dp(4), 0, dp(4)) }

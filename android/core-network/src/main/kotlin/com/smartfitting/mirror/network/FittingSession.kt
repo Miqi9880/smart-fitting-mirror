@@ -118,7 +118,13 @@ class FittingSession(private val api: FittingTransport, private val scope: Corou
     suspend fun outfitPreview(garment: Garment): ByteArray {
         val active = session ?: throw IllegalStateException("请先连接服务")
         require(state.value.garments.any { it == garment }) { "单品不在当前衣柜" }
-        val bytes = api.download(active.sessionToken,garment.previewImage.url)
+        // An idle HTTP keep-alive may close between selection and loading. GET
+        // can be retried safely; mutation/upload replay remains disabled.
+        val bytes = retryRequest {
+            if (disposed || session !== active || state.value.garments.none { it == garment })
+                throw CancellationException("单品资料或会话已变更")
+            api.download(active.sessionToken,garment.previewImage.url)
+        }
         if (disposed || session !== active || state.value.garments.none { it == garment }) {
             bytes.fill(0)
             throw CancellationException("单品资料或会话已变更")
