@@ -31,6 +31,39 @@ class OutfitPlacementTest {
         val crossed = good.keypoints.copy(leftAnkle=good.keypoints.rightAnkle,rightAnkle=good.keypoints.leftAnkle)
         assertTrue(OutfitPlacement.patches(frame(crossed),pants).isEmpty())
     }
+    @Test fun trouserEaseCoversBothSidesOfEachLegWithoutChangingLengthOrSpreadingTheLegs() {
+        val base=frame().keypoints
+        val spread=base.copy(rightKnee=base.rightKnee!!.copy(x=.28f),leftKnee=base.leftKnee!!.copy(x=.72f),
+            rightAnkle=base.rightAnkle!!.copy(x=.24f),leftAnkle=base.leftAnkle!!.copy(x=.76f))
+        for (pose in listOf(base,spread)) {
+            val raw=OutfitPlacement.patches(frame(pose),pants,OutfitFit())
+            val fitted=OutfitPlacement.patches(frame(pose),pants,OutfitFit(width=1.12f))
+            val lengthened=OutfitPlacement.patches(frame(pose),pants)
+            assertFalse(raw.isEmpty())
+            assertEquals(raw.size,fitted.size)
+            assertEquals(raw.size,lengthened.size)
+            val hips=listOf(pose.rightHip!!,pose.leftHip!!)
+            val knees=listOf(pose.rightKnee!!,pose.leftKnee!!)
+            val ankles=listOf(pose.rightAnkle!!,pose.leftAnkle!!)
+            val rows=listOf(.12f,.55f,.94f).map { .5f+it*1399 }
+            for ((a,b) in raw.zip(fitted)) {
+                val side=if (a.source.indices.filter { it%2==0 }.any { a.source[it]>500f }) 1 else 0
+                for (i in a.source.indices step 2) {
+                    val y=a.source[i+1]; val row=if (y<=rows[1]) 0 else 1
+                    val t=(y-rows[row])/(rows[row+1]-rows[row])
+                    val p=if (row==0) hips[side] else knees[side]
+                    val q=if (row==0) knees[side] else ankles[side]
+                    val centre=.5f+(p.x+(q.x-p.x)*t)*479
+                    assertEquals("Widen around this leg, not the body midpoint",centre+(a.destination[i]-centre)*1.12f,b.destination[i],.002f)
+                    assertEquals("Leave the trouser length/height unchanged",a.destination[i+1],b.destination[i+1],.002f)
+                }
+            }
+            val hipY=.5f+(pose.rightHip!!.y+pose.leftHip!!.y)*.5f*639
+            for ((a,b) in raw.zip(lengthened)) for (i in a.destination.indices step 2) {
+                assertEquals("Scale length from hips, not the image origin",hipY+(a.destination[i+1]-hipY)*1.12f,b.destination[i+1],.002f)
+            }
+        }
+    }
     @Test fun hatUsesHeadIndependentlyOfTheTorsoAndNeverUsesStalePoints() {
         val ears=Keypoints(leftEar=Landmark(.6f,.2f,.95f),rightEar=Landmark(.4f,.2f,.95f))
         assertEquals(TrackingState.PARTIAL,ears.state())
