@@ -77,6 +77,20 @@ class FittingSessionTest {
         controller.end();advanceUntilIdle()
     }
 
+    @Test fun thumbnailReadRetriesDisconnectAndStillClearsBytesReturnedAfterSessionEnd() = runTest {
+        val fake=Fake().apply { imageFailures=1 }
+        val controller=FittingSession(fake,this,nowMs={testScheduler.currentTime})
+        controller.connect();runCurrent()
+        val bytes=async { controller.thumbnail(garment) }
+        advanceUntilIdle()
+        assertArrayEquals(byteArrayOf(4,5,6),bytes.await())
+        assertEquals(2,fake.imageDownloads);assertEquals(0,fake.uploads)
+        fake.onDownload={ controller.end();runCurrent() }
+        try { controller.thumbnail(garment);fail("Ended thumbnail download must be rejected") }
+        catch (_: CancellationException) {}
+        assertTrue(fake.lastDownload!!.all { it==0.toByte() })
+    }
+
     @Test fun outfitCanLoadOtherRegionsButEndedSessionsStillZeroReturnedBytes() = runTest {
         val second=garment.copy(garmentId="other",name="Other")
         val fake=Fake().apply { items=listOf(garment,second) }

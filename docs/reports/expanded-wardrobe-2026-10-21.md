@@ -8,7 +8,7 @@ HTTP0.3.0新增 dress／skirt／shorts及hem_ratio，视觉仍0.2.0。连衣裙�
 
 - `python tools/check_contracts.py`：OpenAPI、17份样例、8个拒绝用例、本地文档链接通过。
 - `python -m pytest backend/tests -q --basetemp <本轮独立临时目录>`：54通过。Windows原默认pytest临时目录无权限，改用本轮工作目录；不是测试代码失败。
-- JVM单元测试69通过：core-contracts17、core-vision18、core-network16、feature-tryon18。包括读取实际51件manifest，在静止／平移／缩放共459个姿态组合中验证非空有限面片；另测裙摆不随分腿裂开、短款不依赖踝点、缺点恢复和类别互斥。
+- JVM单元测试累计70通过：core-contracts17、core-vision18、core-network17、feature-tryon18。包括读取实际51件manifest，在静止／平移／缩放共459个姿态组合中验证非空有限面片；另测裙摆不随分腿裂开、短款不依赖踝点、缺点恢复和类别互斥。
 - `:app:assembleDebug :app:assembleDebugAndroidTest`通过；本次改动的app／feature-tryon／core-network lint为0错误，保留既有本地化／布局警告，不将警告称为零。
 - API35／Android15／x86_64本项目模拟器5556：App套件20项，14通过、6因未传旧四模式 fitting_test_host 跳过；这6项不计本次回归通过。新连衣裙连续下摆像素、原帧未改、缺腿隐藏／恢复、镜像、替换回收和迟到图拒绝通过；传入studio_test_host的本地8010三色切换、帽子保留、裙裤互斥、旋转、清空和结束也通过。
 - 51张已安装PNG的尺寸／RGBA／SHA检查通过；ZIP CRC、文件清单和逐文件哈希通过。51个需要会话授权的素材HTTP读取与manifest匹配，结束后访问返回401。
@@ -19,10 +19,12 @@ HTTP0.3.0新增 dress／skirt／shorts及hem_ratio，视觉仍0.2.0。连衣裙�
 
 首轮实际预览发现两个粗仿射三角形会把连衣裙竖向纹理折成明显折线，最终改为按水平分段的连续四点投影，并明确只裁剪分段面片，保留原上衣整图外延。修正后feature-tryon18项、相关构建／lint再次通过；模拟器补测ExtendedOutfitTest／OutfitPreviewTest共3项全部通过，其中新增竖直中心条纹像素断言防止人工对角折痕回归。上述20项套件是修正前首轮结果，不把未重复的其余项称为最终再次执行。
 
-最终本机APK：smart-fitting-mirror-0.3.0-debug.apk，SHA256 `d708630b1a21f7e00f2f7ba26e721796bef335eb31a3ad51e693a55329aecebe`。图片从本地后端包加载，不内置于APK；其他机器的debug签名与构建产物哈希可能不同。
+最终本机APK：smart-fitting-mirror-0.3.0-debug.apk，SHA256 `5aa78a58692abd25aa5493aa8f1187c3a92dfc42c5f24f95c375b1bf09962b3d`。图片从本地后端包加载，不内置于APK；其他机器的debug签名与构建产物哈希可能不同。
 
 ## 验收边界
 
 这些是初始二维预览和合成／软件检查。局部浅色和彩色残边仍存在，鸭舌帽为斜前视角近似；不代表51件真人贴合、真实穿着尺寸／颜色、遮挡、目标镜子摄像头或性能通过。多上衣叠穿、整套生成和真实API未据此宣布完成。lyf-bee继续效果与稳定性验收，初始素材位置问题由负责人修。
 
 本地运行包：smart-fitting-mirror-studio-assets-20261021-v3.zip；SHA256 `f39f47e6b3eb43840783966dca26fe6b6a28685977ecf5c1f4cbab8c3f6626aa`。使用[安装与操作说明](../studio-outfits.md)配套更新Android／后端，不能混用旧枚举客户端。演示服务继续运行；原图8020保留，透明检查页8030另开。
+
+最终图库复查发现偶发缩略图读取失败，给缩略图补上与搭配图一致的有上限GET重试，会话结束仍丢弃并清零迟到字节；新增网络单测通过。最终模拟器定向补测StudioCatalogTest／ExtendedOutfitTest／OutfitPreviewTest共4项全部通过（38.9秒），包括浏览器先搜索3件连衣裙取消在途请求、再清筛选加载全部51张真实PNG，逐张确认Bitmap已显示，未打开相机。最终相关APK／测试APK构建与lint通过。
