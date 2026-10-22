@@ -7,7 +7,10 @@ import android.graphics.Bitmap
 import android.os.Looper
 import android.os.SystemClock
 import android.util.Size
+import android.util.Log
 import android.view.Surface
+import androidx.camera.camera2.interop.Camera2CameraInfo
+import androidx.camera.camera2.interop.ExperimentalCamera2Interop
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.ImageProxy
@@ -31,6 +34,7 @@ class CameraRgbSource(
     private val lifecycleOwner: LifecycleOwner,
     private val frontFacing: Boolean = true,
     private val targetRotation: () -> Int = { Surface.ROTATION_0 },
+    private val cameraId: () -> String? = { null },
 ) : VisionSource<BitmapPixels> {
     override val capabilities = VisionCapabilities(source = VisionSourceKind.RGB_CAMERA,
         rgb = true, pose = true, personMask = false, alignedDepth = false)
@@ -43,6 +47,8 @@ class CameraRgbSource(
     private var run: Run? = null
     @Volatile private var latestArrivalMs = 0L
     private var closed = false
+    var activeCameraId: String? = null
+        private set
 
     private class Run(val ticket: Long, val sessionId: String, val detector: PoseDetector,
         val onFrame: (FrameLease<BitmapPixels>) -> Unit, val onStatus: (VisionStatus) -> Unit) {
@@ -51,6 +57,7 @@ class CameraRgbSource(
         val stabilizer = PoseStabilizer()
     }
 
+    @androidx.annotation.OptIn(markerClass = [ExperimentalCamera2Interop::class])
     override fun start(sessionId: String, onFrame: (FrameLease<BitmapPixels>) -> Unit,
                        onStatus: (VisionStatus) -> Unit) {
         checkMain()
@@ -73,12 +80,18 @@ class CameraRgbSource(
         val future = ProcessCameraProvider.getInstance(context)
         future.addListener({
             if (!generation.accepts(current.ticket)) return@addListener
+            val requestedId = cameraId()
             try {
                 val cameraProvider = future.get()
                 provider = cameraProvider
                 val preferred = if (frontFacing) CameraSelector.DEFAULT_FRONT_CAMERA else CameraSelector.DEFAULT_BACK_CAMERA
                 val fallback = if (frontFacing) CameraSelector.DEFAULT_BACK_CAMERA else CameraSelector.DEFAULT_FRONT_CAMERA
                 val selector = when {
+                    requestedId != null -> CameraSelector.Builder().addCameraFilter { infos ->
+                        infos.filter { Camera2CameraInfo.from(it).cameraId == requestedId }
+                    }.build().also {
+                        check(cameraProvider.hasCamera(it)) { "Selected camera is unavailable" }
+                    }
                     cameraProvider.hasCamera(preferred) -> preferred
                     cameraProvider.hasCamera(fallback) -> fallback
                     else -> throw IllegalStateException("No RGB camera")
@@ -92,10 +105,14 @@ class CameraRgbSource(
                     .build()
                 current.analysis = analysis
                 analysis.setAnalyzer(analysisExecutor) { proxy -> analyze(current, proxy) }
-                cameraProvider.bindToLifecycle(lifecycleOwner, selector, analysis)
-                onStatus(VisionStatus(SourceState.READY, message = "RGB 已启动；深度与遮挡未启用"))
+                val camera = cameraProvider.bindToLifecycle(lifecycleOwner, selector, analysis)
+                activeCameraId = Camera2CameraInfo.from(camera.cameraInfo).cameraId
+                Log.i("CameraRgbSource", "Bound Camera2 ID=$activeCameraId; requested=${requestedId ?: "auto"}")
+                onStatus(VisionStatus(SourceState.READY, message = "相机通道 $activeCameraId 已启动；深度与遮挡未启用"))
             } catch (_: Exception) {
-                fail(current, VisionError.CAMERA_UNAVAILABLE, "摄像头不可用，请确认设备连接或重试")
+                fail(current, VisionError.CAMERA_UNAVAILABLE, if (requestedId == null)
+                    "摄像头不可用，请确认设备连接或重试" else
+                    "相机通道 $requestedId 不可用；请关闭占用相机的应用，再重新选择通道")
             }
         }, main)
     }
@@ -185,6 +202,7 @@ class CameraRgbSource(
     private fun teardown(): Run? {
         val previous = run
         run = null
+        activeCameraId = null
         generation.end()
         previous?.analysis?.let { it.clearAnalyzer(); provider?.unbind(it) }
         previous?.detector?.close()

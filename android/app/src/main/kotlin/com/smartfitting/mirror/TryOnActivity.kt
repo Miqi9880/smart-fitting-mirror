@@ -1,6 +1,7 @@
 package com.smartfitting.mirror
 
 import android.Manifest
+import android.app.AlertDialog
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.res.Configuration
@@ -63,6 +64,7 @@ class TryOnActivity : ComponentActivity() {
     private var captureBusy = false
     private var visible = false
     private var pendingPermission = false
+    private var cameraDialog: AlertDialog? = null
     private data class AssetKey(val controller: FittingSession, val item: Garment)
     private val assetJobs = mutableMapOf<String,Job>()
     private val assetKeys = mutableMapOf<String,AssetKey>()
@@ -78,7 +80,9 @@ class TryOnActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         pendingPermission = savedInstanceState?.getBoolean("pending_permission") ?: false
-        rgb = CameraRgbSource(this, this, targetRotation = { @Suppress("DEPRECATION") windowManager.defaultDisplay.rotation })
+        rgb = CameraRgbSource(this, this,
+            targetRotation = { @Suppress("DEPRECATION") windowManager.defaultDisplay.rotation },
+            cameraId = { model.cameraId })
         mock.configure(model.synthetic); mock.setPlaying(model.playing)
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -132,6 +136,19 @@ class TryOnActivity : ComponentActivity() {
                 pendingPermission = false; model.rgb = true; model.running = true; beginVision()
             } else { pendingPermission = true; permission.launch(Manifest.permission.CAMERA) }
         }))
+        val cameraChoice = button(CameraChooser.label(model.cameraId), "fitting.camera.select") { }
+        cameraChoice.setOnClickListener {
+            cameraDialog?.dismiss()
+            cameraDialog = CameraChooser.show(this,model.cameraId) { id ->
+                if (model.cameraId != id) {
+                    pendingPermission = false
+                    model.cameraId = id; cameraChoice.text = CameraChooser.label(id)
+                    if (model.running && model.rgb) beginVision()
+                    else visionStatus.text = "${CameraChooser.label(id)}；点击 RGB 摄像头启动"
+                }
+            }
+        }
+        root.addView(cameraChoice)
         visionStatus = label("点击 RGB 摄像头开始真人预览；合成样例用于开发检查。", 12f).apply { tag = "fitting.vision" }
         root.addView(visionStatus)
         preview = TryOnView(this).apply {
@@ -209,6 +226,7 @@ class TryOnActivity : ComponentActivity() {
         if (model.running) beginVision()
     }
     override fun onStop() {
+        cameraDialog?.dismiss(); cameraDialog = null
         browser?.dismiss(); browser = null
         visible = false; model.playing = mock.playing; model.synthetic = mock.settings
         model.controller?.setVisible(false); stopVision(); before.clear(); after.clear(); super.onStop()
@@ -228,7 +246,7 @@ class TryOnActivity : ComponentActivity() {
             hasFrame = true
             preview.submit(frame, model.state.value.selected)
             controls.render(!model.rgb, true, frame.metadata.trackingState)
-            visionStatus.text = "${if (model.rgb) "RGB 摄像头" else "合成输入（非真人）"} · ${frame.metadata.trackingState} · 无深度/遮挡"
+            visionStatus.text = "${if (model.rgb) "RGB 摄像头（通道 ${rgb.activeCameraId ?: "未知"}）" else "合成输入（非真人）"} · ${frame.metadata.trackingState} · 无深度/遮挡"
             generate.isEnabled = model.state.value.canCapture && !captureBusy
         }, { update ->
             if (activeVision == id) {

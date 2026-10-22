@@ -21,6 +21,7 @@ class TryOnModel : ViewModel() {
     private var bridge: Job? = null
     var baseUrl = "http://10.0.2.2:8000"
     var rgb = true
+    var cameraId: String? = null
     var running = false
     var mirrored = true
     var synthetic = SyntheticSettings()
