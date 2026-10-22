@@ -79,8 +79,12 @@ class TryOnActivity : ComponentActivity() {
     private val permission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         if (!pendingPermission) return@registerForActivityResult
         pendingPermission = false
-        if (granted) { model.rgb = true; model.running = true; if (visible) beginVision() }
-        else visionStatus.text = "摄像头未授权，可重试或打开权限设置；合成样例可继续使用。"
+        if (granted) { model.rgb = true; model.running = true; model.visionFailure = null; if (visible) beginVision() }
+        else {
+            val message = "摄像头未授权，可重试或打开权限设置；合成样例可继续使用。"
+            if (!model.running) { model.visionFailure = message; stopVision() }
+            visionStatus.text = message; previewPanel.sourceStatus.text = message
+        }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -107,7 +111,7 @@ class TryOnActivity : ComponentActivity() {
         }
         finishSession = button("结束并清理", "fitting.end") {
             if (model.previewFullscreen) setPreviewFullscreen(false)
-            pendingPermission = false; model.running = false; stopVision()
+            pendingPermission = false; model.running = false; model.visionFailure = null; stopVision()
             before.clear(); after.clear(); model.controller?.end()
         }
         root.addView(row(connect, finishSession))
@@ -136,11 +140,9 @@ class TryOnActivity : ComponentActivity() {
             model.state.value.selected?.let { model.outfit = model.outfit - it.category }; renderOutfit()
         },button("清空搭配","fitting.outfit.clear") { model.outfit = emptyMap(); renderOutfit() }))
         root.addView(row(button("合成样例", "fitting.mock") {
-            pendingPermission = false; model.rgb = false; model.running = true; beginVision()
+            requestPreview(false)
         }, button("RGB 摄像头", "fitting.rgb") {
-            if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
-                pendingPermission = false; model.rgb = true; model.running = true; beginVision()
-            } else { pendingPermission = true; permission.launch(Manifest.permission.CAMERA) }
+            requestPreview(true)
         }))
         val cameraChoice = button(CameraChooser.label(model.cameraId), "fitting.camera.select") { }
         cameraChoice.setOnClickListener {
@@ -148,9 +150,14 @@ class TryOnActivity : ComponentActivity() {
             cameraDialog = CameraChooser.show(this,model.cameraId) { id ->
                 if (model.cameraId != id) {
                     pendingPermission = false
+                    model.visionFailure = null
                     model.cameraId = id; cameraChoice.text = CameraChooser.label(id)
                     if (model.running && model.rgb) beginVision()
-                    else visionStatus.text = "${CameraChooser.label(id)}；点击 RGB 摄像头启动"
+                    else {
+                        visionStatus.text = "${CameraChooser.label(id)}；点击 RGB 摄像头启动"
+                        previewPanel.sourceStatus.text = visionStatus.text
+                        previewPanel.renderInput(model.running,false,model.rgb)
+                    }
                 }
             }
         }
@@ -223,7 +230,13 @@ class TryOnActivity : ComponentActivity() {
             catch (_: android.content.ActivityNotFoundException) { visionStatus.text = "设备未开放主屏幕设置，请联系管理员配置开机入口。" }
         })
         tail.addView(label("上衣头部保护仅在双耳可靠时近似生效，侧脸或缺点时不启用；无人体分割、深度测距或精细遮挡。放大只改变显示，不增加相机细节。合成样例非真人。", 11f))
-        previewPanel = PreviewPanel(this,root,preview,tail) { setPreviewFullscreen(!model.previewFullscreen) }
+        previewPanel = PreviewPanel(this,root,preview,tail, {
+            if (model.running) {
+                pendingPermission = false; model.running = false; model.visionFailure = null; stopVision()
+            } else requestPreview(model.rgb)
+        }) { setPreviewFullscreen(!model.previewFullscreen) }
+        previewPanel.renderInput(model.running,model.visionFailure != null,model.rgb)
+        model.visionFailure?.let { visionStatus.text = it; previewPanel.sourceStatus.text = it }
         preview.viewportChanged = { model.previewViewport = it; previewPanel.renderZoom() }
         pageScroll = ScrollView(this).apply {
             tag = "fitting.scroll"; isFillViewport = true; addView(previewPanel); setBackgroundColor(Color.rgb(242, 246, 249))
@@ -277,6 +290,16 @@ class TryOnActivity : ComponentActivity() {
         pageScroll.post { pageScroll.scrollTo(0,if (value) 0 else normalScrollY) }
     }
 
+    private fun requestPreview(rgbInput: Boolean) {
+        pendingPermission = false
+        if (rgbInput && ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
+            pendingPermission = true; permission.launch(Manifest.permission.CAMERA)
+            return
+        }
+        model.rgb = rgbInput; model.running = true; model.visionFailure = null
+        beginVision()
+    }
+
     private fun beginVision() {
         if (!visible || !model.running) return
         stopVision()
@@ -292,7 +315,9 @@ class TryOnActivity : ComponentActivity() {
             generate.isEnabled = model.state.value.canCapture && !captureBusy
         }, { update ->
             if (activeVision == id) {
-                if (update.state == SourceState.ERROR) { model.running = false; stopVision() }
+                if (update.state == SourceState.ERROR) {
+                    model.running = false; model.visionFailure = update.message; stopVision()
+                }
                 visionStatus.text = update.message ?: update.state.name
                 previewPanel.sourceStatus.text = visionStatus.text
             }
@@ -303,8 +328,11 @@ class TryOnActivity : ComponentActivity() {
         activeVision = null; hasFrame = false; latestTracking = null; captureBusy = false
         assetJobs.values.forEach { it.cancel() }; assetJobs.clear(); assetKeys.clear(); loadedAssets.clear(); assetErrors.clear()
         mock.stop(); rgb.stop(); preview.clear(); generate.isEnabled = false
-        visionStatus.text = "采集已停止，临时预览帧已清理"
+        visionStatus.text = model.visionFailure ?: "采集已停止，临时预览帧已清理"
         previewPanel.sourceStatus.text = visionStatus.text
+        previewPanel.renderInput(model.running,model.visionFailure != null,model.rgb)
+        garments.isEnabled = model.state.value.canSelect
+        catalog.isEnabled = model.state.value.canSelect
         controls.render(!model.rgb, false)
     }
     private fun capture() {
@@ -352,7 +380,7 @@ class TryOnActivity : ComponentActivity() {
         before.update(value.original); after.update(value.result)
         if (value.phase in setOf(FittingPhase.ENDING, FittingPhase.CLOSED)) {
             if (model.previewFullscreen) setPreviewFullscreen(false)
-            model.running = false; stopVision(); before.clear(); after.clear()
+            model.running = false; model.visionFailure = null; stopVision(); before.clear(); after.clear()
             model.catalogAssets = emptyList(); model.catalogQuery = ""; model.outfit = emptyMap(); model.lastOutfitSelection = null
             outfitStatus.text = "当前搭配已清空"; browser?.dismiss(); browser = null
             fitControls.render(null,OutfitFit())
