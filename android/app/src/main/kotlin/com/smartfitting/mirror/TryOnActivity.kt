@@ -4,7 +4,6 @@ import android.Manifest
 import android.app.AlertDialog
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.content.res.Configuration
 import android.graphics.Bitmap
 import android.graphics.Color
 import android.net.Uri
@@ -14,12 +13,14 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.*
 import androidx.activity.ComponentActivity
+import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
@@ -39,6 +40,10 @@ class TryOnActivity : ComponentActivity() {
     private lateinit var rgb: CameraRgbSource
     private val source: VisionSource<BitmapPixels> get() = if (model.rgb) rgb else mock
     private lateinit var preview: TryOnView
+    private lateinit var previewPanel: PreviewPanel
+    private lateinit var pageScroll: ScrollView
+    private lateinit var fullscreenBack: OnBackPressedCallback
+    private var normalScrollY = 0
     private lateinit var fitControls: FitControls
     private lateinit var controls: SyntheticControls
     private lateinit var status: TextView
@@ -61,6 +66,7 @@ class TryOnActivity : ComponentActivity() {
     private var selecting = false
     private var activeVision: String? = null
     private var hasFrame = false
+    private var latestTracking: TrackingState? = null
     private var captureBusy = false
     private var visible = false
     private var pendingPermission = false
@@ -86,7 +92,6 @@ class TryOnActivity : ComponentActivity() {
         mock.configure(model.synthetic); mock.setPlaying(model.playing)
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(18), dp(12), dp(18), dp(12)); setBackgroundColor(Color.rgb(242, 246, 249))
         }
         root.addView(label("智能穿衣镜", 23f))
         root.addView(label("选择衣服、裙裤或帽子，开启摄像头组合试穿。", 13f))
@@ -101,6 +106,7 @@ class TryOnActivity : ComponentActivity() {
             catch (error: IllegalArgumentException) { status.text = "地址无效：${error.message}" }
         }
         finishSession = button("结束并清理", "fitting.end") {
+            if (model.previewFullscreen) setPreviewFullscreen(false)
             pendingPermission = false; model.running = false; stopVision()
             before.clear(); after.clear(); model.controller?.end()
         }
@@ -154,6 +160,7 @@ class TryOnActivity : ComponentActivity() {
         preview = TryOnView(this).apply {
             tag = "fitting.preview"; mirrored = model.mirrored; showLandmarks = model.showLandmarks
             outfitFits = model.outfitFits; contentDescription = "实时组合试衣预览"
+            protectHead = model.protectHead; viewport = model.previewViewport
         }
         preview.mode = if (model.meshMode) TryOnView.Mode.OBJ_MESH else TryOnView.Mode.PHOTO
         // Keep both switches before the tall preview so landmarks are discoverable.
@@ -164,6 +171,10 @@ class TryOnActivity : ComponentActivity() {
             text = "显示关键点"; tag = "fitting.landmarks"; isChecked = model.showLandmarks
             setOnCheckedChangeListener { _, value -> model.showLandmarks = value; preview.showLandmarks = value }
         }))
+        root.addView(Switch(this).apply {
+            text = "上衣避开头部（近似）"; tag = "fitting.head.protection"; isChecked = model.protectHead
+            setOnCheckedChangeListener { _, value -> model.protectHead = value; preview.protectHead = value }
+        })
         fitControls = FitControls(this) { category, fit ->
             model.setFit(category, fit)
             preview.outfitFits = model.outfitFits
@@ -175,12 +186,11 @@ class TryOnActivity : ComponentActivity() {
             setOnCheckedChangeListener { _, value -> model.setFitSaveEnabled(value) }
         })
         root.addView(fitControls)
-        val height = if (resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE) 240 else 340
-        root.addView(preview, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(height)))
+        val tail = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         assetStatus = label("连接服务后加载透明服装", 12f).apply { tag = "fitting.asset" }
-        root.addView(assetStatus)
-        root.addView(button("重载服装", "fitting.reload") { loadOutfit(true) })
-        root.addView(Switch(this).apply {
+        tail.addView(assetStatus)
+        tail.addView(button("重载服装", "fitting.reload") { loadOutfit(true) })
+        tail.addView(Switch(this).apply {
             text = "OBJ 网格实验（二维关键点驱动，无真实体深度）"; tag = "fitting.mesh"; isChecked = model.meshMode
             setOnCheckedChangeListener { _, value ->
                 model.meshMode = value; preview.mode = if (value) TryOnView.Mode.OBJ_MESH else TryOnView.Mode.PHOTO
@@ -190,40 +200,49 @@ class TryOnActivity : ComponentActivity() {
             pendingPermission = false; stopVision(); model.synthetic = settings; mock.configure(settings)
             if (model.running) beginVision()
         }
-        root.addView(controls)
+        tail.addView(controls)
         controls.render(!model.rgb,model.running)
-        root.addView(label("点击下方按钮会将未镜像的原始照片上传到上面的服务；实时预览不会逐帧上传。", 12f))
+        tail.addView(label("点击下方按钮会将未镜像的原始照片上传到上面的服务；实时预览不会逐帧上传。", 12f))
         generate = button("拍摄并上传生成", "fitting.generate") { capture() }
         cancel = button("取消生成", "fitting.cancel") { model.controller?.cancel() }
         retry = button("重试请求", "fitting.retry") { model.controller?.retry() }
-        root.addView(generate); root.addView(row(cancel, retry))
+        tail.addView(generate); tail.addView(row(cancel, retry))
         mockLabel = label("尚无生成结果", 13f).apply { tag = "fitting.result.kind" }
-        root.addView(mockLabel)
-        root.addView(label("前后对比（均为未镜像原图方向）", 16f))
+        tail.addView(mockLabel)
+        tail.addView(label("前后对比（均为未镜像原图方向）", 16f))
         val beforeView = ImageView(this).apply { tag = "fitting.before"; contentDescription = "拍摄原图"; scaleType = ImageView.ScaleType.FIT_CENTER }
         val afterView = ImageView(this).apply { tag = "fitting.after"; contentDescription = "生成结果"; scaleType = ImageView.ScaleType.FIT_CENTER }
-        root.addView(row(label("原始照片", 12f), label("生成结果", 12f)))
-        root.addView(row(beforeView, afterView).apply { layoutParams = LinearLayout.LayoutParams(-1, dp(220)) })
+        tail.addView(row(label("原始照片", 12f), label("生成结果", 12f)))
+        tail.addView(row(beforeView, afterView).apply { layoutParams = LinearLayout.LayoutParams(-1, dp(220)) })
         before = OwnedImage(beforeView, lifecycleScope) { status.text = it }
         after = OwnedImage(afterView, lifecycleScope) { status.text = it }
-        root.addView(row(button("硬件诊断", "fitting.diagnostics") { startActivity(Intent(this, MainActivity::class.java)) },
+        tail.addView(row(button("硬件诊断", "fitting.diagnostics") { startActivity(Intent(this, MainActivity::class.java)) },
             button("权限设置", "fitting.permissions") { startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName"))) }))
-        root.addView(button("镜子主屏幕设置", "fitting.home") {
+        tail.addView(button("镜子主屏幕设置", "fitting.home") {
             try { startActivity(Intent(Settings.ACTION_HOME_SETTINGS)) }
             catch (_: android.content.ActivityNotFoundException) { visionStatus.text = "设备未开放主屏幕设置，请联系管理员配置开机入口。" }
         })
-        root.addView(label("当前没有深度测距、人体分割或遮挡。合成样例不代表真实人体识别效果。", 11f))
-        val scroll = ScrollView(this).apply {
-            isFillViewport = true; addView(root); setBackgroundColor(Color.rgb(242, 246, 249))
+        tail.addView(label("上衣头部保护仅在双耳可靠时近似生效，侧脸或缺点时不启用；无人体分割、深度测距或精细遮挡。放大只改变显示，不增加相机细节。合成样例非真人。", 11f))
+        previewPanel = PreviewPanel(this,root,preview,tail) { setPreviewFullscreen(!model.previewFullscreen) }
+        preview.viewportChanged = { model.previewViewport = it; previewPanel.renderZoom() }
+        pageScroll = ScrollView(this).apply {
+            tag = "fitting.scroll"; isFillViewport = true; addView(previewPanel); setBackgroundColor(Color.rgb(242, 246, 249))
         }
         // Insets belong outside the scrolling content so controls/images never
         // move underneath the status and navigation bars when viewing results.
-        ViewCompat.setOnApplyWindowInsetsListener(scroll) { view, insets ->
+        ViewCompat.setOnApplyWindowInsetsListener(pageScroll) { view, insets ->
             val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
-            view.setPadding(bars.left, bars.top, bars.right, bars.bottom); insets
+            val cutout = insets.getInsets(WindowInsetsCompat.Type.displayCutout())
+            view.setPadding(maxOf(bars.left,cutout.left), maxOf(bars.top,cutout.top),
+                maxOf(bars.right,cutout.right), maxOf(bars.bottom,cutout.bottom)); insets
         }
-        setContentView(scroll)
+        fullscreenBack = object : OnBackPressedCallback(model.previewFullscreen) {
+            override fun handleOnBackPressed() = setPreviewFullscreen(false)
+        }
+        onBackPressedDispatcher.addCallback(this,fullscreenBack)
+        setContentView(pageScroll)
         WindowCompat.getInsetsController(window, root).apply { isAppearanceLightStatusBars = true; isAppearanceLightNavigationBars = true }
+        setPreviewFullscreen(model.previewFullscreen)
         lifecycleScope.launch { repeatOnLifecycle(Lifecycle.State.STARTED) { model.state.collect { render(it) } } }
     }
 
@@ -243,6 +262,21 @@ class TryOnActivity : ComponentActivity() {
     }
     override fun onDestroy() { rgb.close(); mock.close(); super.onDestroy() }
 
+    private fun setPreviewFullscreen(value: Boolean) {
+        if (value && !model.previewFullscreen) normalScrollY = pageScroll.scrollY
+        model.previewFullscreen = value; fullscreenBack.isEnabled = value
+        previewPanel.setFullscreen(value)
+        WindowCompat.getInsetsController(window,pageScroll).apply {
+            systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            if (value) {
+                currentFocus?.clearFocus()
+                hide(WindowInsetsCompat.Type.ime())
+                hide(WindowInsetsCompat.Type.systemBars())
+            } else show(WindowInsetsCompat.Type.systemBars())
+        }
+        pageScroll.post { pageScroll.scrollTo(0,if (value) 0 else normalScrollY) }
+    }
+
     private fun beginVision() {
         if (!visible || !model.running) return
         stopVision()
@@ -250,23 +284,27 @@ class TryOnActivity : ComponentActivity() {
         source.start(id, { frame ->
             if (activeVision != frame.metadata.sessionId) return@start
             hasFrame = true
+            latestTracking = frame.metadata.trackingState
             preview.submit(frame, model.state.value.selected)
             controls.render(!model.rgb, true, frame.metadata.trackingState)
-            visionStatus.text = "${if (model.rgb) "RGB 摄像头（通道 ${rgb.activeCameraId ?: "未知"}）" else "合成输入（非真人）"} · ${frame.metadata.trackingState} · 无深度/遮挡"
+            visionStatus.text = "${if (model.rgb) "RGB 摄像头（通道 ${rgb.activeCameraId ?: "未知"}）" else "合成输入（非真人）"} · ${frame.metadata.trackingState} · 无深度/精细遮挡"
+            refreshPreviewSummary()
             generate.isEnabled = model.state.value.canCapture && !captureBusy
         }, { update ->
             if (activeVision == id) {
                 if (update.state == SourceState.ERROR) { model.running = false; stopVision() }
                 visionStatus.text = update.message ?: update.state.name
+                previewPanel.sourceStatus.text = visionStatus.text
             }
         })
         loadOutfit(true)
     }
     private fun stopVision() {
-        activeVision = null; hasFrame = false; captureBusy = false
+        activeVision = null; hasFrame = false; latestTracking = null; captureBusy = false
         assetJobs.values.forEach { it.cancel() }; assetJobs.clear(); assetKeys.clear(); loadedAssets.clear(); assetErrors.clear()
         mock.stop(); rgb.stop(); preview.clear(); generate.isEnabled = false
         visionStatus.text = "采集已停止，临时预览帧已清理"
+        previewPanel.sourceStatus.text = visionStatus.text
         controls.render(!model.rgb, false)
     }
     private fun capture() {
@@ -313,6 +351,7 @@ class TryOnActivity : ComponentActivity() {
         }
         before.update(value.original); after.update(value.result)
         if (value.phase in setOf(FittingPhase.ENDING, FittingPhase.CLOSED)) {
+            if (model.previewFullscreen) setPreviewFullscreen(false)
             model.running = false; stopVision(); before.clear(); after.clear()
             model.catalogAssets = emptyList(); model.catalogQuery = ""; model.outfit = emptyMap(); model.lastOutfitSelection = null
             outfitStatus.text = "当前搭配已清空"; browser?.dismiss(); browser = null
@@ -345,6 +384,7 @@ class TryOnActivity : ComponentActivity() {
         }
         if (force) preview.setOutfit(emptyList())
         preview.setOutfit(items)
+        refreshPreviewSummary()
         if (items.isEmpty()) { assetStatus.text = "搭配已清空；选择单品或点击加入搭配"; return }
         for (garment in items) {
             val key = wanted.getValue(garment.garmentId)
@@ -376,8 +416,14 @@ class TryOnActivity : ComponentActivity() {
         }
     }
     private fun renderAssetStatus() {
-        assetStatus.text = "已加载 ${loadedAssets.size}/${model.outfit.size} 件 · 长裤／长裙需完整腿部，短款需髋膝，帽子需双耳 · 未启用遮挡" +
+        refreshPreviewSummary()
+        assetStatus.text = "已加载 ${loadedAssets.size}/${model.outfit.size} 件 · 长裤／长裙需完整腿部，短款需髋膝，帽子需双耳 · 上衣可用近似头部保护，无精细遮挡" +
             if (assetErrors.isEmpty()) "" else "\n未加载：${assetErrors.values.joinToString("；")}；可点击重载"
+    }
+    private fun refreshPreviewSummary() {
+        if (!hasFrame) return
+        previewPanel.sourceStatus.text = "${if (model.rgb) "真人 RGB" else "合成输入（非真人）"} · $latestTracking · 已加载 ${loadedAssets.size}/${model.outfit.size} 件" +
+            if (assetErrors.isEmpty()) "" else " · 有加载失败，请退出全屏重载"
     }
     private fun dp(value: Int) = (value * resources.displayMetrics.density).toInt()
     private fun label(value: String, size: Float) = TextView(this).apply { text = value; textSize = size; setTextColor(Color.rgb(26, 43, 55)); setPadding(0, dp(4), 0, dp(4)) }

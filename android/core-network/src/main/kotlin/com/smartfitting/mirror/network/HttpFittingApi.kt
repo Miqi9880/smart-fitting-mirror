@@ -67,6 +67,10 @@ class HttpFittingApi internal constructor(baseUrl: String, private val client: O
     override suspend fun cancel(sessionToken: String, jobId: String): TryOnJob =
         json(jobRequest(sessionToken, jobId, true).post(emptyBody).build())
     override suspend fun endSession(sessionToken: String) {
+        // After a long preview the server may have closed several idle asset
+        // sockets. Do not spend every bounded cleanup retry on those old sockets.
+        // This client/pool belongs to this session; active calls are not evicted.
+        transport.connectionPool.evictAll()
         exchange(request("sessions/current", sessionToken).delete().build(), 1024).fill(0)
     }
     override suspend fun download(sessionToken: String, url: String): ByteArray {
