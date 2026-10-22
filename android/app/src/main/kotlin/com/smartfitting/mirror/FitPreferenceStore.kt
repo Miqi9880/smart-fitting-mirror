@@ -16,7 +16,7 @@ class FitPreferenceStore(context: Context, private val name: String = "fitting_f
     private val prefs: SharedPreferences = context.getSharedPreferences(name, Context.MODE_PRIVATE)
 
     var enabled: Boolean
-        get() = prefs.getBoolean(KEY_ENABLED, false)
+        get() = try { prefs.getBoolean(KEY_ENABLED, false) } catch (_: ClassCastException) { false }
         set(value) { prefs.edit().putBoolean(KEY_ENABLED, value).apply() }
 
     /** Valid non-default overrides only; anything unreadable is silently dropped. */
