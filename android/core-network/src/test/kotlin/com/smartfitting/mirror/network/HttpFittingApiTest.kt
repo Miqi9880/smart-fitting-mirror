@@ -11,6 +11,31 @@ import java.io.IOException
 import java.util.concurrent.TimeUnit
 
 class HttpFittingApiTest {
+    @Test fun cleanupUsesAFreshConnectionAfterPreviewAndDoesNotReplayUnacknowledgedDeletes() = runBlocking {
+        MockWebServer().use { server ->
+            server.start(java.net.InetAddress.getByName("127.0.0.1"),0)
+            HttpFittingApi("http://127.0.0.1:${server.port}/").use { api ->
+                server.enqueue(json("session.json",201))
+                val session=api.createSession()
+                assertEquals(0,server.takeRequest(3,TimeUnit.SECONDS)!!.sequenceNumber)
+                server.enqueue(MockResponse().setResponseCode(204))
+                api.endSession(session.sessionToken)
+                val ended=server.takeRequest(3,TimeUnit.SECONDS)!!
+                assertEquals("DELETE",ended.method); assertEquals("/api/v1/sessions/current",ended.path)
+                assertEquals("Bearer ${session.sessionToken}",ended.getHeader("Authorization"))
+                assertEquals("Cleanup must not reuse the idle preview connection",0,ended.sequenceNumber)
+                server.enqueue(MockResponse().setSocketPolicy(SocketPolicy.DISCONNECT_AFTER_REQUEST))
+                try { api.endSession(session.sessionToken); fail("An unacknowledged delete must surface failure") }
+                catch (_: IOException) { }
+                assertEquals("DELETE",server.takeRequest(3,TimeUnit.SECONDS)!!.method)
+                assertEquals("No transparent request replay",3,server.requestCount)
+                server.enqueue(MockResponse().setResponseCode(204))
+                api.endSession(session.sessionToken)
+                assertEquals(0,server.takeRequest(3,TimeUnit.SECONDS)!!.sequenceNumber)
+            }
+        }
+    }
+
     @Test fun truncatedAssetFailsAndTheNextAssetCanBeDownloaded() = runBlocking {
         MockWebServer().use { server ->
             // Linux may resolve localhost to both loopback families. After the
