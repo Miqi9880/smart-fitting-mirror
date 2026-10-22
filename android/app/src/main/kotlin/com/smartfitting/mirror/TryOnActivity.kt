@@ -165,9 +165,15 @@ class TryOnActivity : ComponentActivity() {
             setOnCheckedChangeListener { _, value -> model.showLandmarks = value; preview.showLandmarks = value }
         }))
         fitControls = FitControls(this) { category, fit ->
-            model.outfitFits = model.outfitFits + (category to fit)
+            model.setFit(category, fit)
             preview.outfitFits = model.outfitFits
         }
+        root.addView(Switch(this).apply {
+            text = "记住本机贴合设置"; tag = "fitting.fit.remember"
+            contentDescription = "开启后仅在本机按品类保存宽度、纵向和上下偏移数值，不保存人像、关键点或会话"
+            isChecked = model.fitPreferences.enabled
+            setOnCheckedChangeListener { _, value -> model.setFitSaveEnabled(value) }
+        })
         root.addView(fitControls)
         val height = if (resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE) 240 else 340
         root.addView(preview, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(height)))
