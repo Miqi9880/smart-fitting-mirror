@@ -176,9 +176,15 @@ class TryOnActivity : ComponentActivity() {
             setOnCheckedChangeListener { _, value -> model.protectHead = value; preview.protectHead = value }
         })
         fitControls = FitControls(this) { category, fit ->
-            model.outfitFits = model.outfitFits + (category to fit)
+            model.setFit(category, fit)
             preview.outfitFits = model.outfitFits
         }
+        root.addView(Switch(this).apply {
+            text = "记住本机贴合设置"; tag = "fitting.fit.remember"
+            contentDescription = "开启后仅在本机按品类保存宽度、纵向和上下偏移数值，不保存人像、关键点或会话"
+            isChecked = model.fitPreferences.enabled
+            setOnCheckedChangeListener { _, value -> model.setFitSaveEnabled(value) }
+        })
         root.addView(fitControls)
         val tail = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         assetStatus = label("连接服务后加载透明服装", 12f).apply { tag = "fitting.asset" }
