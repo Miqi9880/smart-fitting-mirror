@@ -87,6 +87,26 @@ class PreviewIntegrationTest {
             // Local Uvicorn closes idle keep-alive sockets after 5s. Exercise a
             // real pause to inspect clothing, then require acknowledged cleanup.
             SystemClock.sleep(6_000)
+            var selectedIds = emptyList<String>()
+            scenario.onActivity {
+                val root=it.window.decorView
+                selectedIds=model(it).outfit.values.map { item -> item.garmentId }
+                val viewport=model(it).previewViewport
+                val input=root.findViewWithTag<Button>("fitting.preview.input")
+                assertTrue(input.isShown)
+                input.performClick()
+                assertFalse(model(it).running)
+                assertFalse(root.findViewWithTag<Button>("fitting.generate").isEnabled)
+                assertEquals(selectedIds,model(it).outfit.values.map { item -> item.garmentId })
+                assertEquals(viewport,model(it).previewViewport)
+                input.performClick()
+            }
+            await { it.window.decorView.findViewWithTag<TextView>("fitting.asset").text.contains("已加载 3/3") }
+            scenario.onActivity {
+                assertTrue(model(it).running)
+                assertFalse(model(it).rgb)
+                assertEquals(selectedIds,model(it).outfit.values.map { item -> item.garmentId })
+            }
             scenario.onActivity {
                 val root=it.window.decorView
                 root.findViewWithTag<Button>("fitting.preview.reset").performClick()

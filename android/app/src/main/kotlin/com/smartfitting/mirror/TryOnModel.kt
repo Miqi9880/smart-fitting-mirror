@@ -26,6 +26,7 @@ class TryOnModel(application: Application) : AndroidViewModel(application) {
     var rgb = true
     var cameraId: String? = null
     var running = false
+    var visionFailure: String? = null
     var mirrored = true
     var synthetic = SyntheticSettings()
     var playing = true
