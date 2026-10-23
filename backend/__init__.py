@@ -1,1 +1,1 @@
-"""Local mock fitting service; never calls a paid or real AI provider."""
+"""Smart fitting mirror backend with mock and explicitly enabled providers."""

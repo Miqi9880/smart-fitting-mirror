@@ -11,6 +11,7 @@ import time
 import uuid
 import warnings
 from collections import defaultdict, deque
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager, suppress
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -27,6 +28,7 @@ from starlette.exceptions import HTTPException
 from PIL import Image, ImageDraw, ImageOps, UnidentifiedImageError
 from .catalog import ASSET_SPECS, CATALOG_CAPACITY, GarmentWrite, initial_catalog, regression_catalog, public_item, matches
 from .catalog_repository import CatalogRepository
+from .tryon_provider import ProviderFailure, ProviderResult, TryOnProvider
 
 MAX_FILE = 10 * 1024 * 1024
 MAX_BODY = MAX_FILE + 64 * 1024
@@ -129,6 +131,7 @@ class Job:
     mode: Mode
     asset_id: str
     result_bytes: bytes | None = None
+    is_mock: bool = True
 
 
 @dataclass
@@ -143,11 +146,16 @@ class Guest:
 
 
 class Store:
-    """One-process mock. Every terminal-state decision and ownership check shares a lock."""
-    def __init__(self, mode: Mode = "success", clock: Callable[[], float] = time.time, ttl: float = 1800, catalog_path=None, catalog_profile="studio"):
+    """One-process service. State transitions and ownership checks share a lock."""
+    def __init__(self, mode: Mode = "success", clock: Callable[[], float] = time.time, ttl: float = 1800, catalog_path=None, catalog_profile="studio", provider: TryOnProvider | None = None):
         self.mode, self.clock, self.ttl = mode, clock, ttl
+        self.provider = provider
+        # The current Aidge account has QPS 1. Keep one real provider task in
+        # flight and reject additional work instead of building a paid queue.
+        self.executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="tryon-provider") if provider else None
         self.lock = threading.RLock()
         self.guests: dict[str, Guest] = {}
+        self.provider_inflight: set[tuple[str, str]] = set()
         self.buckets: dict[str, deque] = defaultdict(deque)
         self.secret = secrets.token_bytes(32)
         self.catalog_factory = regression_catalog if catalog_profile == "regression" else initial_catalog
@@ -233,6 +241,7 @@ class Store:
             key = str(uuid.UUID(key))
         except (ValueError, TypeError, AttributeError):
             raise Problem(400, "IDEMPOTENCY_KEY_REQUIRED", "请提供 UUID 格式的 Idempotency-Key")
+        work = None
         with self.lock:
             guest = self.guest(authorization)
             fingerprint = (upload_id, garment_id)
@@ -246,6 +255,10 @@ class Store:
             asset_id = guest.catalog[garment_id].asset_id
             if not ASSET_SPECS[asset_id]["generatable"]:
                 raise Problem(422, "GARMENT_NOT_GENERATABLE", "该服装仅支持实时预览")
+            garment_path = self.asset_path(asset_id) if self.provider is not None else None
+            cloth_type = self.cloth_type(guest.catalog[garment_id].category) if self.provider is not None else None
+            if self.provider is not None and self.provider_inflight:
+                raise Problem(429, "PROVIDER_BUSY", "正在生成另一项试衣，请稍后重试", True, 5)
             # Limit new attempts too; rejected simulation keys must not grow without bound.
             self.rate("jobs:" + guest.sid, 6)
             if self.mode == "rate-limit" and key not in guest.throttled_keys:
@@ -256,14 +269,89 @@ class Store:
             jid = "job_" + uuid.uuid4().hex
             now = self.clock()
             value = {"job_id": jid, "session_id": guest.sid, "upload_id": upload_id, "garment_id": garment_id,
-                     "status": "queued", "is_mock": True, "created_at": stamp(now), "updated_at": stamp(now),
+                     "status": "queued", "is_mock": self.provider is None, "created_at": stamp(now), "updated_at": stamp(now),
                      "result": None, "error": None}
-            guest.jobs[jid] = Job(value, now, self.mode, asset_id)
+            guest.jobs[jid] = Job(value, now, self.mode, asset_id, is_mock=self.provider is None)
             guest.keys[key] = fingerprint, jid
-            return value.copy(), 202
+            if self.provider is not None:
+                assert garment_path is not None and cloth_type is not None
+                work = (guest.sid, jid, bytes(guest.uploads[upload_id].data), garment_path, cloth_type)
+                self.provider_inflight.add((guest.sid, jid))
+            response = value.copy(), 202
+        if work is not None:
+            assert self.executor is not None
+            self.executor.submit(self.run_provider, *work)
+        return response
+
+    @staticmethod
+    def cloth_type(category: str) -> str:
+        return {"upper_body": "tops", "lower_body": "bottoms", "shorts": "bottoms",
+                "skirt": "bottoms", "dress": "dresses", "headwear": "hats"}[category]
+
+    @staticmethod
+    def asset_path(asset_id: str) -> Path:
+        path = ASSETS / ASSET_SPECS[asset_id]["file"]
+        if not path.is_file() and path.parent.name == "studio":
+            local_source = ASSETS / "real" / path.name
+            if local_source.is_file():
+                path = local_source
+        if not path.is_file():
+            raise Problem(503, "ASSET_NOT_INSTALLED", "请先安装本地商品素材包", True)
+        return path
+
+    def run_provider(self, sid: str, jid: str, model_image: bytes, garment_path: Path, cloth_type: str):
+        try:
+            with self.lock:
+                guest = self.guests.get(sid)
+                job = guest.jobs.get(jid) if guest else None
+                if job is None or job.value["status"] in TERMINAL:
+                    return
+                job.value["status"] = "running"
+                job.value["updated_at"] = stamp(self.clock())
+            try:
+                assert self.provider is not None
+                result = self.provider.generate(model_image, garment_path, cloth_type)
+            except ProviderFailure as error:
+                self.finish_provider_failure(sid, jid, error)
+                return
+            except Exception:
+                self.finish_provider_failure(
+                    sid, jid, ProviderFailure("PROVIDER_UNAVAILABLE", "虚拟试衣服务暂时不可用", retryable=True)
+                )
+                return
+            self.finish_provider_success(sid, jid, result)
+        finally:
+            with self.lock:
+                self.provider_inflight.discard((sid, jid))
+
+    def finish_provider_failure(self, sid: str, jid: str, error: ProviderFailure):
+        with self.lock:
+            guest = self.guests.get(sid)
+            job = guest.jobs.get(jid) if guest else None
+            if job is None or job.value["status"] in TERMINAL:
+                return
+            job.value["status"] = "failed"
+            job.value["error"] = detail(error.code, error.message, error.retryable)
+            job.value["updated_at"] = stamp(self.clock())
+
+    def finish_provider_success(self, sid: str, jid: str, result: ProviderResult):
+        with self.lock:
+            guest = self.guests.get(sid)
+            job = guest.jobs.get(jid) if guest else None
+            if job is None or job.value["status"] in TERMINAL:
+                return
+            if self.bytes_stored() + len(result.data) > MAX_STORED:
+                job.value["status"] = "failed"
+                job.value["error"] = detail("RESULT_CAPACITY", "试衣结果暂时无法保存，请结束会话后重试", True)
+            else:
+                job.result_bytes = result.data
+                job.value["status"] = "succeeded"
+                job.value["result"] = {"image_url": f"results/{jid}.png", "width": result.width,
+                                       "height": result.height, "expires_at": stamp(guest.expires)}
+            job.value["updated_at"] = stamp(self.clock())
 
     def advance(self, guest: Guest, job: Job):
-        if job.value["status"] in TERMINAL:
+        if job.value["status"] in TERMINAL or not job.is_mock:
             return
         now = self.clock()
         age = now - job.created
@@ -351,14 +439,16 @@ class CreateInput(BaseModel):
     garment_id: str = Field(min_length=1, max_length=128)
 
 
-def create_app(mode: Mode = "success", *, clock=time.time, ttl=1800, catalog_path=None, catalog_profile="studio") -> FastAPI:
+def create_app(mode: Mode = "success", *, clock=time.time, ttl=1800, catalog_path=None, catalog_profile="studio", provider: TryOnProvider | None = None) -> FastAPI:
     if mode not in {"success", "failure", "delayed", "timeout", "rate-limit"}:
         raise ValueError("Unknown mock mode")
     if not 0 < ttl <= 1800:
         raise ValueError("Session lifetime must be between 0 and 1800 seconds")
     if catalog_profile not in {"studio", "regression"}:
         raise ValueError("Unknown catalog profile")
-    store = Store(mode, clock, ttl, catalog_path, catalog_profile)
+    if provider is not None and mode != "success":
+        raise ValueError("Mock failure modes cannot be combined with a real provider")
+    store = Store(mode, clock, ttl, catalog_path, catalog_profile, provider)
 
     @asynccontextmanager
     async def lifespan(app):
@@ -375,8 +465,10 @@ def create_app(mode: Mode = "success", *, clock=time.time, ttl=1800, catalog_pat
                 await task
             with store.lock:
                 store.guests.clear()
+            if store.executor is not None:
+                store.executor.shutdown(wait=True, cancel_futures=False)
 
-    app = FastAPI(title="Smart Fitting Mirror — local mock", lifespan=lifespan)
+    app = FastAPI(title="Smart Fitting Mirror backend", lifespan=lifespan)
     app.state.store = store
     app.add_middleware(BodyLimit)
 
@@ -395,7 +487,7 @@ def create_app(mode: Mode = "success", *, clock=time.time, ttl=1800, catalog_pat
 
     @app.exception_handler(Exception)
     async def handle_unexpected(request, error):
-        return await handle_problem(request, Problem(503, "SERVICE_UNAVAILABLE", "模拟服务暂时不可用", True))
+        return await handle_problem(request, Problem(503, "SERVICE_UNAVAILABLE", "服务暂时不可用", True))
 
     def auth(request):
         return request.headers.get("authorization")
@@ -407,7 +499,8 @@ def create_app(mode: Mode = "success", *, clock=time.time, ttl=1800, catalog_pat
 
     @app.get("/health")
     def health():
-        return {"status": "ok", "mode": store.mode, "is_mock": True}
+        return {"status": "ok", "mode": store.mode if store.provider is None else store.provider.name,
+                "is_mock": store.provider is None}
 
     @app.post("/api/v1/sessions", status_code=201)
     def sessions(request: Request):
