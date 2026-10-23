@@ -1,10 +1,11 @@
 """New public wardrobe behavior; tests do not need the private brand-image pack."""
 import json
 import sqlite3
+import pytest
 
 from fastapi.testclient import TestClient
 
-from backend.catalog import CATALOG_CAPACITY, STUDIO_MANIFEST, initial_catalog, regression_catalog
+from backend.catalog import CATALOG_CAPACITY, RETIRED_STUDIO_ASSET_IDS, STUDIO_MANIFEST, GarmentWrite, initial_catalog, regression_catalog
 from backend.catalog_repository import CatalogRepository
 from backend.service import create_app
 
@@ -12,7 +13,7 @@ from backend.service import create_app
 def test_default_catalog_replaces_all_old_items_and_has_explicit_placement():
     old=set(regression_catalog()); current=initial_catalog()
     assert not old & set(current)
-    assert len(current)==51
+    assert len(current)==48
     with TestClient(create_app()) as c:
         h={'Authorization':'Bearer '+c.post('/api/v1/sessions').json()['session_token']}
         items=c.get('/api/v1/garments',headers=h).json()['items']
@@ -31,6 +32,41 @@ def test_default_catalog_replaces_all_old_items_and_has_explicit_placement():
         assert c.post('/api/v1/garments',headers=h,json=invalid).status_code==422
         valid={**invalid,'category':'headwear'}
         assert c.post('/api/v1/garments',headers=h,json=valid).status_code==201
+        for asset_id in RETIRED_STUDIO_ASSET_IDS:
+            assert c.get(f'/api/v1/assets/{asset_id}.png',headers=h).status_code==404
+            retired={'garment_id':'retired_alias','name':'Retired hoodie','asset_id':asset_id}
+            assert c.post('/api/v1/garments',headers=h,json=retired).status_code==422
+
+
+@pytest.mark.parametrize('only_retired', [False, True])
+def test_revision_three_retires_hoodies_and_aliases_without_restoring_deleted_items(tmp_path, only_retired):
+    path=tmp_path/'v3.sqlite3'
+    repository=CatalogRepository(path)
+    current=initial_catalog()
+    retired={f'studio_zip_hoodie_{color}' for color in ('01','04','09')}
+    assert RETIRED_STUDIO_ASSET_IDS==retired
+    if only_retired:
+        for gid in list(repository.snapshot()):repository.delete(gid)
+        expected={}
+    else:
+        repository.delete('studio_red_tee')
+        repository.put(current['studio_blue_tee'].model_copy(update={'name':'My edited tee'}))
+        repository.put(current['studio_black_tee'].model_copy(update={'garment_id':'my_tee'}))
+        expected=repository.snapshot()
+    with sqlite3.connect(path) as db:
+        db.execute("UPDATE catalog_meta SET value='3' WHERE key='studio_revision'")
+        db.execute("UPDATE catalog_meta SET value=? WHERE key='studio_seed_ids'", (json.dumps(list(current)+sorted(retired)),))
+        for gid in [*sorted(retired),'my_renamed_hoodie']:
+            item=GarmentWrite(garment_id=gid,name='Previously saved hoodie',asset_id=gid if gid in retired else 'studio_zip_hoodie_04')
+            db.execute('INSERT INTO catalog VALUES (?,?)',(gid,item.model_dump_json()))
+    assert CatalogRepository(path).snapshot()==expected
+    assert CatalogRepository(path).snapshot()==expected
+    # Public serialization must not encounter a dangling retired asset.
+    with TestClient(create_app(catalog_path=path)) as client:
+        headers={'Authorization':'Bearer '+client.post('/api/v1/sessions').json()['session_token']}
+        response=client.get('/api/v1/garments',headers=headers)
+        assert response.status_code==200
+        assert {item['garment_id'] for item in response.json()['items']}==set(expected)
 
 
 def test_old_database_is_upgraded_once_and_custom_and_empty_wardrobes_are_preserved(tmp_path):

@@ -65,7 +65,7 @@ class PreviewIntegrationTest {
                 root.findViewWithTag<Spinner>("synthetic.viewport").setSelection(1)
             }
             await { model(it).state.value.canSelect }
-            for (id in listOf("studio_zip_hoodie_09","studio_pleated_wide_06","studio_black_beanie")) {
+            for (id in listOf("studio_crew_sweatshirt_09","studio_pleated_wide_06","studio_black_beanie")) {
                 scenario.onActivity { model(it).controller!!.select(id) }
                 await { model(it).state.value.selectedId==id }
             }
