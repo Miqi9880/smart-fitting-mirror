@@ -29,6 +29,7 @@ from PIL import Image, ImageDraw, ImageOps, UnidentifiedImageError
 from .catalog import ASSET_SPECS, CATALOG_CAPACITY, GarmentWrite, initial_catalog, regression_catalog, public_item, matches
 from .catalog_repository import CatalogRepository
 from .tryon_provider import ProviderFailure, ProviderResult, TryOnProvider
+from .provider_control import GenerationBudget
 
 MAX_FILE = 10 * 1024 * 1024
 MAX_BODY = MAX_FILE + 64 * 1024
@@ -132,6 +133,7 @@ class Job:
     asset_id: str
     result_bytes: bytes | None = None
     is_mock: bool = True
+    budget: GenerationBudget | None = None
 
 
 @dataclass
@@ -147,8 +149,9 @@ class Guest:
 
 class Store:
     """One-process service. State transitions and ownership checks share a lock."""
-    def __init__(self, mode: Mode = "success", clock: Callable[[], float] = time.time, ttl: float = 1800, catalog_path=None, catalog_profile="studio", provider: TryOnProvider | None = None):
+    def __init__(self, mode: Mode = "success", clock: Callable[[], float] = time.time, ttl: float = 1800, catalog_path=None, catalog_profile="studio", provider: TryOnProvider | None = None, monotonic: Callable[[], float] = time.monotonic):
         self.mode, self.clock, self.ttl = mode, clock, ttl
+        self.monotonic = monotonic
         self.provider = provider
         # The current Aidge account has QPS 1. Keep one real provider task in
         # flight and reject additional work instead of building a paid queue.
@@ -271,7 +274,8 @@ class Store:
             value = {"job_id": jid, "session_id": guest.sid, "upload_id": upload_id, "garment_id": garment_id,
                      "status": "queued", "is_mock": self.provider is None, "created_at": stamp(now), "updated_at": stamp(now),
                      "result": None, "error": None}
-            guest.jobs[jid] = Job(value, now, self.mode, asset_id, is_mock=self.provider is None)
+            budget = GenerationBudget(120, clock=self.monotonic) if self.provider is not None else None
+            guest.jobs[jid] = Job(value, now, self.mode, asset_id, is_mock=self.provider is None, budget=budget)
             guest.keys[key] = fingerprint, jid
             if self.provider is not None:
                 assert garment_path is not None and cloth_type is not None
@@ -304,13 +308,17 @@ class Store:
             with self.lock:
                 guest = self.guests.get(sid)
                 job = guest.jobs.get(jid) if guest else None
+                if job is not None:
+                    self.advance(guest, job)
                 if job is None or job.value["status"] in TERMINAL:
                     return
+                assert job.budget is not None
+                budget = job.budget
                 job.value["status"] = "running"
                 job.value["updated_at"] = stamp(self.clock())
             try:
                 assert self.provider is not None
-                result = self.provider.generate(model_image, garment_path, cloth_type)
+                result = self.provider.generate(model_image, garment_path, cloth_type, budget=budget)
             except ProviderFailure as error:
                 self.finish_provider_failure(sid, jid, error)
                 return
@@ -328,6 +336,8 @@ class Store:
         with self.lock:
             guest = self.guests.get(sid)
             job = guest.jobs.get(jid) if guest else None
+            if job is not None:
+                self.advance(guest, job)
             if job is None or job.value["status"] in TERMINAL:
                 return
             job.value["status"] = "failed"
@@ -338,6 +348,8 @@ class Store:
         with self.lock:
             guest = self.guests.get(sid)
             job = guest.jobs.get(jid) if guest else None
+            if job is not None:
+                self.advance(guest, job)
             if job is None or job.value["status"] in TERMINAL:
                 return
             if self.bytes_stored() + len(result.data) > MAX_STORED:
@@ -351,7 +363,16 @@ class Store:
             job.value["updated_at"] = stamp(self.clock())
 
     def advance(self, guest: Guest, job: Job):
-        if job.value["status"] in TERMINAL or not job.is_mock:
+        if job.value["status"] in TERMINAL:
+            return
+        if not job.is_mock:
+            assert job.budget is not None
+            if job.budget.expired:
+                job.value.update(status="failed", result=None,
+                    error=detail("GENERATION_TIMEOUT", "虚拟试衣超过120秒总等待时限", True),
+                    updated_at=stamp(self.clock()))
+            # Keep the upstream slot until the worker and its cleanup actually
+            # finish, even after local timeout/cancel. Never submit an overlap.
             return
         now = self.clock()
         age = now - job.created
@@ -439,7 +460,7 @@ class CreateInput(BaseModel):
     garment_id: str = Field(min_length=1, max_length=128)
 
 
-def create_app(mode: Mode = "success", *, clock=time.time, ttl=1800, catalog_path=None, catalog_profile="studio", provider: TryOnProvider | None = None) -> FastAPI:
+def create_app(mode: Mode = "success", *, clock=time.time, ttl=1800, catalog_path=None, catalog_profile="studio", provider: TryOnProvider | None = None, monotonic=time.monotonic) -> FastAPI:
     if mode not in {"success", "failure", "delayed", "timeout", "rate-limit"}:
         raise ValueError("Unknown mock mode")
     if not 0 < ttl <= 1800:
@@ -448,7 +469,7 @@ def create_app(mode: Mode = "success", *, clock=time.time, ttl=1800, catalog_pat
         raise ValueError("Unknown catalog profile")
     if provider is not None and mode != "success":
         raise ValueError("Mock failure modes cannot be combined with a real provider")
-    store = Store(mode, clock, ttl, catalog_path, catalog_profile, provider)
+    store = Store(mode, clock, ttl, catalog_path, catalog_profile, provider, monotonic)
 
     @asynccontextmanager
     async def lifespan(app):

@@ -24,6 +24,7 @@ from typing import Any
 from alibabacloud_aidge20260428 import models as aidge_models
 from alibabacloud_aidge20260428.client import Client as AidgeClient
 from alibabacloud_tea_openapi.models import Config
+from darabonba.policy.retry import RetryOptions
 
 from backend.volc_tryon_smoke import ConfigurationError, load_dotenv, resolve_private_path
 
@@ -126,6 +127,9 @@ def build_client(settings: Settings) -> AidgeClient:
     config = Config(access_key_id=settings.access_key_id, access_key_secret=settings.access_key_secret)
     config.endpoint = settings.endpoint
     config.region_id = settings.region
+    # A submit response may be lost after the paid task was accepted. Never let
+    # the SDK silently repeat submission; only task queries are retried by us.
+    config.retry_options = RetryOptions(retryable=False)
     return AidgeClient(config)
 
 

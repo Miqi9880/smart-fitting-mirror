@@ -52,7 +52,7 @@ class FakeProvider:
         if not blocked:
             self.release.set()
 
-    def generate(self, model_image: bytes, garment_image: Path, cloth_type: str) -> ProviderResult:
+    def generate(self, model_image: bytes, garment_image: Path, cloth_type: str, *, budget=None) -> ProviderResult:
         self.calls += 1
         assert model_image.startswith(b"\x89PNG")
         assert garment_image.is_file()
@@ -170,11 +170,15 @@ class FakeCos:
 class FakeAidge:
     def __init__(self, query_failures=0):
         self.query_failures = query_failures
+        self.submit_calls = 0
+        self.query_calls = 0
 
-    def virtual_try_on(self, request):
+    def virtual_try_on_with_options(self, request, runtime):
+        self.submit_calls += 1
         return SimpleNamespace(body=SimpleNamespace(success=True, data=SimpleNamespace(task_id="task-one")))
 
-    def query_async_task_result(self, request):
+    def query_async_task_result_with_options(self, request, runtime):
+        self.query_calls += 1
         if self.query_failures:
             self.query_failures -= 1
             raise OSError("temporary query failure")
@@ -184,7 +188,7 @@ class FakeAidge:
 
 def test_aidge_cos_provider_cleans_both_inputs(monkeypatch, tmp_path):
     garment = tmp_path / "garment.png"
-    garment.write_bytes(png())
+    garment.write_bytes(png((320, 480)))
     cos = FakeCos()
     aidge_settings = AidgeSettings(
         access_key_id="id", access_key_secret="secret", endpoint="example", region="region",
@@ -197,8 +201,8 @@ def test_aidge_cos_provider_cleans_both_inputs(monkeypatch, tmp_path):
         poll_interval=1, max_wait_seconds=3, cos_client=cos, aidge_client=FakeAidge(),
     )
     monkeypatch.setattr("backend.tryon_provider.time.sleep", lambda _: None)
-    monkeypatch.setattr("backend.tryon_provider.download_result", lambda _: ProviderResult(png(), 32, 48))
-    result = provider.generate(png(), garment, "tops")
+    monkeypatch.setattr("backend.tryon_provider.download_result", lambda _, **kwargs: ProviderResult(png(), 32, 48))
+    result = provider.generate(png((320, 480)), garment, "tops")
     assert (result.width, result.height) == (32, 48)
     assert len(cos.deleted) == 2
     assert all(key.startswith("tryon-input/") for key in cos.deleted)
@@ -206,7 +210,7 @@ def test_aidge_cos_provider_cleans_both_inputs(monkeypatch, tmp_path):
 
 def test_aidge_query_retry_keeps_inputs_until_success(monkeypatch, tmp_path):
     garment = tmp_path / "garment.png"
-    garment.write_bytes(png())
+    garment.write_bytes(png((320, 480)))
     cos = FakeCos()
     aidge_settings = AidgeSettings(
         access_key_id="id", access_key_secret="secret", endpoint="example", region="region",
@@ -219,14 +223,16 @@ def test_aidge_query_retry_keeps_inputs_until_success(monkeypatch, tmp_path):
         poll_interval=1, max_wait_seconds=3, cos_client=cos, aidge_client=FakeAidge(query_failures=1),
     )
     monkeypatch.setattr("backend.tryon_provider.time.sleep", lambda _: None)
-    monkeypatch.setattr("backend.tryon_provider.download_result", lambda _: ProviderResult(png(), 32, 48))
-    assert provider.generate(png(), garment, "tops").width == 32
+    monkeypatch.setattr("backend.tryon_provider.download_result", lambda _, **kwargs: ProviderResult(png(), 32, 48))
+    assert provider.generate(png((320, 480)), garment, "tops").width == 32
     assert len(cos.deleted) == 2
+    assert provider.aidge_client.submit_calls == 1
+    assert provider.aidge_client.query_calls == 2
 
 
 def test_cleanup_failure_logs_count_without_object_key(monkeypatch, tmp_path, caplog):
     garment = tmp_path / "garment.png"
-    garment.write_bytes(png())
+    garment.write_bytes(png((320, 480)))
     cos = FakeCos(delete_failures=1)
     settings = AidgeSettings(
         access_key_id="id", access_key_secret="secret", endpoint="example", region="region",
@@ -239,7 +245,7 @@ def test_cleanup_failure_logs_count_without_object_key(monkeypatch, tmp_path, ca
         poll_interval=1, max_wait_seconds=3, cos_client=cos, aidge_client=FakeAidge(),
     )
     monkeypatch.setattr("backend.tryon_provider.time.sleep", lambda _: None)
-    monkeypatch.setattr("backend.tryon_provider.download_result", lambda _: ProviderResult(png(), 32, 48))
-    assert provider.generate(png(), garment, "tops").width == 32
+    monkeypatch.setattr("backend.tryon_provider.download_result", lambda _, **kwargs: ProviderResult(png(), 32, 48))
+    assert provider.generate(png((320, 480)), garment, "tops").width == 32
     assert "1 temporary COS input(s) could not be deleted" in caplog.text
     assert all(key not in caplog.text for key in cos.deleted)

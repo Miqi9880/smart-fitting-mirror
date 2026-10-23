@@ -8,12 +8,17 @@ image and create a short-lived, signed HTTPS download URL for Aidge.
 from __future__ import annotations
 
 import mimetypes
+import logging
 import os
 import re
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 from typing import Any, Protocol
+
+import requests
+
+from backend.provider_control import GenerationBudget, network_budget, using_budget
 
 from backend.volc_tryon_smoke import ConfigurationError, load_dotenv
 
@@ -27,6 +32,33 @@ MAX_PRESIGN_SECONDS = 3600
 ALLOWED_ROLES = {"model", "garment"}
 BUCKET_PATTERN = re.compile(r"^[a-z0-9][a-z0-9-]{0,62}-[0-9]+$")
 REGION_PATTERN = re.compile(r"^[a-z]+(?:-[a-z0-9]+)+$")
+LOGGER = logging.getLogger(__name__)
+
+
+class BudgetSession(requests.Session):
+    """Use the current operation's remaining time without mutating shared SDK config."""
+
+    def request(self, method, url, **kwargs):
+        budget = network_budget.get()
+        limit = budget.socket_timeout() if budget is not None else 10.0
+        kwargs["timeout"] = (limit, limit)
+        response = super().request(method, url, **kwargs)
+        if budget is not None:
+            try:
+                budget.check()
+            except Exception:
+                response.close()
+                raise
+        return response
+
+
+def _call(client, method: str, budget: GenerationBudget | None, **kwargs):
+    with using_budget(budget):
+        try:
+            return getattr(client, method)(**kwargs)
+        finally:
+            if budget is not None:
+                budget.check()
 
 
 class CosClient(Protocol):
@@ -107,7 +139,10 @@ def build_client(settings: CosSettings) -> CosClient:
         Token=settings.session_token,
         Scheme="https",
     )
-    return CosS3Client(config)
+    # SDK diagnostics can contain object keys/authorization headers. Application
+    # failures below emit safe counts instead, even when root logging is enabled.
+    logging.getLogger("qcloud_cos").propagate = False
+    return CosS3Client(config, retry=0, session=BudgetSession())
 
 
 def build_object_key(local_path: Path, role: str, *, unique_id: str | None = None) -> str:
@@ -136,6 +171,7 @@ def upload_tryon_input(
     role: str,
     *,
     unique_id: str | None = None,
+    budget: GenerationBudget | None = None,
 ) -> UploadedInput:
     """Upload one image, verify it exists, then issue a short-lived GET URL."""
     source = local_path.resolve()
@@ -144,29 +180,28 @@ def upload_tryon_input(
     object_key = build_object_key(source, role, unique_id=unique_id)
     _require_authorized_key(settings, object_key)
     content_type = mimetypes.guess_type(source.name)[0] or "application/octet-stream"
-    response = client.put_object_from_local_file(
-        Bucket=settings.bucket,
-        Key=object_key,
-        LocalFilePath=str(source),
-        ContentType=content_type,
-    )
-    client.head_object(Bucket=settings.bucket, Key=object_key)
-    url = client.get_presigned_download_url(
-        Bucket=settings.bucket,
-        Key=object_key,
-        Expired=settings.presign_seconds,
-    )
-    if not isinstance(url, str) or not url.startswith("https://"):
-        raise RuntimeError("COS SDK did not return a signed HTTPS URL.")
-    return UploadedInput(
-        object_key=object_key,
-        download_url=url,
-        expires_seconds=settings.presign_seconds,
-        etag=response.get("ETag") if isinstance(response, dict) else None,
-    )
+    if budget is not None:
+        budget.check()
+    try:
+        # Own the key before PUT: a lost PUT response does not prove it failed.
+        response = _call(client, "put_object_from_local_file", budget,
+            Bucket=settings.bucket, Key=object_key, LocalFilePath=str(source), ContentType=content_type)
+        _call(client, "head_object", budget, Bucket=settings.bucket, Key=object_key)
+        url = _call(client, "get_presigned_download_url", budget,
+            Bucket=settings.bucket, Key=object_key, Expired=settings.presign_seconds)
+        if not isinstance(url, str) or not url.startswith("https://"):
+            raise RuntimeError("COS SDK did not return a signed HTTPS URL.")
+        return UploadedInput(object_key, url, settings.presign_seconds,
+            response.get("ETag") if isinstance(response, dict) else None)
+    except Exception:
+        try:
+            delete_tryon_input(client, settings, object_key, budget=GenerationBudget(10))
+        except Exception:
+            LOGGER.warning("1 temporary COS input could not be deleted after upload failure; lifecycle cleanup remains active")
+        raise
 
 
-def delete_tryon_input(client: CosClient, settings: CosSettings, object_key: str) -> None:
+def delete_tryon_input(client: CosClient, settings: CosSettings, object_key: str, *, budget: GenerationBudget | None = None) -> None:
     """Delete only an object covered by the configured try-on input prefix."""
     _require_authorized_key(settings, object_key)
-    client.delete_object(Bucket=settings.bucket, Key=object_key)
+    _call(client, "delete_object", budget, Bucket=settings.bucket, Key=object_key)
