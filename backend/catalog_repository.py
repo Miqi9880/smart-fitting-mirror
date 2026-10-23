@@ -8,7 +8,7 @@ import sqlite3
 from contextlib import closing
 from pathlib import Path
 
-from .catalog import ASSET_SPECS, CATALOG_CAPACITY, STUDIO_MANIFEST, GarmentWrite, initial_catalog, regression_catalog
+from .catalog import ASSET_SPECS, CATALOG_CAPACITY, RETIRED_STUDIO_ASSET_IDS, STUDIO_MANIFEST, GarmentWrite, initial_catalog, regression_catalog
 
 
 class CatalogRepository:
@@ -27,6 +27,11 @@ class CatalogRepository:
                 db.execute("INSERT INTO catalog_meta VALUES ('studio_seed_ids',?)",
                            (json.dumps(list((regression_catalog() if profile == 'regression' else initial_catalog()))),))
             elif profile == "studio" and db.execute("SELECT value FROM catalog_meta WHERE key='studio_revision'").fetchone() != (str(STUDIO_MANIFEST['revision']),):
+                # Retire the asset, including renamed aliases, before reading the
+                # remaining IDs. Other edits and intentional deletions survive.
+                for gid, payload in db.execute('SELECT id,payload FROM catalog').fetchall():
+                    if GarmentWrite.model_validate_json(payload).asset_id in RETIRED_STUDIO_ASSET_IDS:
+                        db.execute('DELETE FROM catalog WHERE id=?', (gid,))
                 # Only newly introduced defaults are added. Previously deleted defaults
                 # and custom edits survive; an intentionally empty catalog stays empty.
                 ids = {row[0] for row in db.execute('SELECT id FROM catalog')}

@@ -24,3 +24,18 @@ def test_pack_validation_precedes_all_writes_and_rejects_unknown_paths(tmp_path)
     with ZipFile(pack,'w') as archive:archive.writestr('one.png',data)
     assert install_pack(pack,tmp_path)==1
     assert (tmp_path/'one.png').read_bytes()==data
+
+
+def test_old_pack_retired_files_are_ignored_but_other_extra_paths_are_rejected(tmp_path):
+    pixels=io.BytesIO();Image.new('RGBA',(2,2),(40,50,60,0)).save(pixels,'PNG');data=pixels.getvalue()
+    item={'file':'one.png','width':2,'height':2,'sha256':hashlib.sha256(data).hexdigest()}
+    (tmp_path/'manifest.json').write_text(json.dumps({'items':[item],'retired_asset_ids':['studio_zip_hoodie_04']}),encoding='utf-8')
+    pack=tmp_path/'old.zip'
+    with ZipFile(pack,'w') as archive:
+        archive.writestr('one.png',data)
+        archive.writestr('studio_zip_hoodie_04.png',b'ignored retired image')
+    assert install_pack(pack,tmp_path)==1
+    assert not (tmp_path/'studio_zip_hoodie_04.png').exists()
+    with ZipFile(pack,'a') as archive:archive.writestr('unexpected.png',data)
+    with pytest.raises(ValueError,match='未知路径'):
+        install_pack(pack,tmp_path)

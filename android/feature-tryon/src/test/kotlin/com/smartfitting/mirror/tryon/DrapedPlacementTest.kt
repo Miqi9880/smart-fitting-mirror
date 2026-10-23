@@ -7,10 +7,10 @@ import org.junit.Test
 import kotlinx.serialization.json.*
 
 class DrapedPlacementTest {
-    @Test fun allFiftyOneActualCalibrationsProduceFinitePatchesAcrossSyntheticMotion() {
+    @Test fun allActiveCalibrationsProduceFinitePatchesAcrossSyntheticMotion() {
         val manifest=Json.parseToJsonElement(checkNotNull(javaClass.classLoader!!.getResource("manifest.json")).readText()).jsonObject
         val items=manifest.getValue("items").jsonArray
-        assertEquals(51,items.size)
+        assertEquals(48,items.size)
         for (element in items) {
             val obj=element.jsonObject
             val image=PreviewImage("http://localhost/asset.png",obj.getValue("width").jsonPrimitive.int,

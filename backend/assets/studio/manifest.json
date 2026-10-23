@@ -1,5 +1,5 @@
 {
-  "revision": 3,
+  "revision": 4,
   "items": [
     {
       "garment_id": "studio_black_tee",
@@ -622,162 +622,6 @@
         233,
         1047,
         1224
-      ],
-      "calibration_status": "initial_synthetic_only"
-    },
-    {
-      "garment_id": "studio_zip_hoodie_01",
-      "name": "UNIQLO 米白拉链连帽卫衣",
-      "category": "upper_body",
-      "style_id": "zip_hoodie",
-      "color_code": "01",
-      "view": "front_flat_product",
-      "file": "studio_zip_hoodie_01.png",
-      "width": 1086,
-      "height": 1448,
-      "anchors": {
-        "right_shoulder": {
-          "x": 0.29781,
-          "y": 0.34001
-        },
-        "left_shoulder": {
-          "x": 0.70312,
-          "y": 0.34001
-        },
-        "right_hip": {
-          "x": 0.32424,
-          "y": 0.82492
-        },
-        "left_hip": {
-          "x": 0.67668,
-          "y": 0.82492
-        }
-      },
-      "attachment_anchors": {},
-      "generatable": true,
-      "sha256": "cef83deb05320dbd7470484d526b3d1b7ac3f1fde96baeb29e36ff010fcb351a",
-      "source_sha256": "64f89067cad689af0f6bbc9f802e328e65e1288fc2f7dfd10bb80391988b79ae",
-      "source_url": "https://www.uniqlo.com/us/en/products/E486119-000/00?colorDisplayCode=01",
-      "image_url": "https://image.uniqlo.com/UQ/ST3/WesternCommon/imagesgoods/486119/item/goods_01_486119_3x4.jpg?width=1000",
-      "brand": "UNIQLO",
-      "color": "米白",
-      "processing": "Built-in image_gen background extraction. No Python pixel editing/recoloring. Not pixel-identical segmentation; fine fringe may remain.",
-      "rights": "Brand product imagery; no open redistribution license is asserted. Images stay in the local asset pack, outside Git.",
-      "alpha_bbox": [
-        33,
-        56,
-        1035,
-        1392
-      ],
-      "opaque_bbox": [
-        65,
-        135,
-        1021,
-        1366
-      ],
-      "calibration_status": "initial_synthetic_only"
-    },
-    {
-      "garment_id": "studio_zip_hoodie_04",
-      "name": "UNIQLO 灰色拉链连帽卫衣",
-      "category": "upper_body",
-      "style_id": "zip_hoodie",
-      "color_code": "04",
-      "view": "front_flat_product",
-      "file": "studio_zip_hoodie_04.png",
-      "width": 1086,
-      "height": 1448,
-      "anchors": {
-        "right_shoulder": {
-          "x": 0.29274,
-          "y": 0.32193
-        },
-        "left_shoulder": {
-          "x": 0.71924,
-          "y": 0.32193
-        },
-        "right_hip": {
-          "x": 0.32055,
-          "y": 0.84466
-        },
-        "left_hip": {
-          "x": 0.69143,
-          "y": 0.84466
-        }
-      },
-      "attachment_anchors": {},
-      "generatable": true,
-      "sha256": "7413f92c2490c6debd9def259e88bc2af5e79c430cba048816afd7ec357f49cc",
-      "source_sha256": "747ce3a91d112061f9a8ae6fedf9e130dd3a4b34d549e695b5fcba395a4dbf9b",
-      "source_url": "https://www.uniqlo.com/us/en/products/E486119-000/00?colorDisplayCode=04",
-      "image_url": "https://image.uniqlo.com/UQ/ST3/WesternCommon/imagesgoods/486119/item/goods_04_486119_3x4.jpg?width=1000",
-      "brand": "UNIQLO",
-      "color": "灰色",
-      "processing": "Built-in image_gen background extraction. No Python pixel editing/recoloring. Not pixel-identical segmentation; fine fringe may remain.",
-      "rights": "Brand product imagery; no open redistribution license is asserted. Images stay in the local asset pack, outside Git.",
-      "alpha_bbox": [
-        0,
-        57,
-        1059,
-        1420
-      ],
-      "opaque_bbox": [
-        46,
-        81,
-        1052,
-        1408
-      ],
-      "calibration_status": "initial_synthetic_only"
-    },
-    {
-      "garment_id": "studio_zip_hoodie_09",
-      "name": "UNIQLO 黑色拉链连帽卫衣",
-      "category": "upper_body",
-      "style_id": "zip_hoodie",
-      "color_code": "09",
-      "view": "front_flat_product",
-      "file": "studio_zip_hoodie_09.png",
-      "width": 1086,
-      "height": 1448,
-      "anchors": {
-        "right_shoulder": {
-          "x": 0.3017,
-          "y": 0.33216
-        },
-        "left_shoulder": {
-          "x": 0.70107,
-          "y": 0.33216
-        },
-        "right_hip": {
-          "x": 0.32774,
-          "y": 0.81117
-        },
-        "left_hip": {
-          "x": 0.67502,
-          "y": 0.81117
-        }
-      },
-      "attachment_anchors": {},
-      "generatable": true,
-      "sha256": "f3185c2ab8982253c1a94196ce0810c7abe1b4fcf745d56a5ab1668e4ec63ce4",
-      "source_sha256": "b14fd2668fffb70082eb023320cc676d8dd9d2a4aa99f336c366ce060d00f3ed",
-      "source_url": "https://www.uniqlo.com/us/en/products/E486119-000/00?colorDisplayCode=09",
-      "image_url": "https://image.uniqlo.com/UQ/ST3/WesternCommon/imagesgoods/486119/item/goods_09_486119_3x4.jpg?width=1000",
-      "brand": "UNIQLO",
-      "color": "黑色",
-      "processing": "Built-in image_gen background extraction. No Python pixel editing/recoloring. Not pixel-identical segmentation; fine fringe may remain.",
-      "rights": "Brand product imagery; no open redistribution license is asserted. Images stay in the local asset pack, outside Git.",
-      "alpha_bbox": [
-        0,
-        31,
-        1068,
-        1448
-      ],
-      "opaque_bbox": [
-        73,
-        128,
-        1015,
-        1344
       ],
       "calibration_status": "initial_synthetic_only"
     },
@@ -2767,5 +2611,10 @@
       "calibration_status": "initial_synthetic_only",
       "hem_ratio": 1.7
     }
+  ],
+  "retired_asset_ids": [
+    "studio_zip_hoodie_01",
+    "studio_zip_hoodie_04",
+    "studio_zip_hoodie_09"
   ]
 }

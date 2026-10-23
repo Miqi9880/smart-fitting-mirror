@@ -51,7 +51,7 @@ def test_http_smoke_uses_one_job_and_ends_session(monkeypatch, tmp_path):
         "backend.provider_http_smoke.httpx.Client",
         lambda **kwargs: original_client(transport=httpx.MockTransport(handler), base_url="http://test", **kwargs),
     )
-    summary = run("http://test", model, "studio_zip_hoodie_04", output, 10)
+    summary = run("http://test", model, "studio_black_tee", output, 10)
     assert summary["status"] == "succeeded" and output.read_bytes().startswith(b"\x89PNG")
     creates = [call for call in calls if call[0:2] == ("POST", "/api/v1/tryon-jobs")]
     assert len(creates) == 1 and creates[0][2]
@@ -70,4 +70,4 @@ def test_http_smoke_refuses_mock_backend(monkeypatch, tmp_path):
     model = tmp_path / "model.png"
     model.write_bytes(png())
     with pytest.raises(RuntimeError, match="not using a real provider"):
-        run("http://test", model, "studio_zip_hoodie_04", tmp_path / "result.png", 10)
+        run("http://test", model, "studio_black_tee", tmp_path / "result.png", 10)
