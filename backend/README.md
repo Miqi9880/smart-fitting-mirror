@@ -2,6 +2,8 @@
 
 实现 HTTP 合同 V0.3.0，含会话、上传、生成任务、六品类51件初始衣柜及详情/增删改。SQLite 保存内置基础目录，游客的临时编辑隔离保存。默认仍为不联网的 MOCK；显式使用 `--provider aidge-cos` 时，生成任务通过腾讯云 COS 临时签名链接调用阿里云 Aidge，返回 `is_mock=false`。[当前商品素材与组合预览](../docs/studio-outfits.md)。
 
+真实 AI 的逐步配置、启动和一次性 HTTP 验证见 [真实 AI 后端配置与验证教程](../docs/real-ai-backend-setup.md)。
+
 ## 启动
 
 在仓库根目录使用 Python 3.12：
