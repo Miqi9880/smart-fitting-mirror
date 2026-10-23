@@ -1,5 +1,7 @@
 # haiyangniu191-design 外部虚拟试衣 API 接入报告
 
+本报告保留原始提交9dc4a74的80项测试与两次CG输入真实调用。随后PR审查的三个问题由负责人明确接手，补单调时钟总预算、部分上传清理和生成输入适配，106项软件检查见[接手修复记录](provider-recovery-2026-10-23.md)。原始实测不能作为修复后再次真实调用的证据；下方“上游单并发”以最新记录的本地worker边界为准。
+
 - 执行日期：2026-10-22 至 2026-10-23
 - 对应任务：[Issue #5](https://github.com/Miqi9880/smart-fitting-mirror/issues/5)
 - 分支：`feat/hyl-external-tryon-api`

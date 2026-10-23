@@ -1,6 +1,8 @@
-# 四人当前任务与企业滚动交付（2026-10-22 更新）
+# 四人当前任务与企业滚动交付（2026-10-23 更新）
 
-共同目标：同一个 Android App 的实时预览、真实生成、对比和清理持续可用。取消原第18周交付及学期冻结约束，按 [企业计划](delivery-plan.md) 连续推进具备条件的软件方向。当前生成仍为 MOCK，外部 API 主线不等负责人独立微调。
+共同目标：同一个Android App的实时预览、真实生成、对比和清理持续可用。取消原第18周交付及学期冻结约束，按[企业计划](delivery-plan.md)连续推进。默认生成仍MOCK，可选Aidge后端已有，修复后真实云端及同一App联调仍待验收；外部API主线不等负责人独立微调。
+
+10/23增量：可选Aidge/COS提供方由haiyangniu191-design实现并有原始两次CG实测；PR #37三项审查修复由负责人接手，106项软件验证通过，[修复记录与边界](reports/provider-recovery-2026-10-23.md)。旧适配、两次后端实测和三项修复不重复布置，APK仍0.3.5。
 
 **现场与真人确认统一由 Miqi9880 负责。** 包括镜子安装／联网／接线／权限、真实相机取流、真人贴合及运动、目标设备触摸／性能；不分配给其他组员，也不要求他们购买或借用安卓手机。其他成员交软件、模拟器／合成输入证据和待现场检查清单，根据负责人反馈修复。
 
@@ -15,7 +17,7 @@
 | 人员／任务 | 当前必做 | 完成后直接继续 |
 | --- | --- | --- |
 | Miqi9880／受托 Codex／[#3](https://github.com/Miqi9880/smart-fitting-mirror/issues/3)、[#26](https://github.com/Miqi9880/smart-fitting-mirror/issues/26) | 全部现场／真人确认；素材残边与其他初始位置查漏、公共接口和审阅；向组员交接透明素材包 | 多款／多姿态反馈与设备记录 → 叠穿原型及公共软件缺口；微调独立探索 |
-| haiyangniu191-design／[#5](https://github.com/Miqi9880/smart-fitting-mirror/issues/5) | 一个真实外部 API 的条件与提供方适配，复用现有后端／任务接口 | 账号具备后以获准静态输入真实调用 → 同一 App 联调 → 异常／取消／幂等／清理 |
+| haiyangniu191-design／[#5](https://github.com/Miqi9880/smart-fitting-mirror/issues/5) | 复用已交付Aidge/COS与负责人修复，和yyyrrrxxx接同一Android生成页；不重做适配/两次后端实测/三项修复 | 真实结果展示 → 新条件下异常／取消／幂等／清理；继续后端维护，不承担现场 |
 | lyf-bee／[#6](https://github.com/Miqi9880/smart-fitting-mirror/issues/6) | 用程序生成的测试图／姿态定位长裤等面片细暗接缝，给出可复现证据及可行的最小修正 | 针对新增问题的软件稳定性／性能回归；依负责人反馈修复，不承担现场或真人采集 |
 | yyyrrrxxx／[#7](https://github.com/Miqi9880/smart-fitting-mirror/issues/7) | 可选保存已接收；当前模拟器大字体（1.3/1.5倍）与读屏标签/焦点查漏，只修新缺陷 | 同一生成页的真实API联调与错误恢复；不重做保存/全屏/缩放 |
 

@@ -153,8 +153,8 @@ class Store:
         self.mode, self.clock, self.ttl = mode, clock, ttl
         self.monotonic = monotonic
         self.provider = provider
-        # The current Aidge account has QPS 1. Keep one real provider task in
-        # flight and reject additional work instead of building a paid queue.
+        # Keep one local provider worker in flight, including its cleanup.
+        # The upstream cannot be cancelled; a local timeout is not cloud cancellation.
         self.executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="tryon-provider") if provider else None
         self.lock = threading.RLock()
         self.guests: dict[str, Guest] = {}
@@ -371,8 +371,8 @@ class Store:
                 job.value.update(status="failed", result=None,
                     error=detail("GENERATION_TIMEOUT", "虚拟试衣超过120秒总等待时限", True),
                     updated_at=stamp(self.clock()))
-            # Keep the upstream slot until the worker and its cleanup actually
-            # finish, even after local timeout/cancel. Never submit an overlap.
+            # Keep the local slot until the worker and its cleanup finish, even
+            # after timeout/cancel. No implicit paid retry is queued here.
             return
         now = self.clock()
         age = now - job.created
