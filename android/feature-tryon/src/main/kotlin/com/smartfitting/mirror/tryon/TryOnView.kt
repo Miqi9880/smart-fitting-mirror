@@ -9,6 +9,9 @@ import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.PorterDuff
 import android.graphics.PorterDuffXfermode
+import android.graphics.RectF
+import android.view.MotionEvent
+import android.view.ScaleGestureDetector
 import android.view.View
 import com.smartfitting.mirror.contracts.*
 import com.smartfitting.mirror.vision.BitmapPixels
@@ -24,6 +27,9 @@ class TryOnView(context: Context) : View(context), TryOnRenderer<BitmapPixels> {
     private var outfit: List<Garment>? = null
     private val layers = mutableMapOf<String,Layer>()
     private val patchPath = Path()
+    private val headPath = Path()
+    private val allowedHeadPath = Path()
+    private val headTransform = Matrix()
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
     private val warp = Matrix()
     private val meshDriver = context.assets.open("reference/tshirt.obj").bufferedReader().use {
@@ -44,6 +50,53 @@ class TryOnView(context: Context) : View(context), TryOnRenderer<BitmapPixels> {
         set(value) { field = value.toMap(); invalidate() }
     var mirrored: Boolean = true
         set(value) { field = value; invalidate() }
+    var protectHead: Boolean = true
+        set(value) { field = value; invalidate() }
+    var gesturesEnabled = false
+    var viewportChanged: ((PreviewViewport) -> Unit)? = null
+    var viewport: PreviewViewport = PreviewViewport()
+        set(value) {
+            val frame = latest.acquire()
+            val bounded = try { frame?.let {
+                value.bounded(width,height,it.metadata.image.width,it.metadata.image.height)
+            } ?: value } finally { frame?.release() }
+            if (field != bounded) { field = bounded; viewportChanged?.invoke(bounded); invalidate() }
+        }
+    private var lastTouchX = 0f
+    private var lastTouchY = 0f
+    private var multiplePointers = false
+    private val scaleDetector = ScaleGestureDetector(context, object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
+        override fun onScale(detector: ScaleGestureDetector): Boolean {
+            if (width > 0 && height > 0) viewport = viewport.zoomBy(detector.scaleFactor,
+                detector.focusX / width, detector.focusY / height)
+            return true
+        }
+    }).apply { isQuickScaleEnabled = false }
+
+    override fun onTouchEvent(event: MotionEvent): Boolean {
+        if (!gesturesEnabled) return super.onTouchEvent(event)
+        scaleDetector.onTouchEvent(event)
+        when (event.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                lastTouchX = event.x; lastTouchY = event.y; multiplePointers = false
+                parent?.requestDisallowInterceptTouchEvent(true)
+            }
+            MotionEvent.ACTION_POINTER_DOWN -> multiplePointers = true
+            MotionEvent.ACTION_MOVE -> if (event.pointerCount == 1 && !multiplePointers && !scaleDetector.isInProgress) {
+                if (width > 0 && height > 0) viewport = viewport.pan((event.x-lastTouchX)/width,(event.y-lastTouchY)/height)
+                lastTouchX = event.x; lastTouchY = event.y
+            }
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                parent?.requestDisallowInterceptTouchEvent(false)
+                if (event.actionMasked == MotionEvent.ACTION_UP) performClick()
+            }
+        }
+        return true
+    }
+    override fun performClick(): Boolean { super.performClick(); return true }
+    override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
+        super.onSizeChanged(w,h,oldw,oldh); viewport = viewport
+    }
 
     /** Ownership transfers to the view, including replacement and clear. */
     fun setAsset(item: Garment?, bitmap: Bitmap?) {
@@ -80,6 +133,7 @@ class TryOnView(context: Context) : View(context), TryOnRenderer<BitmapPixels> {
     override fun submit(frame: FrameLease<BitmapPixels>, garment: Garment?) {
         require(frame.metadata.depth == frame.pixels.alignedDepth?.metadata) { "Depth must belong to this aligned RGB frame" }
         latest.offer(frame)
+        viewport = viewport // Rebound when a new source has a different aspect ratio.
         this.garment = garment
         invalidate()
     }
@@ -92,6 +146,10 @@ class TryOnView(context: Context) : View(context), TryOnRenderer<BitmapPixels> {
             val fit = FitCenter(metadata.image.width, metadata.image.height, width, height, mirrored)
             canvas.save()
             try {
+                val view = viewport
+                canvas.translate(width * (.5f + view.offsetX), height * (.5f + view.offsetY))
+                canvas.scale(view.zoom, view.zoom)
+                canvas.translate(-width * .5f, -height * .5f)
                 canvas.translate(fit.left, fit.top)
                 canvas.scale(fit.scale, fit.scale)
                 canvas.clipRect(0f, 0f, metadata.image.width.toFloat(), metadata.image.height.toFloat())
@@ -112,24 +170,40 @@ class TryOnView(context: Context) : View(context), TryOnRenderer<BitmapPixels> {
                 } else if (mode == Mode.OBJ_MESH) drawMesh(canvas, metadata)
                 else if (selected != null && bitmap != null && assetId == selected.garmentId) drawPhoto(canvas,metadata,selected,bitmap)
                 if (mask != null) { canvas.drawBitmap(mask,0f,0f,maskPaint); canvas.restore() }
-                if (showLandmarks) drawLandmarks(canvas, metadata, fit.scale)
+                if (showLandmarks && fit.scale > 0) drawLandmarks(canvas, metadata, fit.scale * view.zoom)
             } finally { canvas.restore() }
         } finally { frame.release() }
     }
     private fun drawPhoto(canvas: Canvas, frame: VisionFrame, item: Garment, bitmap: Bitmap) {
-        for (patch in OutfitPlacement.patches(frame,item,outfitFits[item.category] ?: OutfitFit.defaultFor(item.category))) {
-            val count = patch.source.size/2
-            if (!warp.setPolyToPoly(patch.source,0,patch.destination,0,count)) continue
-            canvas.save()
-            try {
-                if (patch.clipToDestination) {
-                    patchPath.reset(); patchPath.moveTo(patch.destination[0],patch.destination[1])
-                    for (i in 1 until count) patchPath.lineTo(patch.destination[i*2],patch.destination[i*2+1])
-                    patchPath.close()
-                    canvas.clipPath(patchPath)
-                }
-                canvas.drawBitmap(bitmap,warp,paint)
-            } finally { canvas.restore() }
+        canvas.save()
+        try {
+            if (protectHead && item.category == GarmentCategory.UPPER_BODY) clipHead(canvas,frame)
+            for (patch in OutfitPlacement.patches(frame,item,outfitFits[item.category] ?: OutfitFit.defaultFor(item.category))) {
+                val count = patch.source.size/2
+                if (!warp.setPolyToPoly(patch.source,0,patch.destination,0,count)) continue
+                canvas.save()
+                try {
+                    if (patch.clipToDestination) {
+                        patchPath.reset(); patchPath.moveTo(patch.destination[0],patch.destination[1])
+                        for (i in 1 until count) patchPath.lineTo(patch.destination[i*2],patch.destination[i*2+1])
+                        patchPath.close()
+                        canvas.clipPath(patchPath)
+                    }
+                    canvas.drawBitmap(bitmap,warp,paint)
+                } finally { canvas.restore() }
+            }
+        } finally { canvas.restore() }
+    }
+    private fun clipHead(canvas: Canvas, frame: VisionFrame) {
+        HeadProtection.region(frame)?.let { head ->
+            // Clip only this garment; RGB, independent hats and landmarks remain intact.
+            headPath.reset()
+            headPath.addOval(RectF(-head.radiusX,-head.radiusY,head.radiusX,head.radiusY),Path.Direction.CW)
+            headTransform.reset(); headTransform.postRotate(head.angleDegrees); headTransform.postTranslate(head.x,head.y)
+            headPath.transform(headTransform)
+            allowedHeadPath.reset()
+            allowedHeadPath.addRect(0f,0f,frame.image.width.toFloat(),frame.image.height.toFloat(),Path.Direction.CW)
+            if (allowedHeadPath.op(headPath,Path.Op.DIFFERENCE)) canvas.clipPath(allowedHeadPath)
         }
     }
     private fun prepareDepthMask(frame: FrameLease<BitmapPixels>): Bitmap? {

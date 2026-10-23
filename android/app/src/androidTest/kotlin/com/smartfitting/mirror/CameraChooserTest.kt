@@ -39,6 +39,25 @@ class CameraChooserTest {
                 if (!failed) SystemClock.sleep(100)
             }
             assertTrue("Unavailable explicit channel must report an error instead of opening auto",failed)
+            scenario.recreate()
+            instrumentation.waitForIdleSync()
+            scenario.onActivity { activity ->
+                val root = activity.window.decorView
+                val model = ViewModelProvider(activity)[TryOnModel::class.java]
+                assertFalse(model.running)
+                assertTrue(root.findViewWithTag<TextView>("fitting.preview.source").text.contains("missing-camera-for-test"))
+                val retry = root.findViewWithTag<Button>("fitting.preview.input")
+                assertEquals("重试预览",retry.text.toString())
+                assertTrue(retry.contentDescription.contains("保持已选相机通道"))
+                retry.performClick()
+                assertEquals("missing-camera-for-test",model.cameraId)
+            }
+            instrumentation.waitForIdleSync()
+            scenario.onActivity { activity ->
+                assertFalse(ViewModelProvider(activity)[TryOnModel::class.java].running)
+                assertEquals("重试预览",activity.window.decorView.findViewWithTag<Button>("fitting.preview.input").text.toString())
+                assertFalse(activity.window.decorView.findViewWithTag<Button>("fitting.generate").isEnabled)
+            }
         }
     }
 

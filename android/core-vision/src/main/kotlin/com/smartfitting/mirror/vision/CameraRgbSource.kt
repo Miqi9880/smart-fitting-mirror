@@ -4,6 +4,7 @@ import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
+import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import android.util.Size
@@ -43,6 +44,10 @@ class CameraRgbSource(
     private val captureExecutor = Executors.newSingleThreadExecutor()
     private val generation = SessionGeneration()
     private val latest = LatestFrame<BitmapPixels>()
+    private val handler = Handler(Looper.getMainLooper())
+    private val watchdog = FrameWatchdog(SystemClock::elapsedRealtime,
+        { task, delay -> handler.postDelayed(task, delay); Unit },
+        { task -> handler.removeCallbacks(task) })
     private var provider: ProcessCameraProvider? = null
     private var run: Run? = null
     @Volatile private var latestArrivalMs = 0L
@@ -76,6 +81,11 @@ class CameraRgbSource(
         }
         val current = Run(generation.begin(), sessionId, detector, onFrame, onStatus)
         run = current
+        watchdog.start { first ->
+            fail(current, VisionError.CAMERA_UNAVAILABLE, if (first)
+                "摄像头启动超时（15秒内没有画面），已清理预览；请检查连接后点击重试预览" else
+                "摄像头画面已中断（2秒未更新），已清理预览；请检查连接后点击重试预览")
+        }
         onStatus(VisionStatus(SourceState.STARTING, message = "正在启动 RGB 摄像头"))
         val future = ProcessCameraProvider.getInstance(context)
         future.addListener({
@@ -108,7 +118,7 @@ class CameraRgbSource(
                 val camera = cameraProvider.bindToLifecycle(lifecycleOwner, selector, analysis)
                 activeCameraId = Camera2CameraInfo.from(camera.cameraInfo).cameraId
                 Log.i("CameraRgbSource", "Bound Camera2 ID=$activeCameraId; requested=${requestedId ?: "auto"}")
-                onStatus(VisionStatus(SourceState.READY, message = "相机通道 $activeCameraId 已启动；深度与遮挡未启用"))
+                onStatus(VisionStatus(SourceState.READY, message = "相机通道 $activeCameraId 已连接，等待首帧；深度与遮挡未启用"))
             } catch (_: Exception) {
                 fail(current, VisionError.CAMERA_UNAVAILABLE, if (requestedId == null)
                     "摄像头不可用，请确认设备连接或重试" else
@@ -155,6 +165,7 @@ class CameraRgbSource(
                     val frame = FrameLease(metadata, BitmapPixels(bitmap)) { it.bitmap.recycle() }
                     latest.offer(frame)
                     latestArrivalMs = SystemClock.elapsedRealtime()
+                    watchdog.frameReceived()
                     try { current.onFrame(frame) } finally { frame.release() }
                 } finally { proxy.close() }
             }
@@ -204,6 +215,7 @@ class CameraRgbSource(
         run = null
         activeCameraId = null
         generation.end()
+        watchdog.stop()
         previous?.analysis?.let { it.clearAnalyzer(); provider?.unbind(it) }
         previous?.detector?.close()
         previous?.stabilizer?.reset()
