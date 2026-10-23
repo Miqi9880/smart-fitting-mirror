@@ -10,7 +10,7 @@
 
 - `python -m pytest backend/tests -q`：109项通过；包括revision3升级、三色及改名副本移除、编辑／删除保留、移除后空库、公开目录无悬空素材和旧包兼容。
 - `python tools/check_contracts.py`、`git diff --check`通过；没有公共接口／坐标／状态改动。
-- `:app:assembleDebugAndroidTest`构建通过。三件组合回归改用黑色圆领卫衣＋长裤＋针织帽；本轮没有连接到Android设备，不声称重新运行了设备端测试。
+- Android与CI相同的构建、四模块单元测试及四模块lint命令通过：`:app:assembleDebug :app:assembleDebugAndroidTest :core-contracts:test :core-vision:testDebugUnitTest :core-network:testDebugUnitTest :feature-tryon:testDebugUnitTest :app:lintDebug :core-vision:lintDebug :core-network:lintDebug :feature-tryon:lintDebug`。真实清单的48件×9种合成运动检查保留，画廊数量同步48，三件组合回归改用黑色圆领卫衣＋长裤＋针织帽；本轮没有连接到Android设备，不声称重新运行了设备端测试。
 - 本机8000模拟服务和8110真实提供方服务分别新建临时会话核对：均返回48件、无连帽卫衣；有效黑T素材读取正常，下架素材返回404，临时会话均结束。本轮没有拍摄、上传或再次提交云端生成。
 
 部署只需更新后端和素材配置、重新启动服务并重新连接衣柜，不必重装0.3.5 APK；已有会话不能假定自动同步。当前本机两项服务已按新目录运行，镜子未连接，实体衣柜刷新留到下次连接。
