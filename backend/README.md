@@ -1,6 +1,6 @@
-# 本地模拟试衣服务
+# 智能穿衣镜后端服务
 
-实现 HTTP 合同 V0.3.0，含原会话/上传/生成操作、六品类51件初始衣柜及详情/增删改。SQLite 保存内置基础目录，游客的临时编辑隔离保存。所有生成任务仍返回 `is_mock=true`；输出是静态叠加素材并标明 MOCK 的图片，没有接入真实 AI 或付费服务。[当前商品素材与组合预览](../docs/studio-outfits.md)。
+实现 HTTP 合同 V0.3.0，含会话、上传、生成任务、六品类51件初始衣柜及详情/增删改。SQLite 保存内置基础目录，游客的临时编辑隔离保存。默认仍为不联网的 MOCK；显式使用 `--provider aidge-cos` 时，生成任务通过腾讯云 COS 临时签名链接调用阿里云 Aidge，返回 `is_mock=false`。[当前商品素材与组合预览](../docs/studio-outfits.md)。
 
 ## 启动
 
@@ -16,6 +16,20 @@ python -m venv .venv
 macOS/Linux 将 `.venv\Scripts\python` 换成 `.venv/bin/python`。仅运行服务可安装 `backend/requirements.txt`；测试和烟雾检查使用 requirements-dev。无需任何供应商密钥或 GitHub 令牌。
 
 健康检查 `GET http://127.0.0.1:8000/health`，业务前缀 `/api/v1`。Android 模拟器通过 `http://10.0.2.2:8000` 访问主机；真实设备地址和企业网络需另行配置。该命令只绑定本机，适合开发联调。
+
+## 显式启用真实 Aidge 提供方
+
+真实模式不会因安装依赖或导入模块而自动启用。先在 Git 忽略的 `.env.cos` 与 `.env.aliyun` 中完成本机配置，再显式启动：
+
+```powershell
+.venv312\Scripts\python -m backend --host 127.0.0.1 --port 8000 --provider aidge-cos
+```
+
+服务保留上传原图，另将人物与上衣等比例缩小、透明背景合成白色、去元数据并编码成符合Aidge范围的JPEG；不拉伸或裁切，不合格输入在两张图均准备完成前不会外传。仅把准备图私有上传COS，30分钟签名URL只在后端内存中交给Aidge。
+
+120秒总时限从公共任务创建开始，采用单调时钟，包含图片准备、上传、提交、查询、下载；公共查询/后台清理及结果提交均检查终态，迟到成功/失败不能覆盖超时。SDK网络等待使用剩余预算，关闭SDK自动重试；只重试已有任务的查询。超时后另给COS删除独立的有界清理预算，PUT响应丢失、HEAD/签名失败也回收本次key，删除失败只记录数量，由一天生命周期兜底。取消或结束立即撤销本地访问；当前上游无取消接口，任务仍可能在云端运行或计费，不把本地超时/删除输入当作云端取消。
+
+真实模式仍只开放清单中标记为可生成的单件上衣。相同幂等键重放返回原任务（含失败终态），不会再次提交；同一时刻只接受一个本地提供方worker，直到其请求和清理结束才释放槽位，忙时返回可重试的 `429 PROVIDER_BUSY`。不建立隐形付费队列；新幂等键是新的显式任务，上游旧任务无法取消，不能保证云端GPU绝无重叠或重复费用。密钥、签名 URL 与供应商原始异常不会进入应用响应或诊断日志。[修复验证与限制](../docs/reports/provider-recovery-2026-10-23.md)。
 
 会话、游客编辑、上传图片与结果为单进程内存实现，重启会清空；基础服装元数据默认持久化在 `data/catalog.sqlite3`，可用 `--catalog-db` 指定独立路径。固定会话时长 30 分钟，后台每秒检查到期和模拟任务；显式结束会立即撤销资源访问。临时 multipart 文件由解析器管理并在请求结束时关闭，图片与结果不写入目录数据库。清理表示移除应用持有的记录，不声称物理内存已安全擦除。
 
@@ -35,7 +49,7 @@ macOS/Linux 将 `.venv\Scripts\python` 换成 `.venv/bin/python`。仅运行服�
 
 按 [HTTP 合同](../contracts/openapi.json) 和 [行为约定](../docs/interfaces/backend.md) 调用。创建会话后，在目录、上传、任务、素材图和结果图请求中都携带服务返回的 `Authorization: Bearer ...`。图片地址也受会话授权保护；不要把授权头转发到不同来源的 URL。
 
-默认目录为六品类51件官网商品，上衣15、长裤15、连衣裙3、半裙6、短裤3、帽子9，[元数据](assets/studio/manifest.json) 入Git，PNG从v3透明运行包安装。当前只有上衣可发起单件MOCK生成，其他预览品类创建生成任务返回 `422 GARMENT_NOT_GENERATABLE`，不生成整套搭配。旧三件合成上衣及白T恤仅在显式 `--catalog-profile regression` 下出现，自动化回归使用独立数据库（如 `--catalog-db data/catalog-regression.sqlite3`），不要与正常演示目录混用。
+默认目录为六品类51件官网商品，上衣15、长裤15、连衣裙3、半裙6、短裤3、帽子9，[元数据](assets/studio/manifest.json) 入Git，PNG从v3透明运行包安装。当前只有上衣可发起单件生成（默认MOCK，显式真实模式为Aidge），其他预览品类返回 `422 GARMENT_NOT_GENERATABLE`，不生成整套搭配。旧三件合成上衣及白T恤仅在显式 `--catalog-profile regression` 下出现，自动化回归使用独立数据库（如 `--catalog-db data/catalog-regression.sqlite3`），不要与正常演示目录混用。
 
 上传限制为 JPEG/PNG、原始文件不超过 10 MiB、解码像素不超过 1600 万；读取 EXIF 方向后转成竖正像素并去除元数据。标准化 PNG 可能大于输入文件，按内存容量管理。资源上限：100 个会话、每会话 8 次保留上传/30 个任务、输入与结果总计 128 MiB（不含解码和框架临时内存）。每分钟同 IP 创建会话 20 次、每会话保存上传 10 次、创建新任务尝试 6 次；已成功绑定的幂等重放不消耗新建配额。
 

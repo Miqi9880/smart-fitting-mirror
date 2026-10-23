@@ -2,6 +2,8 @@
 .env
 .env.*
 !.env.example
+!.env.aliyun.example
+!.env.cos.example
 secrets/
 credentials/
 *.pem
@@ -23,6 +25,7 @@ local.properties
 __pycache__/
 *.py[cod]
 .venv/
+.venv312/
 venv/
 .pytest_cache/
 
@@ -44,6 +47,10 @@ tmp/
 # Brand product images are installed from the local course asset pack.
 backend/assets/studio/*.png
 backend/assets/studio/originals/
+backend/assets/real/studio_*.png
+backend/assets/real/manifest.json
+backend/assets/real/README.txt
+backend/assets/smart-fitting-mirror-studio-assets-*.zip
 
 # Editor / OS
 .idea/
