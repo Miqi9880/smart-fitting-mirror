@@ -5,6 +5,8 @@
         android:usesCleartextTraffic="false">
         <activity android:name=".MainActivity" android:exported="false" />
         <activity android:name=".TryOnActivity" android:exported="false" android:launchMode="singleTop" />
+        <!-- #7 video review host; not linked from home.video until entry integration is coordinated. -->
+        <activity android:name=".video.VideoActivity" android:exported="false" />
         <activity android:name=".StandbyActivity" android:exported="true" android:launchMode="singleTop">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
