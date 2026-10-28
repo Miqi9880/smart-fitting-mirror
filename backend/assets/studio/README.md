@@ -1,4 +1,4 @@
-当前为revision3／51件，安装和已知限制见 [运行说明](../../../docs/studio-outfits.md)，新增提示词见 [处理记录](../../../docs/materials/cutout-processing-2026-10-21.md)。以下保留初版处理历史。
+当前为revision4／48件：2026-10-23按负责人决定下架三色拉链连帽卫衣，圆领卫衣保留。旧v3包可安装并忽略下架文件；数据库启动升级移除相关条目及改名副本。安装和已知限制见 [运行说明](../../../docs/studio-outfits.md)，新增提示词见 [处理记录](../../../docs/materials/cutout-processing-2026-10-21.md)。以下保留初版处理历史。
 
 # 本地官网商品图素材包
 

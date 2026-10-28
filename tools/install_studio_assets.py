@@ -24,10 +24,12 @@ def validate_image(data, item):
 def install_pack(pack: Path, destination: Path = ASSETS):
     manifest = json.loads((destination / "manifest.json").read_text(encoding="utf-8"))
     wanted = {i["file"]: i for i in manifest["items"]}
+    # Accept the old course pack, but never install its retired hoodie files.
+    retired_files = {asset_id + ".png" for asset_id in manifest.get("retired_asset_ids", [])}
     validated = {}
     with ZipFile(pack) as archive:
         names = archive.namelist()
-        if len(set(names)) != len(names) or set(names) - (set(wanted) | {"manifest.json", "README.txt"}):
+        if len(set(names)) != len(names) or set(names) - (set(wanted) | retired_files | {"manifest.json", "README.txt"}):
             raise ValueError("素材包包含未知路径或重复文件")
         for name, item in wanted.items():
             if name not in names or archive.getinfo(name).file_size > 8 * 1024 * 1024:
