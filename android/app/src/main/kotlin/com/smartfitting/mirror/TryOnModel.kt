@@ -34,6 +34,7 @@ class TryOnModel(application: Application) : AndroidViewModel(application) {
     var protectHead = true
     var previewFullscreen = false
     var previewViewport = PreviewViewport()
+    internal var resultComparisonMode = ResultComparisonMode.SIDE_BY_SIDE
     val fitPreferences = FitPreferenceStore(application)
     var outfitFits = if (fitPreferences.enabled) fitPreferences.load() else emptyMap<GarmentCategory, OutfitFit>()
     var meshMode = false
@@ -47,6 +48,7 @@ class TryOnModel(application: Application) : AndroidViewModel(application) {
         bridge?.cancel()
         controller?.close()
         outfit = emptyMap(); lastOutfitSelection = null
+        resultComparisonMode = ResultComparisonMode.SIDE_BY_SIDE
         baseUrl = url.trim()
         val next = FittingSession(api, viewModelScope)
         controller = next

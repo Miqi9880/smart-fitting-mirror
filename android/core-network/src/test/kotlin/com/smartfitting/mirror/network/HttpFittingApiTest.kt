@@ -11,6 +11,35 @@ import java.io.IOException
 import java.util.concurrent.TimeUnit
 
 class HttpFittingApiTest {
+    @Test fun explicitUploadUsesFreshConnectionAndNeverTransparentlyReplaysPost() = runBlocking {
+        MockWebServer().use { server ->
+            server.start(java.net.InetAddress.getByName("127.0.0.1"), 0)
+            HttpFittingApi("http://127.0.0.1:${server.port}/").use { api ->
+                server.enqueue(json("session.json", 201))
+                val session = api.createSession()
+                assertEquals(0, server.takeRequest(3, TimeUnit.SECONDS)!!.sequenceNumber)
+                val bytes = byteArrayOf(1, 2, 3, 4)
+                CapturedPhoto("test", 1, 2, 2, "image/png", bytes).use { photo ->
+                    server.enqueue(json("upload.json", 201))
+                    api.upload(session.sessionToken, photo)
+                    val upload = server.takeRequest(3, TimeUnit.SECONDS)!!
+                    assertEquals("POST", upload.method); assertEquals("/api/v1/uploads", upload.path)
+                    assertEquals("Do not reuse sockets left idle while comparing results", 0, upload.sequenceNumber)
+                    server.enqueue(MockResponse().setSocketPolicy(SocketPolicy.DISCONNECT_AFTER_REQUEST))
+                    try { api.upload(session.sessionToken, photo); fail("Unacknowledged upload must surface failure") }
+                    catch (_: IOException) { }
+                    assertEquals("POST", server.takeRequest(3, TimeUnit.SECONDS)!!.method)
+                    assertEquals("No transparent POST replay or generation", 3, server.requestCount)
+                    assertArrayEquals(byteArrayOf(1, 2, 3, 4), bytes)
+                    server.enqueue(json("upload.json", 201))
+                    api.upload(session.sessionToken, photo)
+                    assertEquals(0, server.takeRequest(3, TimeUnit.SECONDS)!!.sequenceNumber)
+                }
+                assertTrue(bytes.all { it == 0.toByte() })
+            }
+        }
+    }
+
     @Test fun cleanupUsesAFreshConnectionAfterPreviewAndDoesNotReplayUnacknowledgedDeletes() = runBlocking {
         MockWebServer().use { server ->
             server.start(java.net.InetAddress.getByName("127.0.0.1"),0)

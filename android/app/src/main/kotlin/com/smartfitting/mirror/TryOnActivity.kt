@@ -61,8 +61,7 @@ class TryOnActivity : ComponentActivity() {
     private lateinit var garments: Spinner
     private lateinit var catalog: Button
     private var browser: GarmentBrowser? = null
-    private lateinit var before: OwnedImage
-    private lateinit var after: OwnedImage
+    private lateinit var comparison: ResultComparisonPanel
     private var listed = emptyList<Garment>()
     private var selecting = false
     private var activeVision: String? = null
@@ -115,13 +114,14 @@ class TryOnActivity : ComponentActivity() {
         }
         root.addView(address)
         connect = button("连接服务", "fitting.connect") {
-            try { model.connect(address.text.toString()); staticImage.clear(); if (model.running) beginVision() }
+            try { model.connect(address.text.toString()); staticImage.clear(); comparison.clear(); if (model.running) beginVision() }
             catch (error: IllegalArgumentException) { status.text = "地址无效：${error.message}" }
         }
         finishSession = button("结束并清理", "fitting.end") {
             if (model.previewFullscreen) setPreviewFullscreen(false)
             pendingPermission = false; model.running = false; model.visionFailure = null; stopVision()
-            staticImage.clear(); before.clear(); after.clear(); model.controller?.end()
+            staticImage.clear(); comparison.clear(); model.resultComparisonMode = ResultComparisonMode.SIDE_BY_SIDE
+            model.controller?.end()
         }
         root.addView(row(connect, finishSession))
         status = label("连接服务以加载衣服", 14f).apply { tag = "fitting.status" }
@@ -233,13 +233,9 @@ class TryOnActivity : ComponentActivity() {
         tail.addView(staticImage)
         mockLabel = label("尚无生成结果", 13f).apply { tag = "fitting.result.kind" }
         tail.addView(mockLabel)
-        tail.addView(label("前后对比（均为未镜像原图方向）", 16f))
-        val beforeView = ImageView(this).apply { tag = "fitting.before"; contentDescription = "拍摄原图"; scaleType = ImageView.ScaleType.FIT_CENTER }
-        val afterView = ImageView(this).apply { tag = "fitting.after"; contentDescription = "生成结果"; scaleType = ImageView.ScaleType.FIT_CENTER }
-        tail.addView(row(label("原始照片", 12f), label("生成结果", 12f)))
-        tail.addView(row(beforeView, afterView).apply { layoutParams = LinearLayout.LayoutParams(-1, dp(220)) })
-        before = OwnedImage(beforeView, lifecycleScope) { status.text = it }
-        after = OwnedImage(afterView, lifecycleScope) { status.text = it }
+        comparison = ResultComparisonPanel(this, lifecycleScope,
+            { model.resultComparisonMode = it }, { status.text = it })
+        tail.addView(comparison)
         tail.addView(row(button("硬件诊断", "fitting.diagnostics") { startActivity(Intent(this, MainActivity::class.java)) },
             button("权限设置", "fitting.permissions") { startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName"))) }))
         tail.addView(button("镜子主屏幕设置", "fitting.home") {
@@ -286,7 +282,7 @@ class TryOnActivity : ComponentActivity() {
         browser?.dismiss(); browser = null
         visible = false; model.playing = mock.playing; model.synthetic = mock.settings
         staticImage.clear()
-        model.controller?.setVisible(false); stopVision(); before.clear(); after.clear(); super.onStop()
+        model.controller?.setVisible(false); stopVision(); comparison.clear(); super.onStop()
     }
     override fun onSaveInstanceState(outState: Bundle) {
         outState.putBoolean("pending_permission", pendingPermission)
@@ -394,11 +390,12 @@ class TryOnActivity : ComponentActivity() {
             false -> "真实生成任务"
             null -> "尚无生成结果"
         }
-        before.update(value.original); after.update(value.result)
+        comparison.render(value.original, value.result, model.resultComparisonMode)
         if (value.phase in setOf(FittingPhase.ENDING, FittingPhase.CLOSED)) {
             staticImage.clear()
             if (model.previewFullscreen) setPreviewFullscreen(false)
-            model.running = false; model.visionFailure = null; stopVision(); before.clear(); after.clear()
+            model.running = false; model.visionFailure = null; stopVision(); comparison.clear()
+            model.resultComparisonMode = ResultComparisonMode.SIDE_BY_SIDE
             model.catalogAssets = emptyList(); model.catalogQuery = ""; model.outfit = emptyMap(); model.lastOutfitSelection = null
             outfitStatus.text = "当前搭配已清空"; browser?.dismiss(); browser = null
             fitControls.render(null,OutfitFit())

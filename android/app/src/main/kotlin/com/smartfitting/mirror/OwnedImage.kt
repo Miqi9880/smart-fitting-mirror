@@ -34,7 +34,7 @@ internal class OwnedImage(private val view: ImageView, private val scope: Corout
                 if (source === bytes) { bitmap = decoded; view.setImageBitmap(bitmap); decoded = null }
             } catch (error: Exception) {
                 if (error is CancellationException) throw error
-                onError(error.message ?: "图片加载失败")
+                if (source === bytes) { onError(error.message ?: "图片加载失败") }
             } finally { copy.fill(0); decoded?.recycle() }
         }
         // Also clear the private copy if cancelled before launch is dispatched.

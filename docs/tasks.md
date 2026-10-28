@@ -11,7 +11,7 @@ COS因费用已禁用，Aidge/COS链路暂停，见[状态与边界](reports/clo
 | haiyangniu191-design／[#5](https://github.com/Miqi9880/smart-fitting-mirror/issues/5) | 真实调用禁用开关、离线失败恢复和匿名调用／费用记录，拆小PR，无付费测试 | 视频内容库／规则召回，先数据模块再接口PR，不重复凑5条候选 | 7.3、8.1、9／12.1；FR-VID-01／02 |
 | lyf-bee／[#6](https://github.com/Miqi9880/smart-fitting-mirror/issues/6) | PR #42头部保护修正已合并，接渲染耗时／资源诊断及实际新缺陷，不重复修同一领口问题 | 可靠Depth／mask接入按负责人输入继续 | FR-VTO-04、8.2、11 |
 | yyyrrrxxx／[#7](https://github.com/Miqi9880/smart-fitting-mirror/issues/7) | 同一App推荐卡片与视频播放，先FakeVideoRepository及程序生成／获准短片；不重做已补齐的照片导入 | 合同定稿后接HTTP，补视频异常／释放及受影响大字体与可访问性验证 | 8.2、10；FR-VID-01／02／05 |
-| Miqi9880／[#3](https://github.com/Miqi9880/smart-fitting-mirror/issues/3)、[#26](https://github.com/Miqi9880/smart-fitting-mirror/issues/26) | 原文／接口统筹、视频授权和素材交接、全部镜子／真人／Depth与mask条件 | 待机／对比、实际遮挡与性能长稳；模型资源独立探索 | FR-001～004、FR-VTO-01／02／06、8.3、11／12 |
+| Miqi9880／[#3](https://github.com/Miqi9880/smart-fitting-mirror/issues/3)、[#26](https://github.com/Miqi9880/smart-fitting-mirror/issues/26) | [原图／结果一键切换](reports/result-comparison-2026-10-28.md)已补齐；接待机／站位软件逻辑，继续接口统筹、视频授权和素材交接 | 全部镜子／真人／Depth与mask、实际遮挡和性能长稳；模型资源独立探索 | FR-001～004、FR-VTO-01／02／06、8.3、11／12 |
 
 全部现场与真人确认只归Miqi9880，其他人不用设备或云账号，交合成／模拟器／FakeProvider证据。修改影响或新缺陷才补相关回归，不重做全部历史报告。
 
