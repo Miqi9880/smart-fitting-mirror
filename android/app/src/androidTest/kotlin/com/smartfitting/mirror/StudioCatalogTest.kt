@@ -49,13 +49,13 @@ class StudioCatalogTest {
             await { model(it).state.value.canSelect }
             scenario.onActivity {
                 assertFalse(model(it).running)
-                assertEquals(51,model(it).state.value.garments.size)
+                assertEquals(48,model(it).state.value.garments.size)
                 it.window.decorView.findViewWithTag<Button>("fitting.catalog").performClick()
                 windows().filterIsInstance<EditText>().single { it.tag=="catalog.search" }.setText("474062")
             }
             await { images().size==3 && images().all { it.drawable is BitmapDrawable } }
             scenario.onActivity { windows().filterIsInstance<EditText>().single { it.tag=="catalog.search" }.setText("") }
-            await { images().size==51 && images().all { it.drawable is BitmapDrawable } }
+            await { images().size==48 && images().all { it.drawable is BitmapDrawable } }
             scenario.onActivity {
                 assertTrue(images().none { it.contentDescription.contains("加载失败") })
                 model(it).controller!!.end()

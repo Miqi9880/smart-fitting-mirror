@@ -46,6 +46,7 @@ ASSET_SPECS["real_white_tee"] = {"file":"real/white-tee-cutout.png", "width":144
 
 CATALOG_CAPACITY = 100
 STUDIO_MANIFEST = json.loads((Path(__file__).parent / "assets/studio/manifest.json").read_text(encoding="utf-8"))
+RETIRED_STUDIO_ASSET_IDS = frozenset(STUDIO_MANIFEST.get("retired_asset_ids", []))
 for _item in STUDIO_MANIFEST["items"]:
     ASSET_SPECS[_item["garment_id"]] = {**_item, "file": "studio/" + _item["file"]}
 
