@@ -55,8 +55,11 @@ class StandbyActivity : ComponentActivity() {
         if (!pendingPermission) return@registerForActivityResult
         pendingPermission = false
         model.sensingRequested = granted
-        if (granted && visible) beginSensing()
-        else { model.notice = "人体感应未获授权，仍可直接开始游客体验。"; render() }
+        if (granted) {
+            model.notice = ""
+            if (visible) beginSensing()
+        } else { model.notice = "人体感应未获授权，仍可直接开始游客体验。" }
+        render()
     }
     private val experience = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         model.waitingGuest = false
