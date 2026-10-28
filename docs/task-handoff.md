@@ -1,5 +1,7 @@
 # 已有基础与四人接手清单
 
+2026-10-28视频接口补位：负责人委托Codex统一[HTTP0.4.0视频合同](interfaces/video-recommendation.md)、共享JSON、Python／Kotlin DTO、VideoApi／HttpFittingApi与FittingSession入口；不改变旧生成合同或接手内容库／播放器。haiyangniu191-design复用DTO接规则／路由，yyyrrrxxx先完成已提交PR #45～#50的组件验收，再按正式映射适配HTTP。合同不表示service.py已有视频路由；授权内容、实际播放闭环和模型语义仍未完成，不恢复COS或要求成员现场验收。
+
 2026-10-28待机／站位增量：负责人委托Codex新增默认待机入口、游客开始、超时／结束返回、本地感应欢迎及二维站位反馈，版本0.3.7；[操作、默认超时与验证限制](reports/standby-standing-2026-10-28.md)。初次启动不自动开相机，无实际深度／标定不提示前后距离。yyyrrrxxx继续视频组件，不重做本轮待机或时钟；主页`home.video`待后续增量接入并协调共用流程，其他长期职责保持。仅软件／合成与MOCK证据，镜子、真人、真实距离和1秒提示指标仍归负责人实测。
 
 2026-10-28结果对比增量：按负责人明确安排，Miqi9880／受托Codex补齐企业FR-VTO-06原图／结果一键切换，保留并排；新组件与同一结果页装配、内存查看模式和清理路径见[记录](reports/result-comparison-2026-10-28.md)。yyyrrrxxx继续视频卡片与播放，不重复实现本项；app长期维护归属不变。此增量用本地MOCK和程序生成图片验证，不重做首次真实生成，不把软件检查称为镜子现场验收。

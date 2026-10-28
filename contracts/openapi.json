@@ -2,8 +2,8 @@
   "openapi": "3.0.3",
   "info": {
     "title": "Smart Fitting Mirror Course API",
-    "version": "0.3.0",
-    "description": "设备未到位阶段的接口合同，尚无可运行服务。首版仅上衣。"
+    "version": "0.4.0",
+    "description": "服饰游客会话、目录、生成与视频推荐合同。视频为0.4.0新增合同；运行服务接入状态见docs/interfaces/video-recommendation.md。视觉合同仍0.2.0。"
   },
   "servers": [
     {
@@ -67,7 +67,7 @@
     "/garments": {
       "get": {
         "operationId": "listGarments",
-        "summary": "获取首版上衣目录",
+        "summary": "获取服饰目录",
         "responses": {
           "200": {
             "description": "目录",
@@ -990,6 +990,84 @@
           }
         }
       }
+    },
+    "/video-recommendations": {
+      "post": {
+        "operationId": "recommendVideos",
+        "summary": "按当前造型和主动标签获取视频候选",
+        "description": "Read-only structured recall, no photos, generation job or AI call. Current session token required; does not refresh session TTL. No automatic request replay. HTTP route implementation is a separate backend increment.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VideoRecommendationRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "相关候选；空态和不足也返回200，数量如实报告",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VideoRecommendationList"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "会话无效",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "限流",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "headers": {
+              "Retry-After": {
+                "description": "建议等待的秒数",
+                "schema": {
+                  "type": "integer",
+                  "minimum": 1
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "服务不可用",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求非法、重复或无法解析的上下文ID；不静默忽略未知妆容/服装",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -1577,6 +1655,288 @@
           "name",
           "asset_id"
         ]
+      },
+      "VideoTag": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "dimension": {
+            "type": "string",
+            "enum": [
+              "category",
+              "style",
+              "color",
+              "scene"
+            ]
+          },
+          "value": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64,
+            "pattern": "^\\S(?:[\\s\\S]*\\S)?$"
+          }
+        },
+        "required": [
+          "dimension",
+          "value"
+        ]
+      },
+      "VideoRecommendationRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "garment_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_]{0,63}$"
+            },
+            "minItems": 0,
+            "maxItems": 6,
+            "uniqueItems": true,
+            "default": []
+          },
+          "makeup_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+            },
+            "minItems": 0,
+            "maxItems": 8,
+            "uniqueItems": true,
+            "default": []
+          },
+          "user_tags": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/VideoTag"
+            },
+            "minItems": 0,
+            "maxItems": 20,
+            "uniqueItems": true,
+            "default": []
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 20,
+            "default": 5
+          }
+        }
+      },
+      "VideoSource": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "synthetic_test",
+              "licensed"
+            ]
+          },
+          "attribution": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500,
+            "pattern": "^\\S(?:[\\s\\S]*\\S)?$"
+          },
+          "authorization": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500,
+            "pattern": "^\\S(?:[\\s\\S]*\\S)?$"
+          }
+        },
+        "required": [
+          "kind",
+          "attribution",
+          "authorization"
+        ]
+      },
+      "VideoContent": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "video_id": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100,
+            "pattern": "^\\S(?:[\\s\\S]*\\S)?$"
+          },
+          "duration_seconds": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 86400
+          },
+          "orientation": {
+            "type": "string",
+            "enum": [
+              "landscape",
+              "portrait"
+            ]
+          },
+          "cover_url": {
+            "type": "string",
+            "format": "uri",
+            "maxLength": 2048,
+            "pattern": "^https?://[^\\s]+$",
+            "description": "Absolute HTTP(S), no userinfo or fragment. Media requests never inherit SessionToken. .invalid examples are not playable.",
+            "nullable": true
+          },
+          "playback_url": {
+            "type": "string",
+            "format": "uri",
+            "maxLength": 2048,
+            "pattern": "^https?://[^\\s]+$",
+            "description": "Absolute HTTP(S), no userinfo or fragment. Media requests never inherit SessionToken. .invalid examples are not playable."
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/VideoTag"
+            },
+            "minItems": 1,
+            "maxItems": 40,
+            "uniqueItems": true
+          },
+          "garment_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_]{0,63}$"
+            },
+            "minItems": 0,
+            "maxItems": 100,
+            "uniqueItems": true
+          },
+          "makeup_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+            },
+            "minItems": 0,
+            "maxItems": 100,
+            "uniqueItems": true
+          },
+          "source": {
+            "$ref": "#/components/schemas/VideoSource"
+          }
+        },
+        "required": [
+          "video_id",
+          "title",
+          "duration_seconds",
+          "orientation",
+          "cover_url",
+          "playback_url",
+          "tags",
+          "garment_ids",
+          "makeup_ids",
+          "source"
+        ]
+      },
+      "VideoMatch": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "dimension": {
+            "type": "string",
+            "enum": [
+              "category",
+              "style",
+              "color",
+              "scene"
+            ]
+          },
+          "value": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64,
+            "pattern": "^\\S(?:[\\s\\S]*\\S)?$"
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "garment_metadata",
+              "makeup_metadata",
+              "user_selection",
+              "model_semantics"
+            ]
+          },
+          "related_id": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_-]{0,63}$",
+            "nullable": true
+          }
+        },
+        "required": [
+          "dimension",
+          "value",
+          "source",
+          "related_id"
+        ],
+        "description": "Metadata sources require their request context resource id; user/model sources require null. Model semantics are a reserved source, not currently implemented."
+      },
+      "VideoRecommendation": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "video": {
+            "$ref": "#/components/schemas/VideoContent"
+          },
+          "matches": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/VideoMatch"
+            },
+            "minItems": 1,
+            "maxItems": 40,
+            "uniqueItems": true
+          }
+        },
+        "required": [
+          "video",
+          "matches"
+        ],
+        "description": "Only on-shelf, playable-authorized or explicitly synthetic candidates. Each match must equal a video tag and be supported by actual request context."
+      },
+      "VideoRecommendationList": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/VideoRecommendation"
+            },
+            "minItems": 0,
+            "maxItems": 20,
+            "uniqueItems": true
+          },
+          "requested_limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 20
+          },
+          "available_count": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100000
+          }
+        },
+        "required": [
+          "items",
+          "requested_limit",
+          "available_count"
+        ],
+        "description": "Unique video ids; len(items)=min(requested_limit,available_count). available_count counts eligible unique relevant candidates before truncation. Empty context yields zero; never pad with unrelated/repeated videos."
       }
     }
   }

@@ -15,3 +15,5 @@ HTTP 0.2.0 增加 outfit-garments.json，覆盖上衣、裤子和帽子的真实
 HTTP0.3.0新增 extended-garments.json：连衣裙、半裙、短裤的源髋／裙摆控制点及 hem_ratio；这些是合成合同例子，不是额外品牌素材。本目录现共17份JSON；视觉仍0.2.0。
 
 校验方式见 [协作规则](../../CONTRIBUTING.md)。
+
+HTTP0.4.0新增video-request、video-matched、video-shortfall、video-empty四份JSON，本目录共21份；包含来源、结构化标签、匹配依据和实际候选数量。均为synthetic_test及.invalid占位，不能播放、不计入5条授权内容。[正式视频合同及运行接入状态](../../docs/interfaces/video-recommendation.md)。

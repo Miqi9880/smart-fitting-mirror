@@ -14,7 +14,13 @@ class FittingSessionTest {
         "http://localhost/blue.png")
     private fun photo() = CapturedPhoto("local", 1, 2, 2, "image/png", byteArrayOf(1,2,3))
 
-    private inner class Fake : FittingTransport {
+    private inner class Fake : FittingTransport, VideoApi {
+        var videoToken: String? = null
+        var onVideos: suspend (VideoRecommendationRequest) -> VideoRecommendationList = { VideoRecommendationList(emptyList(), it.limit, 0) }
+        override suspend fun recommendVideos(sessionToken: String, request: VideoRecommendationRequest): VideoRecommendationList {
+            videoToken = sessionToken
+            return onVideos(request)
+        }
         var createFailures = 0
         var endFails = false
         var resultFails = false
@@ -64,6 +70,38 @@ class FittingSessionTest {
             return byteArrayOf(4,5,6).also { lastDownload=it }
         }
         override fun close() { }
+    }
+
+    @Test fun videoFacadeReusesSessionWithoutChangingOutfitOrCreatingImages() = runTest {
+        val fake = Fake(); val controller = FittingSession(fake, this)
+        controller.connect(); runCurrent()
+        val before = controller.state.value
+        assertTrue(controller.recommendVideos(VideoRecommendationRequest(garmentIds = listOf("upper_blue"))).items.isEmpty())
+        assertEquals("private", fake.videoToken); assertEquals(before, controller.state.value)
+        assertEquals(0, fake.uploads); assertTrue(fake.keys.isEmpty())
+        controller.end(); advanceUntilIdle()
+    }
+
+    @Test fun backgroundAndEndCancelPendingVideoRequests() = runTest {
+        val fake = Fake().apply { onVideos = { awaitCancellation() } }
+        val controller = FittingSession(fake, this)
+        controller.connect(); runCurrent()
+        val first = async { controller.recommendVideos(VideoRecommendationRequest()) }; runCurrent()
+        controller.setVisible(false); runCurrent(); assertTrue(first.isCancelled)
+        controller.setVisible(true)
+        val second = async { controller.recommendVideos(VideoRecommendationRequest()) }; runCurrent()
+        controller.end(); advanceUntilIdle(); assertTrue(second.isCancelled)
+        assertEquals(FittingPhase.CLOSED, controller.state.value.phase)
+    }
+
+    @Test fun videoAuthExpiryClosesSharedGuestInsteadOfShowingStaleSuccess() = runTest {
+        val fake = Fake().apply { onVideos = { throw ApiFailure(401, "SESSION_INVALID", "expired", false) } }
+        val controller = FittingSession(fake, this)
+        controller.connect(); runCurrent()
+        try { controller.recommendVideos(VideoRecommendationRequest()); fail("Expected expiry") }
+        catch (error: ApiFailure) { assertEquals(401, error.status) }
+        assertEquals(FittingPhase.CLOSED, controller.state.value.phase)
+        assertFalse(controller.state.value.connected)
     }
 
     @Test fun outfitImageReadRetriesTransientDisconnectWithoutReplayingUploads() = runTest {

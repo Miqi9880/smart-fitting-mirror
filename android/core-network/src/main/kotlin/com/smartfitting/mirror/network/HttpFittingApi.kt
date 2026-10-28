@@ -26,7 +26,7 @@ class ApiFailure(val status: Int, val code: String, override val message: String
                  val retryable: Boolean, val retryAfterSeconds: Long? = null) : IOException(message)
 
 /** Owns its OkHttp client. No redirects, automatic request replay, logging or disk image cache. */
-class HttpFittingApi internal constructor(baseUrl: String, private val client: OkHttpClient) : FittingTransport {
+class HttpFittingApi internal constructor(baseUrl: String, private val client: OkHttpClient) : FittingTransport, VideoApi {
     constructor(baseUrl: String) : this(baseUrl, defaultClient())
     private val root = baseUrl.trim().toHttpUrl().also {
         require(it.encodedPath == "/" && it.query == null && it.fragment == null && it.username.isEmpty() && it.password.isEmpty()) {
@@ -39,6 +39,23 @@ class HttpFittingApi internal constructor(baseUrl: String, private val client: O
 
     override suspend fun createSession(): Session = json(request("sessions").post(emptyBody).build())
     override suspend fun garments(sessionToken: String): GarmentList = json(request("garments", sessionToken).get().build())
+    override suspend fun recommendVideos(sessionToken: String, request: VideoRecommendationRequest): VideoRecommendationList {
+        val result = json<VideoRecommendationList>(request("video-recommendations", sessionToken)
+            .post(ContractJson.encodeToString(request).toRequestBody(jsonType)).build())
+        if (result.requestedLimit != request.limit) throw IOException("视频响应数量与请求不一致")
+        if (request.garmentIds.isEmpty() && request.makeupIds.isEmpty() && request.userTags.isEmpty() && result.availableCount != 0)
+            throw IOException("视频响应与当前上下文不一致")
+        for (item in result.items) for (match in item.matches) {
+            val relevant = when (match.source) {
+                VideoMatchSource.GARMENT_METADATA -> match.relatedId in request.garmentIds
+                VideoMatchSource.MAKEUP_METADATA -> match.relatedId in request.makeupIds
+                VideoMatchSource.USER_SELECTION -> VideoTag(match.dimension, match.value) in request.userTags
+                VideoMatchSource.MODEL_SEMANTICS -> false // Reserved; no authorized semantic path in this increment.
+            }
+            if (!relevant) throw IOException("视频匹配依据与当前上下文不一致")
+        }
+        return result
+    }
     override suspend fun saveGarment(sessionToken: String, item: GarmentWrite, replace: Boolean): Garment {
         val body = ContractJson.encodeToString(item).toRequestBody(jsonType)
         val url = root.newBuilder().addPathSegments("api/v1/garments")
