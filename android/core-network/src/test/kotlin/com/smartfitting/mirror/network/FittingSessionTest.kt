@@ -16,6 +16,7 @@ class FittingSessionTest {
 
     private inner class Fake : FittingTransport, VideoApi {
         var videoToken: String? = null
+        var onGarments: suspend () -> Unit = {}
         var onVideos: suspend (VideoRecommendationRequest) -> VideoRecommendationList = { VideoRecommendationList(emptyList(), it.limit, 0) }
         override suspend fun recommendVideos(sessionToken: String, request: VideoRecommendationRequest): VideoRecommendationList {
             videoToken = sessionToken
@@ -44,6 +45,7 @@ class FittingSessionTest {
         override suspend fun createSession() = Session("session_one", "private", time)
         override suspend fun garments(sessionToken: String): GarmentList {
             if (catalogReadFails) throw IOException("Catalog disconnected")
+            onGarments()
             return GarmentList(items)
         }
         override suspend fun saveGarment(sessionToken: String, item: GarmentWrite, replace: Boolean): Garment {
@@ -101,6 +103,23 @@ class FittingSessionTest {
         try { controller.recommendVideos(VideoRecommendationRequest()); fail("Expected expiry") }
         catch (error: ApiFailure) { assertEquals(401, error.status) }
         assertEquals(FittingPhase.CLOSED, controller.state.value.phase)
+        assertFalse(controller.state.value.connected)
+    }
+
+    @Test fun videoExpiryInvalidatesAnAlreadyPendingCatalogRefresh() = runTest {
+        val videoGate = CompletableDeferred<Unit>(); val catalogGate = CompletableDeferred<Unit>()
+        val fake = Fake().apply { onVideos = { videoGate.await(); throw ApiFailure(401, "SESSION_INVALID", "expired", false) } }
+        val controller = FittingSession(fake, this)
+        controller.connect(); runCurrent()
+        val video = async { runCatching { controller.recommendVideos(VideoRecommendationRequest()) } }; runCurrent()
+        fake.onGarments = { catalogGate.await() }
+        controller.refreshCatalog(); runCurrent()
+        assertEquals(FittingPhase.CONNECTING, controller.state.value.phase)
+        videoGate.complete(Unit); runCurrent()
+        assertTrue(video.await().exceptionOrNull() is ApiFailure)
+        assertEquals(FittingPhase.CLOSED, controller.state.value.phase)
+        catalogGate.complete(Unit); advanceUntilIdle()
+        assertEquals("A late catalog must not revive the expired session", FittingPhase.CLOSED, controller.state.value.phase)
         assertFalse(controller.state.value.connected)
     }
 

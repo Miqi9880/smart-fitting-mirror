@@ -51,7 +51,12 @@ class FittingSession(private val api: FittingTransport, private val scope: Corou
             if (disposed || !visible || session !== active || !state.value.canSelect) throw CancellationException("体验已切换")
             result
         } catch (error: ApiFailure) {
-            if (error.status == 401 && session === active && !disposed) fail(error, RetryAction.NONE)
+            if (error.status == 401 && session === active && !disposed) {
+                // Another UI action may have started catalog/generation work while this
+                // read was pending. Expiry must invalidate those old responses as well.
+                ++version; work?.cancel(); poll?.cancel(); poll = null
+                fail(error, RetryAction.NONE)
+            }
             throw error
         } finally { videoRequests -= pending }
     }

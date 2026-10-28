@@ -21,6 +21,8 @@ gradle --no-daemon :core-contracts:test :core-network:testDebugUnitTest :core-ne
 git diff --check
 ```
 
-本地结果：OpenAPI及21份样例、19个拒绝用例和文档链接通过；后端全量136项通过；core-contracts21项＋core-network27项（共48项）JVM通过、0跳过，App构建与core-network lint通过。新增Python DTO用例27项，新增JVM12项；覆盖字段往返、不足／空态、错误数量／重复／来源、鉴权和限流、请求取消、当前上下文校验、共享会话失效及后台／结束取消。未新增页面，本轮没有运行原生播放器或镜子交互测试。
+本地结果：OpenAPI及21份样例、19个拒绝用例和文档链接通过；后端全量136项通过；core-contracts21项＋core-network28项（共49项）JVM通过、0跳过，App构建与core-network lint通过。新增Python DTO用例27项，新增JVM13项；覆盖字段往返、不足／空态、错误数量／重复／来源、鉴权和限流、请求取消、当前上下文校验、共享会话失效及后台／结束取消。未新增页面，本轮没有运行原生播放器或镜子交互测试。
+
+自审补上并发过期边界：视频查询等待时可能已开始衣柜／生成工作，查询401必须取消并使其他旧请求版本失效。新增“视频过期后迟到衣柜响应不得恢复会话”回归，最终重跑上述49项JVM、构建与lint通过；后端未受此补修影响，不重复运行已通过的全量用例。
 
 后端全量首次因Windows旧pytest临时目录无法枚举，48项在setup失败；没有改产品代码或旧目录权限。重跑使用本任务内全新且未存在的`--basetemp`目录，136项全部通过（32.88秒），保留两次日志。测试使用仓库合成JSON、Fake及MockWebServer回环请求；没有启动或访问真实云服务，没有读取密钥、打开摄像头或连接镜子。不把MockWebServer收包校验当作backend/service.py的视频路由联通或真实媒体播放。
