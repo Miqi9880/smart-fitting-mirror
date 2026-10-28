@@ -1,0 +1,43 @@
+{
+  "items": [
+    {
+      "video": {
+        "video_id": "synthetic-upper-01",
+        "title": "测试·上衣搭配示例",
+        "duration_seconds": 3,
+        "orientation": "landscape",
+        "cover_url": null,
+        "playback_url": "https://media.example.invalid/synthetic-upper-01.mp4",
+        "tags": [
+          {
+            "dimension": "category",
+            "value": "upper_body"
+          },
+          {
+            "dimension": "style",
+            "value": "casual"
+          }
+        ],
+        "garment_ids": [
+          "upper_blue"
+        ],
+        "makeup_ids": [],
+        "source": {
+          "kind": "synthetic_test",
+          "attribution": "程序生成测试内容",
+          "authorization": "仅结构样例，无可播放文件；不计入授权内容验收"
+        }
+      },
+      "matches": [
+        {
+          "dimension": "category",
+          "value": "upper_body",
+          "source": "garment_metadata",
+          "related_id": "upper_blue"
+        }
+      ]
+    }
+  ],
+  "requested_limit": 5,
+  "available_count": 1
+}

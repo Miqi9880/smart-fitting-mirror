@@ -1,0 +1,13 @@
+{
+  "garment_ids": [
+    "upper_blue"
+  ],
+  "makeup_ids": [],
+  "user_tags": [
+    {
+      "dimension": "style",
+      "value": "casual"
+    }
+  ],
+  "limit": 5
+}

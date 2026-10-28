@@ -37,6 +37,31 @@ class FittingSession(private val api: FittingTransport, private val scope: Corou
     private var visible = true
     private var disposed = false
     private var retryNotBefore = 0L
+    private val videoRequests = mutableSetOf<Deferred<VideoRecommendationList>>()
+
+    /** UI facade: reuses the owned token, never exposes it or changes the current outfit/result. */
+    suspend fun recommendVideos(request: VideoRecommendationRequest): VideoRecommendationList = coroutineScope {
+        val active = session ?: throw IllegalStateException("请先连接服务")
+        check(!disposed && visible && state.value.canSelect) { "请在试衣就绪后查看视频" }
+        val videos = api as? VideoApi ?: throw IOException("当前服务尚未接入视频推荐")
+        val pending = async(start = CoroutineStart.LAZY) { videos.recommendVideos(active.sessionToken, request) }
+        videoRequests += pending
+        try {
+            val result = pending.await()
+            if (disposed || !visible || session !== active || !state.value.canSelect) throw CancellationException("体验已切换")
+            result
+        } catch (error: ApiFailure) {
+            if (error.status == 401 && session === active && !disposed) {
+                // Another UI action may have started catalog/generation work while this
+                // read was pending. Expiry must invalidate those old responses as well.
+                ++version; work?.cancel(); poll?.cancel(); poll = null
+                fail(error, RetryAction.NONE)
+            }
+            throw error
+        } finally { videoRequests -= pending }
+    }
+
+    private fun cancelVideoRequests() { videoRequests.toList().forEach { it.cancel() }; videoRequests.clear() }
 
     fun connect() {
         if (disposed || session != null || state.value.phase == FittingPhase.CONNECTING) return
@@ -211,12 +236,13 @@ class FittingSession(private val api: FittingTransport, private val scope: Corou
 
     fun setVisible(value: Boolean) {
         visible = value
-        if (!value) { poll?.cancel(); poll = null }
+        if (!value) { poll?.cancel(); poll = null; cancelVideoRequests() }
         else if (state.value.phase == FittingPhase.WAITING) startPolling(version)
     }
 
     fun end() {
         if (disposed) return
+        cancelVideoRequests()
         val active = session
         attempt = null
         clearImages()
@@ -298,6 +324,7 @@ class FittingSession(private val api: FittingTransport, private val scope: Corou
 
     private fun fail(error: Exception, retry: RetryAction) {
         if (error is ApiFailure && error.status == 401) {
+            cancelVideoRequests()
             clearImages(); session = null; attempt = null
             mutable.value = FittingState(FittingPhase.CLOSED, message = "服务会话已失效，请重新连接")
             return
@@ -337,6 +364,7 @@ class FittingSession(private val api: FittingTransport, private val scope: Corou
     override fun close() {
         if (disposed) return
         disposed = true; ++version
+        cancelVideoRequests()
         work?.cancel(); poll?.cancel(); clearImages()
         val token = session?.sessionToken
         session = null; attempt = null

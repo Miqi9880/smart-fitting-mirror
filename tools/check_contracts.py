@@ -3,6 +3,7 @@ import copy
 import json
 import re
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from jsonschema import Draft202012Validator
 from jsonschema.exceptions import ValidationError
@@ -79,10 +80,36 @@ def garment_semantics(item):
                 'Non-torso item requires its own anatomical anchors')
 
 
+def video_semantics(data):
+    items = data['items']
+    require(len(items) == min(data['requested_limit'], data['available_count']), 'Inconsistent candidate count')
+    ids = [item['video']['video_id'] for item in items]
+    require(len(ids) == len(set(ids)), 'Duplicate video ids')
+    for item in items:
+        video = item['video']
+        for value in [video['playback_url'], video['cover_url']]:
+            if value is None:
+                continue
+            url = urlsplit(value)
+            require(url.scheme in {'http', 'https'} and url.hostname and url.hostname.isascii() and
+                    url.username is None and url.password is None and '#' not in value and
+                    not any(c.isspace() for c in value), 'Unsafe media URL')
+            url.port
+        for match in item['matches']:
+            require({'dimension': match['dimension'], 'value': match['value']} in video['tags'], 'Match is not a video tag')
+            require((match['source'] in {'garment_metadata', 'makeup_metadata'}) == (match['related_id'] is not None),
+                    'Match provenance is inconsistent')
+
+
+rejection_count = 0
+
+
 def expect_rejected(fn, value):
+    global rejection_count
     try:
         fn(value)
     except (ValueError, ValidationError):
+        rejection_count += 1
         return
     raise AssertionError('Invalid contract fixture was accepted')
 
@@ -103,7 +130,9 @@ def main():
     fixture_schemas = {'garments.json': 'GarmentList', 'session.json': 'Session', 'upload.json': 'Upload',
                        'create-job.json': 'CreateJob', 'error.json': 'ErrorResponse',
                        'garment-details.json': 'Garment', 'garment-write.json': 'GarmentWrite',
-                       'outfit-garments.json': 'GarmentList', 'extended-garments.json': 'GarmentList'}
+                       'outfit-garments.json': 'GarmentList', 'extended-garments.json': 'GarmentList',
+                       'video-request.json': 'VideoRecommendationRequest', 'video-matched.json': 'VideoRecommendationList',
+                       'video-shortfall.json': 'VideoRecommendationList', 'video-empty.json': 'VideoRecommendationList'}
     fixture_schemas.update({f'job-{s}.json': 'Job' for s in ['queued', 'running', 'succeeded', 'failed', 'cancelled']})
     seen = set()
     for path in sorted(EX.glob('vision-*.json')):
@@ -120,6 +149,9 @@ def main():
         if schema_name == 'Job':
             job_semantics(data)
             require(data['is_mock'], 'Repository result examples must be explicitly synthetic')
+        if schema_name == 'VideoRecommendationList':
+            video_semantics(data)
+            require(all(i['video']['source']['kind'] == 'synthetic_test' for i in data['items']), 'Example videos must be synthetic')
         seen.add(name)
     require(seen == {p.name for p in EX.glob('*.json')}, 'Every fixture must have a validator mapping')
 
@@ -147,13 +179,35 @@ def main():
         mutate(item['preview_image'])
         expect_rejected(garment_semantics, item)
 
+    def validate_video(data):
+        OAS30Validator(expand_refs(spec['components']['schemas']['VideoRecommendationList'], spec)).validate(data)
+        video_semantics(data)
+
+    for mutate in [lambda d: d.update(available_count=0),
+                   lambda d: d['items'][0]['video'].update(playback_url='https://token@media.example.invalid/clip.mp4'),
+                   lambda d: d['items'][0]['matches'][0].update(value='unrelated'),
+                   lambda d: d['items'][0]['matches'][0].update(related_id=None),
+                   lambda d: d['items'][0]['video'].update(duration_seconds=0),
+                   lambda d: d['items'][0]['video']['source'].update(kind='unverified')]:
+        bad = read(EX / 'video-shortfall.json')
+        mutate(bad)
+        expect_rejected(validate_video, bad)
+    bad = read(EX / 'video-shortfall.json')
+    bad['available_count'] = 2
+    bad['items'].append(copy.deepcopy(bad['items'][0]))
+    expect_rejected(validate_video, bad)
+    request_schema = expand_refs(spec['components']['schemas']['VideoRecommendationRequest'], spec)
+    for bad in [{'garment_ids': ['upper_blue', 'upper_blue']}, {'limit': 21}, {'photo_url': 'https://example.invalid/person.png'},
+                {'user_tags': [{'dimension': 'style', 'value': '   '}]}]:
+        expect_rejected(OAS30Validator(request_schema).validate, bad)
+
     markdowns = [ROOT / 'README.md', ROOT / 'CONTRIBUTING.md', *sorted((ROOT / 'docs').rglob('*.md')),
                  EX / 'README.md']
     for path in markdowns:
         for target in re.findall(r'\]\(([^)]+)\)', path.read_text(encoding='utf-8')):
             if '://' not in target and not target.startswith('#'):
                 require((path.parent / target.split('#')[0]).exists(), f'Broken link: {path}: {target}')
-    print(f'PASS: OpenAPI 3.0.3, 2 JSON schemas, {len(seen)} fixtures, 8 rejection cases, local doc links.')
+    print(f'PASS: OpenAPI 3.0.3, 2 JSON schemas, {len(seen)} fixtures, {rejection_count} rejection cases, local doc links.')
     print('No Android build, camera, mock server or real AI service was tested.')
 
 
