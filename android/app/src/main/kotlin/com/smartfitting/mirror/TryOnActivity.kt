@@ -54,6 +54,7 @@ class TryOnActivity : ComponentActivity() {
     private lateinit var address: EditText
     private lateinit var connect: Button
     private lateinit var generate: Button
+    private lateinit var staticImage: StaticImagePanel
     private lateinit var retry: Button
     private lateinit var cancel: Button
     private lateinit var finishSession: Button
@@ -76,6 +77,14 @@ class TryOnActivity : ComponentActivity() {
     private val assetKeys = mutableMapOf<String,AssetKey>()
     private val loadedAssets = mutableSetOf<String>()
     private val assetErrors = mutableMapOf<String,String>()
+    private val imagePicker = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        // Picker result delivery can precede onStart. Dispatch after this lifecycle callback.
+        if (uri != null) pageScroll.post {
+            if (visible) staticImage.load {
+                contentResolver.openInputStream(uri) ?: throw java.io.IOException("无法打开所选照片")
+            }
+        }
+    }
     private val permission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         if (!pendingPermission) return@registerForActivityResult
         pendingPermission = false
@@ -106,13 +115,13 @@ class TryOnActivity : ComponentActivity() {
         }
         root.addView(address)
         connect = button("连接服务", "fitting.connect") {
-            try { model.connect(address.text.toString()); if (model.running) beginVision() }
+            try { model.connect(address.text.toString()); staticImage.clear(); if (model.running) beginVision() }
             catch (error: IllegalArgumentException) { status.text = "地址无效：${error.message}" }
         }
         finishSession = button("结束并清理", "fitting.end") {
             if (model.previewFullscreen) setPreviewFullscreen(false)
             pendingPermission = false; model.running = false; model.visionFailure = null; stopVision()
-            before.clear(); after.clear(); model.controller?.end()
+            staticImage.clear(); before.clear(); after.clear(); model.controller?.end()
         }
         root.addView(row(connect, finishSession))
         status = label("连接服务以加载衣服", 14f).apply { tag = "fitting.status" }
@@ -214,6 +223,14 @@ class TryOnActivity : ComponentActivity() {
         cancel = button("取消生成", "fitting.cancel") { model.controller?.cancel() }
         retry = button("重试请求", "fitting.retry") { model.controller?.retry() }
         tail.addView(generate); tail.addView(row(cancel, retry))
+        staticImage = StaticImagePanel(this, lifecycleScope, {
+            imagePicker.launch(arrayOf("image/jpeg", "image/png"))
+        }, { photo ->
+            val controller = model.controller
+            if (!visible || captureBusy || controller?.state?.value?.canCapture != true) false
+            else { controller.generate(photo); updateCaptureActions(); true }
+        }) { updateCaptureActions() }
+        tail.addView(staticImage)
         mockLabel = label("尚无生成结果", 13f).apply { tag = "fitting.result.kind" }
         tail.addView(mockLabel)
         tail.addView(label("前后对比（均为未镜像原图方向）", 16f))
@@ -261,12 +278,14 @@ class TryOnActivity : ComponentActivity() {
 
     override fun onStart() {
         super.onStart(); visible = true; model.controller?.setVisible(true)
+        updateCaptureActions()
         if (model.running) beginVision()
     }
     override fun onStop() {
         cameraDialog?.dismiss(); cameraDialog = null
         browser?.dismiss(); browser = null
         visible = false; model.playing = mock.playing; model.synthetic = mock.settings
+        staticImage.clear()
         model.controller?.setVisible(false); stopVision(); before.clear(); after.clear(); super.onStop()
     }
     override fun onSaveInstanceState(outState: Bundle) {
@@ -312,7 +331,7 @@ class TryOnActivity : ComponentActivity() {
             controls.render(!model.rgb, true, frame.metadata.trackingState)
             visionStatus.text = "${if (model.rgb) "RGB 摄像头（通道 ${rgb.activeCameraId ?: "未知"}）" else "合成输入（非真人）"} · ${frame.metadata.trackingState} · 无深度/精细遮挡"
             refreshPreviewSummary()
-            generate.isEnabled = model.state.value.canCapture && !captureBusy
+            updateCaptureActions()
         }, { update ->
             if (activeVision == id) {
                 if (update.state == SourceState.ERROR) {
@@ -331,15 +350,14 @@ class TryOnActivity : ComponentActivity() {
         visionStatus.text = model.visionFailure ?: "采集已停止，临时预览帧已清理"
         previewPanel.sourceStatus.text = visionStatus.text
         previewPanel.renderInput(model.running,model.visionFailure != null,model.rgb)
-        garments.isEnabled = model.state.value.canSelect
-        catalog.isEnabled = model.state.value.canSelect
+        updateCaptureActions()
         controls.render(!model.rgb, false)
     }
     private fun capture() {
         val controller = model.controller ?: return
         val id = activeVision ?: return
-        if (!controller.state.value.canCapture || captureBusy) return
-        captureBusy = true; generate.isEnabled = false; garments.isEnabled = false
+        if (!controller.state.value.canCapture || captureBusy || staticImage.busy) return
+        captureBusy = true; updateCaptureActions()
         source.captureOriginal { outcome ->
             val photo = outcome.getOrNull()
             if (!visible || activeVision != id || model.controller !== controller || photo?.sessionId?.let { it != id } == true) {
@@ -348,8 +366,7 @@ class TryOnActivity : ComponentActivity() {
             captureBusy = false
             if (photo != null) controller.generate(photo)
             else status.text = outcome.exceptionOrNull()?.message ?: "拍摄失败，请重试"
-            generate.isEnabled = hasFrame && controller.state.value.canCapture
-            garments.isEnabled = controller.state.value.canSelect
+            updateCaptureActions()
         }
     }
     private fun render(value: FittingState) {
@@ -357,7 +374,7 @@ class TryOnActivity : ComponentActivity() {
         val idle = !value.connected && value.phase != FittingPhase.CONNECTING && value.phase != FittingPhase.ENDING
         connect.isEnabled = idle; address.isEnabled = idle
         finishSession.isEnabled = value.connected || value.phase == FittingPhase.CONNECTING
-        generate.isEnabled = value.canCapture && hasFrame && !captureBusy
+        updateCaptureActions()
         cancel.isEnabled = value.canCancel; retry.isEnabled = value.retry != RetryAction.NONE
         selecting = true
         if (listed != value.garments) {
@@ -367,8 +384,8 @@ class TryOnActivity : ComponentActivity() {
         }
         val position = listed.indexOfFirst { it.garmentId == value.selectedId }
         if (position >= 0 && garments.selectedItemPosition != position) garments.setSelection(position)
-        garments.isEnabled = value.canSelect && !captureBusy; selecting = false
-        catalog.isEnabled = value.canSelect && !captureBusy
+        selecting = false
+        updateCaptureActions()
         if (value.connected && value.garments.isNotEmpty())
             model.catalogAssets = (model.catalogAssets + value.garments).distinctBy { it.previewImage.url }
         browser?.render(value)
@@ -379,6 +396,7 @@ class TryOnActivity : ComponentActivity() {
         }
         before.update(value.original); after.update(value.result)
         if (value.phase in setOf(FittingPhase.ENDING, FittingPhase.CLOSED)) {
+            staticImage.clear()
             if (model.previewFullscreen) setPreviewFullscreen(false)
             model.running = false; model.visionFailure = null; stopVision(); before.clear(); after.clear()
             model.catalogAssets = emptyList(); model.catalogQuery = ""; model.outfit = emptyMap(); model.lastOutfitSelection = null
@@ -395,6 +413,15 @@ class TryOnActivity : ComponentActivity() {
             }
             renderOutfit()
         }
+    }
+    private fun updateCaptureActions() {
+        val value = model.controller?.state?.value ?: model.state.value
+        val allow = visible && value.canCapture && !captureBusy
+        val importing = ::staticImage.isInitialized && staticImage.busy
+        generate.isEnabled = allow && hasFrame && !importing
+        if (::staticImage.isInitialized) staticImage.render(allow)
+        garments.isEnabled = value.canSelect && !captureBusy && !importing
+        catalog.isEnabled = value.canSelect && !captureBusy && !importing
     }
     private fun renderOutfit() {
         outfitStatus.text = "当前搭配：" + model.outfit.values.joinToString(" ＋ ") { "${it.category.label}：${it.name}" }.ifBlank { "无" }

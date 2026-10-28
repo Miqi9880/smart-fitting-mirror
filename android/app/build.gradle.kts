@@ -20,6 +20,7 @@ dependencies {
     implementation(project(":feature-tryon"))
     implementation("androidx.activity:activity-ktx:1.10.1")
     implementation("androidx.core:core-ktx:1.15.0")
+    implementation("androidx.exifinterface:exifinterface:1.3.7")
     implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.8.7")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
