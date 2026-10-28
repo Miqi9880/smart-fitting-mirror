@@ -10,6 +10,8 @@ import com.smartfitting.mirror.contracts.GarmentCategory
 import com.smartfitting.mirror.tryon.OutfitFit
 import com.smartfitting.mirror.tryon.PreviewViewport
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
@@ -42,9 +44,41 @@ class TryOnModel(application: Application) : AndroidViewModel(application) {
     var catalogAssets = emptyList<com.smartfitting.mirror.contracts.Garment>()
     var outfit = emptyMap<GarmentCategory,Garment>()
     var lastOutfitSelection: Garment? = null
+    internal val experienceClock = GuestExperienceClock()
+    private var experienceMonitor: Job? = null
+    private val requestedExit = MutableStateFlow<GuestEndReason?>(null)
+    internal val exitRequests = requestedExit.asStateFlow()
+    private val standingValue = MutableStateFlow<StandingAssessment?>(null)
+    internal val standing = standingValue.asStateFlow()
+    internal var endReason: GuestEndReason? = null
+        private set
+    internal var endStartedAtMs: Long? = null
+        private set
+
+    internal fun startExperience() {
+        if (experienceClock.active) return
+        endReason = null; endStartedAtMs = null; requestedExit.value = null
+        experienceClock.start(android.os.SystemClock.elapsedRealtime())
+        experienceMonitor?.cancel()
+        experienceMonitor = viewModelScope.launch {
+            while (isActive && experienceClock.active) { checkExperienceTimeout(); delay(250) }
+        }
+    }
+    internal fun interact() { experienceClock.interact(android.os.SystemClock.elapsedRealtime()) }
+    internal fun observeBody(value: StandingAssessment, nowMs: Long = android.os.SystemClock.elapsedRealtime()) {
+        standingValue.value = value; experienceClock.observe(value.presence, nowMs)
+    }
+    internal fun sourceStopped() { experienceClock.sourceStopped(); standingValue.value = null }
+    internal fun checkExperienceTimeout(nowMs: Long = android.os.SystemClock.elapsedRealtime()): GuestEndReason? =
+        experienceClock.expired(nowMs).also { if (it != null) requestedExit.value = it }
+    internal fun markEnded(reason: GuestEndReason) {
+        endReason = reason; endStartedAtMs = android.os.SystemClock.elapsedRealtime()
+        experienceClock.end(); experienceMonitor?.cancel(); sourceStopped()
+    }
 
     fun connect(url: String) {
         val api = HttpFittingApi(url.trim()) // Validate before replacing an existing controller.
+        experienceClock.end(); startExperience()
         bridge?.cancel()
         controller?.close()
         outfit = emptyMap(); lastOutfitSelection = null
