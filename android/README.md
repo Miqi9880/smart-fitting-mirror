@@ -32,7 +32,7 @@ RGB 模型输出已适配参考项目的关键点平滑，缺点/丢失仍立即
 4. Windows PowerShell 在 android 目录执行：
 
 ```powershell
-.\gradlew.bat :app:assembleDebug :core-contracts:test :core-vision:testDebugUnitTest
+.\gradlew.bat :app:assembleDebug :app:testDebugUnitTest :core-contracts:test :core-vision:testDebugUnitTest
 .\gradlew.bat :app:lintDebug :core-vision:lintDebug
 ```
 
@@ -53,10 +53,10 @@ macOS/Linux 使用 `./gradlew`。APK 位于 app/build/outputs/apk/debug/app-debu
 ```powershell
 adb devices
 .\gradlew.bat :app:installDebug
-adb shell am start -n com.smartfitting.mirror/.TryOnActivity
+adb shell am start -n com.smartfitting.mirror/.StandbyActivity
 ```
 
-默认试衣页的连接/生成/对比见联调说明；以下操作描述保留的“硬件诊断”页（从试衣页底部进入），该页不上传图像。
+默认待机页先配置服务地址，点“游客开始试衣”进入连接／生成／对比流程，首次进入不打开相机。具体见[待机／站位说明](../docs/reports/standby-standing-2026-10-28.md)。以下描述“设备诊断”页（由待机页按钮进入），该页不上传图像。
 
 - 合成样例：不需要摄像头；选择静止、平移、大小变化、缺少左肩、丢失或恢复场景。可暂停、单步、从头重放，并选择 480×640 / 640×480 图像画幅。默认综合演示每 80 个样本短暂丢失。
 - RGB 摄像头：优先前置，缺少前置时回退后置；只支持被 CameraX/Camera2 暴露的 RGB 设备，不保证厂商 USB 深度摄像机可直接使用。
@@ -65,17 +65,17 @@ adb shell am start -n com.smartfitting.mirror/.TryOnActivity
 - 停止并清理：停止数据源，释放帧，禁止拍照。回到应用时只恢复用户此前仍在运行的数据源，并新建本地会话。
 - 权限设置：权限被永久拒绝时打开应用设置。没有权限也能使用合成样例。
 
-诊断页 FPS 是“推理完成后的输出频率”，不是摄像头采样 FPS。合成数据的 FPS 不能代表算法性能。深度、人体 mask、站位测距与遮挡当前均未实现，字段保持 null/unknown，能力为 false。
+诊断页 FPS 是“推理完成后的输出频率”，不是摄像头采样 FPS。合成数据的 FPS 不能代表算法性能。试衣页已有二维入镜／居中反馈；真实深度、人体mask、站位测距与精细遮挡仍未接入，RGB距离字段保持null。
 
 ## 模块边界
 
 | 模块 | 状态与接入点 |
 | --- | --- |
 | core-contracts | 纯 JVM Kotlin；对应 15 份公共 JSON 样例的 DTO、帧引用管理、接口与 FIT_CENTER 变换 |
-| core-vision | CameraRgbSource、SyntheticVisionSource、BitmapPixels、PoseMapper |
+| core-vision | CameraRgbSource、SyntheticVisionSource、BitmapPixels、PoseMapper、StandingGuide |
 | core-network | HttpFittingApi、FittingSession；haiyangniu191-design 接手网络与状态维护 |
 | feature-tryon | TorsoWarp、TryOnView；lyf-bee 接手素材/形变/渲染维护 |
-| app | TryOnActivity/Model/OwnedImage 产品基线 + MainActivity 诊断；yyyrrrxxx 接手交互与集成 |
+| app | StandbyActivity待机／游客入口，TryOnActivity试衣／结果，MainActivity设备诊断；yyyrrrxxx继续视频交互 |
 
 借用帧的回调默认在主线程执行。同步绘制可在回调期间读取；保存或异步使用须 retain，用完 release。源负责释放自己的引用，不要在回调里释放未 retain 的引用。BitmapPixels.bitmap 只在持有引用时有效，不可修改或自行 recycle。
 

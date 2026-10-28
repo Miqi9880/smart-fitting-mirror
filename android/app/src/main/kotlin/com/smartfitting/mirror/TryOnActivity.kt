@@ -8,6 +8,7 @@ import android.graphics.Bitmap
 import android.graphics.Color
 import android.net.Uri
 import android.os.Bundle
+import android.os.SystemClock
 import android.provider.Settings
 import android.view.View
 import android.view.ViewGroup
@@ -48,6 +49,7 @@ class TryOnActivity : ComponentActivity() {
     private lateinit var controls: SyntheticControls
     private lateinit var status: TextView
     private lateinit var visionStatus: TextView
+    private lateinit var standingPanel: StandingGuidePanel
     private lateinit var assetStatus: TextView
     private lateinit var outfitStatus: TextView
     private lateinit var mockLabel: TextView
@@ -71,6 +73,8 @@ class TryOnActivity : ComponentActivity() {
     private var visible = false
     private var pendingPermission = false
     private var cameraDialog: AlertDialog? = null
+    private val guestRoute get() = intent.getBooleanExtra(StandbyActivity.EXTRA_GUEST, false)
+    private var returningGuest = false
     private data class AssetKey(val controller: FittingSession, val item: Garment)
     private val assetJobs = mutableMapOf<String,Job>()
     private val assetKeys = mutableMapOf<String,AssetKey>()
@@ -97,6 +101,16 @@ class TryOnActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if (guestRoute) {
+            if (savedInstanceState == null && model.controller == null) {
+                intent.getStringExtra(StandbyActivity.EXTRA_ORIGIN)?.let { model.baseUrl = it }
+                model.cameraId = intent.getStringExtra(StandbyActivity.EXTRA_CAMERA)
+            }
+            if (model.endReason == null) model.startExperience()
+            onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
+                override fun handleOnBackPressed() = endExperience(GuestEndReason.MANUAL)
+            })
+        }
         pendingPermission = savedInstanceState?.getBoolean("pending_permission") ?: false
         rgb = CameraRgbSource(this, this,
             targetRotation = { @Suppress("DEPRECATION") windowManager.defaultDisplay.rotation },
@@ -117,12 +131,7 @@ class TryOnActivity : ComponentActivity() {
             try { model.connect(address.text.toString()); staticImage.clear(); comparison.clear(); if (model.running) beginVision() }
             catch (error: IllegalArgumentException) { status.text = "地址无效：${error.message}" }
         }
-        finishSession = button("结束并清理", "fitting.end") {
-            if (model.previewFullscreen) setPreviewFullscreen(false)
-            pendingPermission = false; model.running = false; model.visionFailure = null; stopVision()
-            staticImage.clear(); comparison.clear(); model.resultComparisonMode = ResultComparisonMode.SIDE_BY_SIDE
-            model.controller?.end()
-        }
+        finishSession = button("结束并清理", "fitting.end") { endExperience(GuestEndReason.MANUAL) }
         root.addView(row(connect, finishSession))
         status = label("连接服务以加载衣服", 14f).apply { tag = "fitting.status" }
         root.addView(status)
@@ -202,6 +211,8 @@ class TryOnActivity : ComponentActivity() {
             setOnCheckedChangeListener { _, value -> model.setFitSaveEnabled(value) }
         })
         root.addView(fitControls)
+        standingPanel = StandingGuidePanel(this)
+        root.addView(standingPanel)
         val tail = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         assetStatus = label("连接服务后加载透明服装", 12f).apply { tag = "fitting.asset" }
         tail.addView(assetStatus)
@@ -236,12 +247,12 @@ class TryOnActivity : ComponentActivity() {
         comparison = ResultComparisonPanel(this, lifecycleScope,
             { model.resultComparisonMode = it }, { status.text = it })
         tail.addView(comparison)
-        tail.addView(row(button("硬件诊断", "fitting.diagnostics") { startActivity(Intent(this, MainActivity::class.java)) },
+        tail.addView(row(button("硬件诊断", "fitting.diagnostics") { startActivity(Intent(this, MainActivity::class.java)) }.apply { if (guestRoute) visibility = View.GONE },
             button("权限设置", "fitting.permissions") { startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName"))) }))
         tail.addView(button("镜子主屏幕设置", "fitting.home") {
             try { startActivity(Intent(Settings.ACTION_HOME_SETTINGS)) }
             catch (_: android.content.ActivityNotFoundException) { visionStatus.text = "设备未开放主屏幕设置，请联系管理员配置开机入口。" }
-        })
+        }.apply { if (guestRoute) visibility = View.GONE })
         tail.addView(label("上衣头部保护仅在双耳可靠时近似生效，侧脸或缺点时不启用；无人体分割、深度测距或精细遮挡。放大只改变显示，不增加相机细节。合成样例非真人。", 11f))
         previewPanel = PreviewPanel(this,root,preview,tail, {
             if (model.running) {
@@ -270,12 +281,31 @@ class TryOnActivity : ComponentActivity() {
         WindowCompat.getInsetsController(window, root).apply { isAppearanceLightStatusBars = true; isAppearanceLightNavigationBars = true }
         setPreviewFullscreen(model.previewFullscreen)
         lifecycleScope.launch { repeatOnLifecycle(Lifecycle.State.STARTED) { model.state.collect { render(it) } } }
+        lifecycleScope.launch { repeatOnLifecycle(Lifecycle.State.STARTED) { model.standing.collect {
+            standingPanel.render(it, !model.rgb); refreshPreviewSummary()
+        } } }
+        lifecycleScope.launch { model.exitRequests.collect { if (it != null) endExperience(it) } }
+        lifecycleScope.launch { model.state.collect {
+            if (guestRoute) {
+                if (it.phase == FittingPhase.CLOSED && model.endReason == null) endExperience(GuestEndReason.SESSION_EXPIRED)
+                if (model.endReason != null && (it.phase == FittingPhase.CLOSED ||
+                    (it.phase == FittingPhase.ERROR && it.retry == RetryAction.END))) completeGuestReturn(it.phase == FittingPhase.CLOSED)
+            }
+        } }
+        if (guestRoute && model.endReason != null) returnToStandby()
+        else if (guestRoute && model.controller == null) {
+            try { model.connect(model.baseUrl) }
+            catch (_: IllegalArgumentException) { status.text = "服务地址无效，请修改后连接。" }
+        }
     }
 
     override fun onStart() {
         super.onStart(); visible = true; model.controller?.setVisible(true)
         updateCaptureActions()
-        if (model.running) beginVision()
+        val expired = model.checkExperienceTimeout()
+        if (expired != null) endExperience(expired)
+        if (model.endReason != null && guestRoute) returnToStandby()
+        else if (expired == null && model.running) beginVision()
     }
     override fun onStop() {
         cameraDialog?.dismiss(); cameraDialog = null
@@ -289,6 +319,37 @@ class TryOnActivity : ComponentActivity() {
         super.onSaveInstanceState(outState)
     }
     override fun onDestroy() { rgb.close(); mock.close(); super.onDestroy() }
+    override fun onUserInteraction() { super.onUserInteraction(); model.interact() }
+
+    private fun endExperience(reason: GuestEndReason) {
+        if (model.endReason != null) return
+        model.markEnded(reason)
+        if (model.previewFullscreen) setPreviewFullscreen(false)
+        pendingPermission = false; model.running = false; model.visionFailure = null; stopVision()
+        staticImage.clear(); comparison.clear(); model.resultComparisonMode = ResultComparisonMode.SIDE_BY_SIDE
+        browser?.dismiss(); browser = null; cameraDialog?.dismiss(); cameraDialog = null
+        model.outfit = emptyMap(); model.lastOutfitSelection = null; model.catalogAssets = emptyList(); model.catalogQuery = ""
+        if (model.controller?.state?.value?.phase != FittingPhase.CLOSED) model.controller?.end()
+        if (guestRoute) returnToStandby()
+    }
+    private fun returnToStandby() {
+        if (!guestRoute || returningGuest || isFinishing) return
+        returningGuest = true
+        if (visible) startActivity(Intent(this, StandbyActivity::class.java)
+            .addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT).putExtra(StandbyActivity.EXTRA_REASON, model.endReason?.name))
+        if (model.controller == null || model.controller?.state?.value?.phase == FittingPhase.CLOSED) completeGuestReturn(true)
+        else lifecycleScope.launch {
+            val remaining = (5_000L - (SystemClock.elapsedRealtime() - (model.endStartedAtMs ?: SystemClock.elapsedRealtime()))).coerceAtLeast(0)
+            delay(remaining); completeGuestReturn(false)
+        }
+    }
+    private fun completeGuestReturn(confirmed: Boolean) {
+        if (isFinishing || !guestRoute || model.endReason == null) return
+        setResult(RESULT_OK, Intent().putExtra(StandbyActivity.EXTRA_CONFIRMED, confirmed)
+            .putExtra(StandbyActivity.EXTRA_ORIGIN, model.baseUrl).putExtra(StandbyActivity.EXTRA_CAMERA, model.cameraId)
+            .putExtra(StandbyActivity.EXTRA_REASON, model.endReason?.name))
+        finish()
+    }
 
     private fun setPreviewFullscreen(value: Boolean) {
         if (value && !model.previewFullscreen) normalScrollY = pageScroll.scrollY
@@ -306,6 +367,7 @@ class TryOnActivity : ComponentActivity() {
     }
 
     private fun requestPreview(rgbInput: Boolean) {
+        model.startExperience(); model.interact()
         pendingPermission = false
         if (rgbInput && ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
             pendingPermission = true; permission.launch(Manifest.permission.CAMERA)
@@ -323,6 +385,8 @@ class TryOnActivity : ComponentActivity() {
             if (activeVision != frame.metadata.sessionId) return@start
             hasFrame = true
             latestTracking = frame.metadata.trackingState
+            model.observeBody(StandingGuide.assess(frame.metadata,
+                source.capabilities.alignedDepth && frame.metadata.depth != null && frame.pixels.alignedDepth?.metadata == frame.metadata.depth))
             preview.submit(frame, model.state.value.selected)
             controls.render(!model.rgb, true, frame.metadata.trackingState)
             visionStatus.text = "${if (model.rgb) "RGB 摄像头（通道 ${rgb.activeCameraId ?: "未知"}）" else "合成输入（非真人）"} · ${frame.metadata.trackingState} · 无深度/精细遮挡"
@@ -340,6 +404,7 @@ class TryOnActivity : ComponentActivity() {
         loadOutfit(true)
     }
     private fun stopVision() {
+        model.sourceStopped()
         activeVision = null; hasFrame = false; latestTracking = null; captureBusy = false
         assetJobs.values.forEach { it.cancel() }; assetJobs.clear(); assetKeys.clear(); loadedAssets.clear(); assetErrors.clear()
         mock.stop(); rgb.stop(); preview.clear(); generate.isEnabled = false
@@ -475,7 +540,8 @@ class TryOnActivity : ComponentActivity() {
     private fun refreshPreviewSummary() {
         if (!hasFrame) return
         previewPanel.sourceStatus.text = "${if (model.rgb) "真人 RGB" else "合成输入（非真人）"} · $latestTracking · 已加载 ${loadedAssets.size}/${model.outfit.size} 件" +
-            if (assetErrors.isEmpty()) "" else " · 有加载失败，请退出全屏重载"
+            " · ${StandingWords.summary(model.standing.value)}" +
+            (if (assetErrors.isEmpty()) "" else " · 有加载失败，请退出全屏重载")
     }
     private fun dp(value: Int) = (value * resources.displayMetrics.density).toInt()
     private fun label(value: String, size: Float) = TextView(this).apply { text = value; textSize = size; setTextColor(Color.rgb(26, 43, 55)); setPadding(0, dp(4), 0, dp(4)) }

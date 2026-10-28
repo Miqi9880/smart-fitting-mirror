@@ -35,7 +35,7 @@ jobs:
           echo "ANDROID_SDK_ROOT=$sdk_root" >> "$GITHUB_ENV"
       - name: Build, test and lint
         working-directory: android
-        run: ./gradlew --no-daemon :app:assembleDebug :app:assembleDebugAndroidTest :core-contracts:test :core-vision:testDebugUnitTest :core-network:testDebugUnitTest :feature-tryon:testDebugUnitTest :app:lintDebug :core-vision:lintDebug :core-network:lintDebug :feature-tryon:lintDebug
+        run: ./gradlew --no-daemon :app:assembleDebug :app:assembleDebugAndroidTest :app:testDebugUnitTest :core-contracts:test :core-vision:testDebugUnitTest :core-network:testDebugUnitTest :feature-tryon:testDebugUnitTest :app:lintDebug :core-vision:lintDebug :core-network:lintDebug :feature-tryon:lintDebug
       - uses: actions/upload-artifact@v4
         if: always()
         with:
