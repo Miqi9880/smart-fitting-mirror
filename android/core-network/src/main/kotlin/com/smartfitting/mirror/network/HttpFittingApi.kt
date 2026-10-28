@@ -52,6 +52,9 @@ class HttpFittingApi internal constructor(baseUrl: String, private val client: O
     }
     override suspend fun upload(sessionToken: String, photo: CapturedPhoto): Upload {
         require(photo.mimeType in setOf("image/png", "image/jpeg") && photo.bytes.size <= 10 * 1024 * 1024)
+        // Comparing results can outlast the server's keep-alive. Start an explicit
+        // new upload without those idle sockets; active calls are not evicted.
+        transport.connectionPool.evictAll()
         // Call cancellation resumes the caller before the socket writer necessarily finishes.
         // Keep an independent array until OkHttp invokes its terminal callback.
         val owned = photo.bytes.copyOf()

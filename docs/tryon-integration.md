@@ -4,6 +4,8 @@
 
 ## 启动并完成一次试衣
 
+2026-10-28增量（0.3.6）：生成后在结果区点“查看原图”／“查看结果”一键切换，或点“并排对比”回到两张图。切换不上传或重新生成；结果未就绪时按钮禁用，旋转保留查看模式，结束／重连后清空。均显示未镜像原图方向，[操作与验证](reports/result-comparison-2026-10-28.md)。当前Aidge/COS仍暂停，按本地MOCK完成软件联调。
+
 1. 按 [入门](getting-started.md) 配置 Android 与 Python。仓库根目录启动 `python -m backend --host 127.0.0.1 --port 8000 --mode success`（用安装过 requirements-dev 的虚拟环境解释器）。
 2. 在 android 目录执行 ` .\gradlew.bat :app:installDebug`，从设备图标打开 App，默认进入“试衣联调”。硬件诊断仍可从页底进入。
 3. 官方 Android 模拟器填写 `http://10.0.2.2:8000`；USB 真机先 `adb reverse tcp:8000 tcp:8000`，填 `http://127.0.0.1:8000`。地址只填 origin，不加 /api/v1。
