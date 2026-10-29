@@ -2,7 +2,7 @@
 
 2026-10-28定稿。依据企业V1.0的FR-VID-01／02／05、7.4、12.1；服饰组负责当前服装／主动标签上下文，妆容ID留作面部组协调接口，不在这里实现试妆。
 
-**实现状态（2026-10-29开发分支）：** 已增加 `POST /api/v1/video-recommendations`、JSON内容库、上架／来源授权／可播过滤、基于服装目录和主动标签的精确规则召回、会话鉴权及独立限流。默认内容库为空；测试合成内容只能显式注入，不能被生产默认库返回。当前仍无5条真实授权并确认可播放的视频，播放器接入和实际播放也未完成，因此不能声称推荐闭环已完成。旧0.3.0试衣路径不变；这次没有修改 Android 播放器或要求重装镜子。实现记录见[后端增量报告](../reports/video-library-route-2026-10-29.md)。
+**实现状态（2026-10-29，PR #52）：** 已增加 `POST /api/v1/video-recommendations`、JSON内容库、上架／来源授权／可播过滤、基于服装目录和主动标签的精确规则召回、会话鉴权及独立限流。默认内容库为空；测试合成内容只能显式注入，不能被生产默认库返回。当前仍无5条真实授权并确认可播放的视频，播放器接入和实际播放也未完成，因此不能声称推荐闭环已完成。旧0.3.0试衣路径不变；这次没有修改 Android 播放器或要求重装镜子。实现记录见[后端增量报告](../reports/video-library-route-2026-10-29.md)。
 
 权威字段见[OpenAPI](../../contracts/openapi.json)，双端实现为`backend/video_contracts.py`和`android/core-contracts/.../VideoModels.kt`。旧[草案](video-recommendation-draft.md)转为历史依据，与本页冲突时以本页为准。
 
@@ -26,6 +26,8 @@
 请求完整样例：[video-request.json](../../contracts/examples/video-request.json)。
 
 ## 响应与来源
+
+衣柜原有颜色字段的展示范围大于视频标签；不能表示为VideoTag的长文本或非规范颜色被跳过，不截短或猜测为另一个颜色，其余合法品类／主动标签仍可参与召回。合法服装不会仅因此返回400；未知服装ID仍按合同拒绝。
 
 200响应包含`items`、`requested_limit`、`available_count`：后者是**相关、可返回、去重候选截断前总数**，不是全库大小；`items.size = min(requested_limit, available_count)`，且响应的requested_limit必须等于本次请求limit。不足仍展示已有条目，不重复／补无关视频，不报成网络错误；空态为items=[]、available_count=0。
 
@@ -83,7 +85,7 @@ matches.source为garment_metadata／makeup_metadata时，related_id必须是本�
 ## 分工与验收
 
 - Miqi9880／受托Codex本轮完成公共字段／版本、双端DTO、共享样例、客户端与会话门面、验证说明。
-- haiyangniu191-design在现有调用治理增量后，基于`backend.video_contracts`实现的后端代码现位于独立开发分支，待PR审阅。验收覆盖未知服装／未接妆容400、去重、相关性、不足与空态、会话隔离／过期／撤销。不得重复定义字段，也不需恢复COS／收费AI。
+- haiyangniu191-design在现有调用治理增量后，基于`backend.video_contracts`交付的后端库／路由见PR #52；负责人复核及两项补修见[复核记录](../reports/pr52-review-2026-10-29.md)。验收覆盖未知服装／未接妆容400、去重、相关性、不足与空态、会话隔离／过期／撤销。不得重复定义字段，也不需恢复COS／收费AI。
 - yyyrrrxxx先处理已提交PR #45～#50的视频组件交付和构建／交互证据，随后按此映射接HTTP与会话入口；补取消、过期、空态／不足／失败和播放器释放。不要重复待机、站位、时钟或原图切换。
 - 至少5条确实相关且可播放的自有／授权内容仍由负责人协调，缺失继续列阻塞；全部镜子／真人现场只归负责人，无需其他成员准备手机或接相机。
 

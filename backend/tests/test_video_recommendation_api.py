@@ -113,6 +113,26 @@ def test_empty_context_and_default_library_return_empty_without_generic_recommen
         assert response.json()["items"] == [] and response.json()["available_count"] == 0
 
 
+@pytest.mark.parametrize("color", ["x" * 65, " blue "])
+def test_valid_wardrobe_display_color_does_not_invalidate_recommendation_context(color):
+    category = {"dimension": "category", "value": "upper_body"}
+    color_tag = {"dimension": "color", "value": "blue"}
+    with client_with([record("category-only", [category]), record("not-normalized", [color_tag])]) as client:
+        headers = open_session(client)
+        garment = {
+            "garment_id": "valid_custom", "name": "测试上衣", "category": "upper_body",
+            "asset_id": "upper_blue", "details": {"colors": [color]},
+        }
+        assert client.post("/api/v1/garments", headers=headers, json=garment).status_code == 201
+        response = post_recommendations(client, headers, {"garment_ids": ["valid_custom"]})
+    assert response.status_code == 200
+    assert response.json()["available_count"] == 1
+    assert [i["video"]["video_id"] for i in response.json()["items"]] == ["category-only"]
+    assert response.json()["items"][0]["matches"] == [
+        {**category, "source": "garment_metadata", "related_id": "valid_custom"}
+    ]
+
+
 def test_synthetic_content_is_never_enabled_by_the_production_default():
     with client_with([record("synthetic", [{"dimension": "category", "value": "upper_body"}])],
                      allow_synthetic=False) as client:

@@ -1,6 +1,6 @@
 # 智能穿衣镜后端服务
 
-实现 HTTP 合同 V0.3.0，含会话、上传、生成任务、六品类初始衣柜及详情/增删改，当前下架连帽款后48件。SQLite 保存内置基础目录，游客的临时编辑隔离保存。默认仍为不联网的 MOCK。选择 `--provider aidge-cos` 但不加 `--enable-real-provider` 时，服务明确拒绝生成，不读云端配置、不创建假成功任务；只有同时提供启用开关才会构造 Aidge/COS 客户端。[当前商品素材与组合预览](../docs/studio-outfits.md)。
+实现 HTTP 合同 V0.4.0（兼容旧试衣路径），含会话、上传、生成任务、六品类初始衣柜及详情/增删改，当前下架连帽款后48件。SQLite 保存内置基础目录，游客的临时编辑隔离保存。默认仍为不联网的 MOCK。选择 `--provider aidge-cos` 但不加 `--enable-real-provider` 时，服务明确拒绝生成，不读云端配置、不创建假成功任务；只有同时提供启用开关才会构造 Aidge/COS 客户端。[当前商品素材与组合预览](../docs/studio-outfits.md)。
 
 2026-10-28视频合同升级0.4.0，`video_contracts.py`提供共享DTO；本分支增加只读推荐路由与精确标签规则，默认内容库为空，只返回已上架、授权状态已核验且可播状态已核验的条目。当前没有5条真实授权内容，因此不能宣称播放闭环完成。按[正式视频接口](../docs/interfaces/video-recommendation.md)；实现边界与检查见[本地记录](../docs/reports/video-library-route-2026-10-29.md)。COS/Aidge仍按负责人当前决定暂停，不为视频接口启用付费服务。
 

@@ -334,7 +334,7 @@ class FittingSession(private val api: FittingTransport, private val scope: Corou
             // The server rejected task creation before accepting a job. Keep the local preview,
             // release the stale attempt, and let the user explicitly capture/start again later.
             attempt = null
-            mutable.value = state.value.copy(phase = FittingPhase.ERROR, message = error.message,
+            mutable.value = state.value.copy(phase = FittingPhase.READY, message = error.message,
                 retry = RetryAction.NONE,
                 canCapture = session != null && state.value.selected?.generationReferenceUrl != null)
             return

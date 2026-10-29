@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 from typing import Iterable
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, ValidationError
 
 from .catalog import GarmentWrite
 from .video_contracts import (
@@ -84,7 +84,14 @@ class VideoLibrary:
                 raise ValueError(f"Unknown garment context: {garment_id}")
             add_context(VideoTag(dimension="category", value=garment.category), "garment_metadata", garment_id)
             for color in garment.details.colors:
-                add_context(VideoTag(dimension="color", value=color), "garment_metadata", garment_id)
+                # The existing wardrobe accepts longer/noncanonical display text.
+                # Ignore an unsupported video tag; the garment and its category
+                # remain valid context. Never truncate it into a false match.
+                try:
+                    tag = VideoTag(dimension="color", value=color)
+                except ValidationError:
+                    continue
+                add_context(tag, "garment_metadata", garment_id)
         for tag in request.user_tags:
             add_context(tag, "user_selection", None)
 

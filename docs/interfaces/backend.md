@@ -1,6 +1,6 @@
 # 后端与服装接口
 
-2026-10-29：HTTP合同增加[视频推荐V0.4.0](video-recommendation.md)，新增VideoApi和双端数据类型；后端推荐库／路由已在 `feat/hyl-video-library-rules` 开发分支，待PR审阅／合并。默认内容库为空，未取得5条真实授权可播内容；合同、后端代码和实际播放闭环是不同验收状态。
+2026-10-29：HTTP合同增加[视频推荐V0.4.0](video-recommendation.md)，新增VideoApi和双端数据类型；后端推荐库／路由随PR #52交付，负责人复核及两项补修见[记录](../reports/pr52-review-2026-10-29.md)。默认内容库为空，未取得5条真实授权可播内容；合同、后端代码和实际播放闭环是不同验收状态。
 
 [OpenAPI 合同](../../contracts/openapi.json) 定义字段和响应，本文定义行为。采用 [OpenAPI 3.0.3](https://spec.openapis.org/oas/v3.0.3)，合同不表示已有可运行服务。
 
