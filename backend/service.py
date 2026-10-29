@@ -32,6 +32,8 @@ from .catalog_repository import CatalogRepository
 from .tryon_provider import ProviderFailure, ProviderResult, TryOnProvider
 from .provider_control import GenerationBudget
 from .usage_metrics import UsageMetrics
+from .video_contracts import VideoRecommendationRequest
+from .video_library import VideoLibrary
 
 MAX_FILE = 10 * 1024 * 1024
 MAX_BODY = MAX_FILE + 64 * 1024
@@ -154,12 +156,13 @@ class Guest:
 
 class Store:
     """One-process service. State transitions and ownership checks share a lock."""
-    def __init__(self, mode: Mode = "success", clock: Callable[[], float] = time.time, ttl: float = 1800, catalog_path=None, catalog_profile="studio", provider: TryOnProvider | None = None, monotonic: Callable[[], float] = time.monotonic, provider_disabled: bool = False, metrics: UsageMetrics | None = None):
+    def __init__(self, mode: Mode = "success", clock: Callable[[], float] = time.time, ttl: float = 1800, catalog_path=None, catalog_profile="studio", provider: TryOnProvider | None = None, monotonic: Callable[[], float] = time.monotonic, provider_disabled: bool = False, metrics: UsageMetrics | None = None, video_library: VideoLibrary | None = None):
         self.mode, self.clock, self.ttl = mode, clock, ttl
         self.monotonic = monotonic
         self.provider = provider
         self.provider_disabled = provider_disabled
         self.metrics = metrics
+        self.video_library = video_library if video_library is not None else VideoLibrary.from_file()
         # Keep one local provider worker in flight, including its cleanup.
         # The upstream cannot be cancelled; a local timeout is not cloud cancellation.
         self.executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="tryon-provider") if provider else None
@@ -503,7 +506,7 @@ class CreateInput(BaseModel):
     garment_id: str = Field(min_length=1, max_length=128)
 
 
-def create_app(mode: Mode = "success", *, clock=time.time, ttl=1800, catalog_path=None, catalog_profile="studio", provider: TryOnProvider | None = None, monotonic=time.monotonic, provider_disabled: bool = False, usage_metrics: UsageMetrics | None = None) -> FastAPI:
+def create_app(mode: Mode = "success", *, clock=time.time, ttl=1800, catalog_path=None, catalog_profile="studio", provider: TryOnProvider | None = None, monotonic=time.monotonic, provider_disabled: bool = False, usage_metrics: UsageMetrics | None = None, video_library: VideoLibrary | None = None) -> FastAPI:
     if mode not in {"success", "failure", "delayed", "timeout", "rate-limit"}:
         raise ValueError("Unknown mock mode")
     if not 0 < ttl <= 1800:
@@ -514,7 +517,8 @@ def create_app(mode: Mode = "success", *, clock=time.time, ttl=1800, catalog_pat
         raise ValueError("Mock failure modes cannot be combined with a real provider")
     if provider is not None and provider_disabled:
         raise ValueError("A provider cannot be active while real-provider calls are disabled")
-    store = Store(mode, clock, ttl, catalog_path, catalog_profile, provider, monotonic, provider_disabled, usage_metrics)
+    store = Store(mode, clock, ttl, catalog_path, catalog_profile, provider, monotonic,
+                  provider_disabled, usage_metrics, video_library)
 
     @asynccontextmanager
     async def lifespan(app):
@@ -581,6 +585,22 @@ def create_app(mode: Mode = "success", *, clock=time.time, ttl=1800, catalog_pat
             root = str(request.base_url) + "api/v1/assets/"
             items = [public_item(item, root) for item in guest.catalog.values() if matches(item, q, tag)]
         return JSONResponse({"items": items}, headers={"Cache-Control": "no-store"})
+
+    @app.post("/api/v1/video-recommendations")
+    def video_recommendations(request: Request, body: VideoRecommendationRequest):
+        with store.lock:
+            guest = store.guest(auth(request))
+            store.rate("video-recommendations:" + guest.sid, 30)
+            if body.makeup_ids:
+                raise Problem(400, "INVALID_REQUEST", "妆容目录尚未接入，请暂时不要传 makeup_ids")
+            if any(garment_id not in guest.catalog for garment_id in body.garment_ids):
+                raise Problem(400, "INVALID_REQUEST", "服装ID不属于当前会话衣柜")
+            try:
+                result = store.video_library.recommend(body, guest.catalog)
+            except ValueError:
+                raise Problem(400, "INVALID_REQUEST", "服装或妆容上下文暂不可用")
+            result.validate_context(body)
+        return JSONResponse(result.model_dump(mode="json"), headers={"Cache-Control": "no-store"})
 
     @app.get("/api/v1/garments/{gid}")
     def garment_detail(request: Request, gid: str):

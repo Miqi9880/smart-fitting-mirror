@@ -2,7 +2,7 @@
 
 2026-10-28定稿。依据企业V1.0的FR-VID-01／02／05、7.4、12.1；服饰组负责当前服装／主动标签上下文，妆容ID留作面部组协调接口，不在这里实现试妆。
 
-**交付状态：本轮交付合同、共享JSON样例、Python／Kotlin数据类型、Android HTTP方法及游客会话调用入口。当前backend/service.py还没有此路由，视频库、规则召回和HTTP路由仍由haiyangniu191-design接入；播放器仍由yyyrrrxxx接入。** 不能把合同版本当作运行服务已支持、已取得5条可播放视频或完成企业推荐闭环。旧0.3.0试衣路径保持；视觉仍0.2.0，APK仍0.3.7，本轮不要求重装镜子。
+**实现状态（2026-10-29开发分支）：** 已增加 `POST /api/v1/video-recommendations`、JSON内容库、上架／来源授权／可播过滤、基于服装目录和主动标签的精确规则召回、会话鉴权及独立限流。默认内容库为空；测试合成内容只能显式注入，不能被生产默认库返回。当前仍无5条真实授权并确认可播放的视频，播放器接入和实际播放也未完成，因此不能声称推荐闭环已完成。旧0.3.0试衣路径不变；这次没有修改 Android 播放器或要求重装镜子。实现记录见[后端增量报告](../reports/video-library-route-2026-10-29.md)。
 
 权威字段见[OpenAPI](../../contracts/openapi.json)，双端实现为`backend/video_contracts.py`和`android/core-contracts/.../VideoModels.kt`。旧[草案](video-recommendation-draft.md)转为历史依据，与本页冲突时以本页为准。
 
@@ -83,7 +83,7 @@ matches.source为garment_metadata／makeup_metadata时，related_id必须是本�
 ## 分工与验收
 
 - Miqi9880／受托Codex本轮完成公共字段／版本、双端DTO、共享样例、客户端与会话门面、验证说明。
-- haiyangniu191-design在现有调用治理增量后，基于`backend.video_contracts`实现内容库、上架／授权／可播过滤、稳定规则、上面的路由与鉴权／限流／ErrorResponse。400必须覆盖未知服装／未接妆容；测试去重、相关性、不足与空态、会话隔离／过期／撤销。不得重复定义字段，也不需恢复COS／收费AI。
+- haiyangniu191-design在现有调用治理增量后，基于`backend.video_contracts`实现的后端代码现位于独立开发分支，待PR审阅。验收覆盖未知服装／未接妆容400、去重、相关性、不足与空态、会话隔离／过期／撤销。不得重复定义字段，也不需恢复COS／收费AI。
 - yyyrrrxxx先处理已提交PR #45～#50的视频组件交付和构建／交互证据，随后按此映射接HTTP与会话入口；补取消、过期、空态／不足／失败和播放器释放。不要重复待机、站位、时钟或原图切换。
 - 至少5条确实相关且可播放的自有／授权内容仍由负责人协调，缺失继续列阻塞；全部镜子／真人现场只归负责人，无需其他成员准备手机或接相机。
 
