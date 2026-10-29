@@ -1,8 +1,8 @@
-# 视频推荐接口 V0.4.0
+# 视频推荐接口 V0.4.1（推荐JSON兼容0.4.0）
 
 2026-10-28定稿。依据企业V1.0的FR-VID-01／02／05、7.4、12.1；服饰组负责当前服装／主动标签上下文，妆容ID留作面部组协调接口，不在这里实现试妆。
 
-**实现状态（2026-10-29，PR #52）：** 已增加 `POST /api/v1/video-recommendations`、JSON内容库、上架／来源授权／可播过滤、基于服装目录和主动标签的精确规则召回、会话鉴权及独立限流。默认内容库为空；测试合成内容只能显式注入，不能被生产默认库返回。当前仍无5条真实授权并确认可播放的视频，播放器接入和实际播放也未完成，因此不能声称推荐闭环已完成。旧0.3.0试衣路径不变；这次没有修改 Android 播放器或要求重装镜子。实现记录见[后端增量报告](../reports/video-library-route-2026-10-29.md)。
+**实现状态（2026-10-29视频增量）：** PR #52的只读目录／规则／鉴权路由继续使用。负责人已安装7条Pexels授权参考短片，增加公共媒体／封面Range路由，并将yyyrrrxxx组件修正后接入同一App／共享游客会话；操作和验证见[集成记录](../reports/video-playback-2026-10-29.md)。安装包0.3.8，未安装[独立媒体包](../../backend/assets/videos/README.md)时缺文件候选不返回。5条上衣参考与2条连衣裙参考已分别播放；不代表每个品类／每次请求都满5条。模型语义、镜子现场和长稳仍待验证；COS/Aidge仍暂停。
 
 权威字段见[OpenAPI](../../contracts/openapi.json)，双端实现为`backend/video_contracts.py`和`android/core-contracts/.../VideoModels.kt`。旧[草案](video-recommendation-draft.md)转为历史依据，与本页冲突时以本页为准。
 
@@ -80,13 +80,19 @@ matches.source为garment_metadata／makeup_metadata时，related_id必须是本�
 | VideoResult.Items／Empty／Failure | 部分候选仍为Items并显示数量；仅0条为Empty；网络／合同异常为Failure，取消不显示成失败 |
 | 同步VideoRepository | 保留本地Fake；HTTP加载增加协程适配，勿在同步recommended里阻塞网络 |
 
-本轮不覆盖她的VideoPanel／VideoActivity文件、不擅自打开home.video；等待后端路由与播放器接入分别验收后再启用同一App入口。
+本轮由负责人按已发布接手范围修正并整合VideoPanel；产品通过VideoExperience嵌入TryOnActivity、启用home.video。VideoActivity保持内部合成测试宿主，不导出、不用于产品入口。查询被后台取消后显示显式重试，不自动重放POST；播放在旋转／后台后恢复为暂停。
 
 ## 分工与验收
 
 - Miqi9880／受托Codex本轮完成公共字段／版本、双端DTO、共享样例、客户端与会话门面、验证说明。
 - haiyangniu191-design在现有调用治理增量后，基于`backend.video_contracts`交付的后端库／路由见PR #52；负责人复核及两项补修见[复核记录](../reports/pr52-review-2026-10-29.md)。验收覆盖未知服装／未接妆容400、去重、相关性、不足与空态、会话隔离／过期／撤销。不得重复定义字段，也不需恢复COS／收费AI。
-- yyyrrrxxx先处理已提交PR #45～#50的视频组件交付和构建／交互证据，随后按此映射接HTTP与会话入口；补取消、过期、空态／不足／失败和播放器释放。不要重复待机、站位、时钟或原图切换。
-- 至少5条确实相关且可播放的自有／授权内容仍由负责人协调，缺失继续列阻塞；全部镜子／真人现场只归负责人，无需其他成员准备手机或接相机。
+- yyyrrrxxx的PR #46～#50原始提交保留作者，源码移到正确包目录，负责人完成修正／HTTP／主页／生命周期集成；#45占位文件不导入。组件与集成不再重复布置；下一项仅视频页真实TalkBack朗读／焦点查漏，见[当前任务](../tasks.md)。
+- 负责人本轮取得7条授权参考片并核验实际播放，上衣上下文至少5条的样例通过；相关数量仍据请求而定，不凑数。全部镜子／真人现场只归负责人，无需其他成员准备手机或接相机。
 
 合同检查`python tools/check_contracts.py`，Python DTO检查`python -m pytest backend/tests/test_video_contracts.py -q`；Android `:core-contracts:test :core-network:testDebugUnitTest :core-network:lintDebug :app:assembleDebug`。这些验证不代表HTTP服务／视频播放已联通，实际命令和结果见[本轮记录](../reports/video-contract-2026-10-28.md)。
+
+## 0.4.1公共媒体
+
+`GET /api/v1/video-media/{video_id}.mp4`、`GET /api/v1/video-covers/{video_id}.jpg`均支持HEAD，200／206提供公共内容，支持Range、Accept-Ranges及Content-Range；越界Range为416，未知／未上架／未安装为404。只从已核验目录解析固定文件，不能指定路径。MP4为H.264/yuv420p、24fps、最长12秒、已移除音轨；封面JPEG。元数据URL由当前请求服务地址生成，局域网／模拟器可分别使用；反向代理必须正确保留已批准的外部主机及协议，生产使用HTTPS。
+
+这些公共穿搭参考内容无游客数据，媒体请求不带Authorization，Cache-Control为public,max-age=3600。推荐元数据仍需共享Token且no-store；游客照片／生成结果仍受鉴权隔离。结束会话停止播放器和列表，但不撤销本来就公开的图库文件。没有装媒体包时返回空态，不回退到合成片；详见[内容安装与许可](../../backend/assets/videos/README.md)。

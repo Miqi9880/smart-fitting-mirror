@@ -1,6 +1,6 @@
 # 四人当前任务与企业需求对应
 
-更新：2026-10-28。已重新读取企业V1.0，原编号、优先级和实际缺口见[需求对应表](requirements-traceability.md)；逐人步骤、环境和验收见[滚动计划](weekly-2026-10-24.md)。PR #38／#39由负责人委托Codex接手修正，见[交接与验证](reports/static-cg-input-prep.md)，yyyrrrxxx不再重复修改。本页替代旧基线，不重复安排首次真实闭环、保存、全屏、48件接入或连帽款任务。
+更新：2026-10-29视频集成后。已重新读取企业V1.0，原编号、优先级和实际缺口见[需求对应表](requirements-traceability.md)；逐人步骤、环境和验收见[滚动计划](weekly-2026-10-24.md)。PR #38／#39由负责人委托Codex接手修正，见[交接与验证](reports/static-cg-input-prep.md)，yyyrrrxxx不再重复修改。本页替代旧基线，不重复安排首次真实闭环、保存、全屏、48件接入或连帽款任务。
 
 共同目标是服饰P0和共用会话／视频流程。FR-MK由面部组负责；专业量体、物理布料、会员／支付、复杂推荐训练不加入当前必做。第18周约束继续取消，完成可审阅成果即接下一项。
 
@@ -10,11 +10,23 @@ COS因费用已禁用，Aidge/COS链路暂停，见[状态与边界](reports/clo
 | --- | --- | --- | --- |
 | haiyangniu191-design／[#5](https://github.com/Miqi9880/smart-fitting-mirror/issues/5) | PR #52交付调用禁用、匿名聚合／只读报告、视频库／规则／路由；两项兼容补修由负责人完成，不重做这些实现 | 视频目录离线校验／只读盘点，清楚列上架／授权／可播过滤与缺项，便于收到授权内容后接入；不代替实际播放或凑5条 | 7.3、8.1、9／12.1；FR-VID-01／02 |
 | lyf-bee／[#6](https://github.com/Miqi9880/smart-fitting-mirror/issues/6) | PR #42头部保护修正已合并，接渲染耗时／资源诊断及实际新缺陷，不重复修同一领口问题 | 可靠Depth／mask接入按负责人输入继续 | FR-VTO-04、8.2、11 |
-| yyyrrrxxx／[#7](https://github.com/Miqi9880/smart-fitting-mirror/issues/7) | PR #45～#50已提交的视频组件待整体审查／验证，不重复布置首版FakeVideoRepository；不重做照片导入或待机站位 | PR #52已交付后端路由；按[视频0.4.0映射](interfaces/video-recommendation.md)接协程HTTP／共享会话联调，补空库／异常／取消／释放，默认空库不回退伪成功 | 8.2、10；FR-VID-01／02／05 |
-| Miqi9880／[#3](https://github.com/Miqi9880/smart-fitting-mirror/issues/3)、[#26](https://github.com/Miqi9880/smart-fitting-mirror/issues/26) | [结果切换](reports/result-comparison-2026-10-28.md)、[待机／站位](reports/standby-standing-2026-10-28.md)与[视频合同／双端类型](reports/video-contract-2026-10-28.md)已补齐；继续授权视频与素材交接、审查组员播放器、真实Depth／对齐／mask条件 | 本人镜子／真人／实际站位、遮挡和性能长稳；模型资源独立探索 | FR-001～004、FR-VTO-01／02／06、8.3、11／12 |
+| yyyrrrxxx／[#7](https://github.com/Miqi9880/smart-fitting-mirror/issues/7) | PR #46～#50组件由负责人修正整合，保留原作者提交；#45占位文件不导入。HTTP、主页、播放器／后台清理和授权包已由负责人完成，不再重做 | 下一项：视频页真实TalkBack朗读／焦点查漏，仅模拟器、无相机；步骤见下。已有横竖屏／大字体和HTTP异常用例直接引用 | 8.2、10；FR-VID-01／02／05 |
+| Miqi9880／[#3](https://github.com/Miqi9880/smart-fitting-mirror/issues/3)、[#26](https://github.com/Miqi9880/smart-fitting-mirror/issues/26) | [结果切换](reports/result-comparison-2026-10-28.md)、[待机／站位](reports/standby-standing-2026-10-28.md)与[视频合同／双端类型](reports/video-contract-2026-10-28.md)已补齐；7条授权参考视频及播放器整合见[记录](reports/video-playback-2026-10-29.md)；后续本人镜子播放验证与真实Depth／对齐／mask条件 | 本人镜子／真人／实际站位、遮挡和性能长稳；模型资源独立探索 | FR-001～004、FR-VTO-01／02／06、8.3、11／12 |
 
 全部现场与真人确认只归Miqi9880，其他人不用设备或云账号，交合成／模拟器／FakeProvider证据。修改影响或新缺陷才补相关回归，不重做全部历史报告。
 
-企业重点缺口仍有Depth／对齐／mask和真实手臂遮挡、完整待机／站位的现场验收、至少5条真实授权视频与同一App播放、AI语义标签，以及调用费用管理的后续完善。PR #52的软件增量不等于内容／播放／账单或现场验收完成。后台／Token统计的原文章节分期不同，已列待老师确认，没有静默删除。一次真生成成功不等于全部P0交付。
+企业重点缺口仍有Depth／对齐／mask和真实手臂遮挡、完整待机／站位的现场验收、视频镜子现场／内容类别扩充、AI语义标签，以及调用费用管理的后续完善。本轮7条视频已接软件播放，不代表所有品类均满5条、模型语义、真实账单页面或镜子现场已完成。后台／Token统计的原文章节分期不同，已列待老师确认，没有静默删除。一次真生成成功不等于全部P0交付。
 
 跨模块按[协作规范](collaboration.md)与CONTRIBUTING审阅。长期Assignee保持，负责人补位不算成员本人交付；待修PR不叠加另一主要功能，完成后直接取队列下一项。
+
+## yyyrrrxxx接下来一周：视频页读屏查漏
+
+总目标：让企业FR-VID-01／02／05的大屏视频流程可读、可退出、不会丢失试衣状态。已接通的组件／HTTP／主页／异常清理不再实现第二遍；接下来只补尚无证据的真实TalkBack操作。
+
+1. 更新main，从最新main开`feat/video-talkback`，按Android README配置JDK21、SDK35、项目Gradle8.11.1，启动可用API35模拟器。无需安卓手机、镜子、摄像头或云账号；模拟器相机设None。TalkBack在模拟器无障碍设置启用；若当前系统镜像没有该服务，先记录镜像／缺失情况，不把静态contentDescription检查算成已读屏通过。
+2. 向负责人领取独立视频包，按[安装说明](../backend/assets/videos/README.md)运行安装检查与本地MOCK8018，App配置`http://10.0.2.2:8018`。不开真实提供方、不拍照。
+3. 用真实读屏遍历“待机相关视频→卡片标题／时长／匹配依据→来源许可→返回→播放／暂停→下一条→返回试衣／结束”，记录焦点顺序、是否重复朗读、许可弹窗关闭后的焦点、状态播报是否打断操作。键盘方向键／Enter也走一遍；焦点不能陷在视频画面里。
+4. 仅修复复现的朗读／焦点问题，范围`android/app/.../video`；如需改公共接口、主页或TryOnActivity先在#7说明。不要重写播放器或增加第二套会话。已完成的1.3／1.5字体、横竖屏、空库／网络／后台恢复用例可直接引用集成报告，仅对改动补相关回归。
+5. 提交一个PR：写清环境、实际操作与结果、截图／简短录屏（只含授权视频或程序图，不含私人照片）、发现的问题及未验证项。能读完每张卡、进入／退出许可、播放控制和结束可到达、退出后不续播即本项验收；没有问题可只交证据报告。完成后随时交，不必等一周结束。
+
+后端haiyangniu191-design继续通用视频目录离线校验／只读盘点：读取当前catalog、核对目录审核标志和缺项，不能用“格式正确”替代授权及实际可播；本轮固定包的安装／哈希工具已有，不要重写。lyf-bee继续原#6渲染资源诊断任务。全部现场仍归负责人。

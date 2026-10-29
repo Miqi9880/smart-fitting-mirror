@@ -103,7 +103,7 @@ def test_candidate_is_returned_once_with_only_context_supported_match_evidence()
 def test_empty_context_and_default_library_return_empty_without_generic_recommendations():
     with client_with([record("matching", [{"dimension": "category", "value": "upper_body"}])]) as client:
         empty_context = post_recommendations(client, open_session(client), {})
-    with TestClient(create_app(catalog_profile="regression")) as empty_library_client:
+    with TestClient(create_app(catalog_profile="regression", video_library=VideoLibrary())) as empty_library_client:
         garment_context = post_recommendations(
             empty_library_client, open_session(empty_library_client), {"garment_ids": ["upper_blue"]}
         )

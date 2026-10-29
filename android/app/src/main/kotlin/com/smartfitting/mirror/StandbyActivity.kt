@@ -43,6 +43,7 @@ class StandbyActivity : ComponentActivity() {
     private lateinit var title: TextView
     private lateinit var status: TextView
     private lateinit var guest: Button
+    private lateinit var video: Button
     private lateinit var sensing: Button
     private var visible = false
     private var ticket: String? = null
@@ -93,7 +94,13 @@ class StandbyActivity : ComponentActivity() {
         }
         root.addView(guest)
         root.addView(button("AI试妆（暂不可用）", "home.makeup") {}.apply { isEnabled = false })
-        root.addView(button("视频推荐（暂不可用）", "home.video") {}.apply { isEnabled = false })
+        video = button("视频推荐", "home.video") {
+            if (model.waitingGuest) return@button
+            pendingPermission = false; stopSensing(); model.waitingGuest = true; model.notice = ""; render()
+            experience.launch(Intent(this, TryOnActivity::class.java).putExtra(EXTRA_GUEST,true)
+                .putExtra(EXTRA_VIDEO,true).putExtra(EXTRA_ORIGIN,model.baseUrl).putExtra(EXTRA_CAMERA,model.cameraId))
+        }
+        root.addView(video)
         sensing = button("开启本地人体感应", "home.sensing") {
             model.notice = ""
             if (model.sensingRequested) {
@@ -182,6 +189,7 @@ class StandbyActivity : ComponentActivity() {
             else -> "人体感应未开启，可直接点击游客开始试衣。"
         }
         guest.isEnabled = !model.waitingGuest
+        video.isEnabled = !model.waitingGuest
         sensing.text = if (model.sensingRequested) { if (model.synthetic) "停止合成演示" else "停止人体感应" } else "开启本地人体感应"
         sensing.isEnabled = !model.waitingGuest
     }
@@ -207,6 +215,7 @@ class StandbyActivity : ComponentActivity() {
     private fun dp(value: Int) = (value * resources.displayMetrics.density).toInt()
     internal companion object {
         const val EXTRA_GUEST = "com.smartfitting.mirror.GUEST"
+        const val EXTRA_VIDEO = "com.smartfitting.mirror.VIDEO_ENTRY"
         const val EXTRA_ORIGIN = "com.smartfitting.mirror.ORIGIN"
         const val EXTRA_CAMERA = "com.smartfitting.mirror.CAMERA"
         const val EXTRA_REASON = "com.smartfitting.mirror.END_REASON"

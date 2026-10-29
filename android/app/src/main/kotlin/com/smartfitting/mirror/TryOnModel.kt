@@ -44,6 +44,7 @@ class TryOnModel(application: Application) : AndroidViewModel(application) {
     var catalogAssets = emptyList<com.smartfitting.mirror.contracts.Garment>()
     var outfit = emptyMap<GarmentCategory,Garment>()
     var lastOutfitSelection: Garment? = null
+    val videoExperience = com.smartfitting.mirror.video.VideoExperienceMemory()
     internal val experienceClock = GuestExperienceClock()
     private var experienceMonitor: Job? = null
     private val requestedExit = MutableStateFlow<GuestEndReason?>(null)
@@ -78,6 +79,7 @@ class TryOnModel(application: Application) : AndroidViewModel(application) {
 
     fun connect(url: String) {
         val api = HttpFittingApi(url.trim()) // Validate before replacing an existing controller.
+        videoExperience.clear()
         experienceClock.end(); startExperience()
         bridge?.cancel()
         controller?.close()
