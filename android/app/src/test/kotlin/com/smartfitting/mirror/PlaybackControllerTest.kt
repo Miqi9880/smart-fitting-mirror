@@ -4,6 +4,12 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class PlaybackControllerTest {
+    @Test fun startsMutedAndRejectsNonFiniteVolume() {
+        val controller=controller()
+        assertEquals(0f,controller.snapshot.volume,0f)
+        controller.setVolume(Float.NaN);controller.setVolume(Float.POSITIVE_INFINITY)
+        assertEquals(0f,controller.snapshot.volume,0f)
+    }
     private val clips = listOf(
         VideoItem("a", "测试·甲", 3, listOf("休闲")),
         VideoItem("b", "测试·乙", 3, listOf("街头"), orientation = ClipOrientation.PORTRAIT),

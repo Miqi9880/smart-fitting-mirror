@@ -1,5 +1,7 @@
 # Android 模拟试衣联调版
 
+2026-10-29：APK0.3.8-mock接入[同一App授权视频](../docs/reports/video-playback-2026-10-29.md)。待机点“相关视频”，或试衣页选好搭配后点“当前搭配相关视频”；复用游客会话，首屏不自动开相机、不上传、不生成。默认静音，横竖屏适配，退后台／旋转恢复为暂停，返回保留原图、结果和搭配。后端要先安装[视频包](../backend/assets/videos/README.md)；模拟器地址10.0.2.2，镜子需电脑局域网地址或已获准的ADB转发。该APK尚未装到镜子现场验证。
+
 本工程实现公共类型、RGB/合成视觉、衣柜目录/详情/编辑、HTTP 网络状态、四点上衣叠加和可选 OBJ 网格实验。默认等待用户开启 RGB；合成样例需显式选择。连接本地服务后可选衣、拍原图上传、等待模拟结果并对比/清理。真实 AI、分割和目标设备深度源未接入；可选深度遮挡的软件检查不能替代实物验收。[本轮功能与复现](../docs/reference-full-migration.md)，[原试衣联调](../docs/tryon-integration.md)。
 
 RGB 模型输出已适配参考项目的关键点平滑，缺点/丢失仍立即清理，保留当前置信度和独立相机会话；不影响合成回归数据。来源、其余迁移决策与边界见 [参考复用说明](../docs/reference-reuse.md)。
@@ -75,7 +77,7 @@ adb shell am start -n com.smartfitting.mirror/.StandbyActivity
 | core-vision | CameraRgbSource、SyntheticVisionSource、BitmapPixels、PoseMapper、StandingGuide |
 | core-network | HttpFittingApi、FittingSession；haiyangniu191-design 接手网络与状态维护 |
 | feature-tryon | TorsoWarp、TryOnView；lyf-bee 接手素材/形变/渲染维护 |
-| app | StandbyActivity待机／游客入口，TryOnActivity试衣／结果，MainActivity设备诊断；yyyrrrxxx继续视频交互 |
+| app | StandbyActivity待机／游客入口，TryOnActivity试衣／结果，MainActivity设备诊断；视频组件整合后yyyrrrxxx接TalkBack／焦点查漏 |
 
 借用帧的回调默认在主线程执行。同步绘制可在回调期间读取；保存或异步使用须 retain，用完 release。源负责释放自己的引用，不要在回调里释放未 retain 的引用。BitmapPixels.bitmap 只在持有引用时有效，不可修改或自行 recycle。
 

@@ -63,6 +63,8 @@ class TryOnActivity : ComponentActivity() {
     private lateinit var garments: Spinner
     private lateinit var catalog: Button
     private var browser: GarmentBrowser? = null
+    private lateinit var videos: com.smartfitting.mirror.video.VideoExperience
+    private lateinit var videoButton: Button
     private lateinit var comparison: ResultComparisonPanel
     private var listed = emptyList<Garment>()
     private var selecting = false
@@ -152,6 +154,8 @@ class TryOnActivity : ComponentActivity() {
         root.addView(catalog)
         outfitStatus = label("当前搭配为空；选择单品后自动加入对应品类。",12f).apply { tag = "fitting.outfit" }
         root.addView(outfitStatus)
+        videoButton = button("查看当前搭配的相关视频", "fitting.videos") { videos.show() }
+        root.addView(videoButton)
         root.addView(row(button("加入搭配","fitting.outfit.add") {
             model.state.value.selected?.let { model.outfit = OutfitSelection.add(model.outfit,it) }; renderOutfit()
         },button("移除本类","fitting.outfit.remove") {
@@ -277,7 +281,14 @@ class TryOnActivity : ComponentActivity() {
             override fun handleOnBackPressed() = setPreviewFullscreen(false)
         }
         onBackPressedDispatcher.addCallback(this,fullscreenBack)
-        setContentView(pageScroll)
+        val contentHost = FrameLayout(this).apply {
+            setBackgroundColor(Color.rgb(242,246,249)); addView(pageScroll, FrameLayout.LayoutParams(-1,-1))
+        }
+        videos = com.smartfitting.mirror.video.VideoExperience(this,model,pageScroll,contentHost,
+            stopPreview = { if (model.previewFullscreen) setPreviewFullscreen(false); stopVision() },
+            resumePreview = { if (visible && model.running && model.endReason == null) beginVision() },
+            interacted = { model.interact() }, endSession = { endExperience(GuestEndReason.MANUAL) })
+        setContentView(contentHost)
         WindowCompat.getInsetsController(window, root).apply { isAppearanceLightStatusBars = true; isAppearanceLightNavigationBars = true }
         setPreviewFullscreen(model.previewFullscreen)
         lifecycleScope.launch { repeatOnLifecycle(Lifecycle.State.STARTED) { model.state.collect { render(it) } } }
@@ -297,6 +308,8 @@ class TryOnActivity : ComponentActivity() {
             try { model.connect(model.baseUrl) }
             catch (_: IllegalArgumentException) { status.text = "服务地址无效，请修改后连接。" }
         }
+        if (guestRoute && savedInstanceState == null && intent.getBooleanExtra(StandbyActivity.EXTRA_VIDEO, false))
+            model.videoExperience.requestedFromHome = true
     }
 
     override fun onStart() {
@@ -305,9 +318,13 @@ class TryOnActivity : ComponentActivity() {
         val expired = model.checkExperienceTimeout()
         if (expired != null) endExperience(expired)
         if (model.endReason != null && guestRoute) returnToStandby()
-        else if (expired == null && model.running) beginVision()
+        else if (expired == null) {
+            videos.onStart()
+            if (model.running && !model.videoExperience.open) beginVision()
+        }
     }
     override fun onStop() {
+        videos.onStop()
         cameraDialog?.dismiss(); cameraDialog = null
         browser?.dismiss(); browser = null
         visible = false; model.playing = mock.playing; model.synthetic = mock.settings
@@ -318,12 +335,13 @@ class TryOnActivity : ComponentActivity() {
         outState.putBoolean("pending_permission", pendingPermission)
         super.onSaveInstanceState(outState)
     }
-    override fun onDestroy() { rgb.close(); mock.close(); super.onDestroy() }
+    override fun onDestroy() { videos.dispose(); rgb.close(); mock.close(); super.onDestroy() }
     override fun onUserInteraction() { super.onUserInteraction(); model.interact() }
 
     private fun endExperience(reason: GuestEndReason) {
         if (model.endReason != null) return
         model.markEnded(reason)
+        videos.clear()
         if (model.previewFullscreen) setPreviewFullscreen(false)
         pendingPermission = false; model.running = false; model.visionFailure = null; stopVision()
         staticImage.clear(); comparison.clear(); model.resultComparisonMode = ResultComparisonMode.SIDE_BY_SIDE
@@ -475,6 +493,7 @@ class TryOnActivity : ComponentActivity() {
             }
             renderOutfit()
         }
+        videos.onSessionChanged()
     }
     private fun updateCaptureActions() {
         val value = model.controller?.state?.value ?: model.state.value
@@ -484,6 +503,7 @@ class TryOnActivity : ComponentActivity() {
         if (::staticImage.isInitialized) staticImage.render(allow)
         garments.isEnabled = value.canSelect && !captureBusy && !importing
         catalog.isEnabled = value.canSelect && !captureBusy && !importing
+        videoButton.isEnabled = value.canSelect && !captureBusy && !importing
     }
     private fun renderOutfit() {
         outfitStatus.text = "当前搭配：" + model.outfit.values.joinToString(" ＋ ") { "${it.category.label}：${it.name}" }.ifBlank { "无" }

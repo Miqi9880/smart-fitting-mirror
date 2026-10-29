@@ -22,6 +22,10 @@ data class VideoItem(
     val orientation: ClipOrientation = ClipOrientation.LANDSCAPE,
     val onShelf: Boolean = true,
     val origin: VideoOrigin = VideoOrigin.SYNTHETIC_TEST,
+    val playbackUrl: String? = null,
+    val coverUrl: String? = null,
+    val sourceText: String = "",
+    val matchesText: String = "",
 ) {
     val isTestData: Boolean get() = origin == VideoOrigin.SYNTHETIC_TEST
 }
@@ -33,10 +37,10 @@ data class VideoQuery(
 )
 
 sealed interface VideoResult {
-    data class Items(val videos: List<VideoItem>) : VideoResult
+    data class Items(val videos: List<VideoItem>, val availableCount: Int = videos.size) : VideoResult
     /** Honest empty state; never padded with unrelated clips to reach a count. */
     data class Empty(val message: String) : VideoResult
-    data class Failure(val message: String) : VideoResult
+    data class Failure(val message: String, val retryable: Boolean = true) : VideoResult
 }
 
 interface VideoRepository {

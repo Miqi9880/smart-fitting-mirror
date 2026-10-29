@@ -13,9 +13,8 @@ import android.media.MediaMuxer
 import java.io.File
 
 /**
- * Program-generated test clips. The team has no licensed video yet (content sourcing is
- * coordinated by the lead), so playback is verified against short H.264/MP4 clips this
- * class renders locally with MediaCodec + MediaMuxer: a cycling color background, a
+ * Program-generated component-test clips, separate from the licensed HTTP library.
+ * This class renders short H.264/MP4 clips locally with MediaCodec + MediaMuxer: a cycling color background, a
  * moving block and a "测试视频 TEST" label, so the footage is unmistakably synthetic.
  * No media is downloaded and nothing here is presented as licensed content.
  *
@@ -28,6 +27,7 @@ object GeneratedClips {
 
     /** Returns a playable local file for [item], generating it on first use. */
     fun ensure(context: Context, item: VideoItem): File {
+        require(item.videoId.matches(Regex("^[a-z][a-z0-9_-]{0,63}$")) && item.durationSeconds in 1..30)
         val landscape = item.orientation == ClipOrientation.LANDSCAPE
         val width = if (landscape) 640 else 360
         val height = if (landscape) 360 else 640
@@ -37,9 +37,11 @@ object GeneratedClips {
             if (file.length() == 0L) {
                 val tmp = File(dir, file.name + ".tmp")
                 if (tmp.exists()) tmp.delete()
-                generate(tmp, width, height, item.durationSeconds, item.videoId)
-                if (file.exists()) file.delete()
-                check(tmp.renameTo(file)) { "无法保存生成的测试短片" }
+                try {
+                    generate(tmp, width, height, item.durationSeconds, item.videoId)
+                    if (file.exists()) file.delete()
+                    check(tmp.renameTo(file)) { "无法保存生成的测试短片" }
+                } finally { if (tmp.exists()) tmp.delete() }
             }
         }
         return file
@@ -72,6 +74,7 @@ object GeneratedClips {
             var outputDone = false
             var stalls = 0
             while (!outputDone) {
+                check(!Thread.currentThread().isInterrupted) { "测试短片生成已取消" }
                 var progressed = false
                 if (!inputDone) {
                     val inputIndex = codec.dequeueInputBuffer(10_000)
@@ -82,10 +85,10 @@ object GeneratedClips {
                             val image = codec.getInputImage(inputIndex)
                                 ?: throw IllegalStateException("编码器输入不可用")
                             fillYuv(image, pixels, width, height)
-                            codec.queueInputBuffer(inputIndex, 0, 0, frame * 1_000_000L / FRAME_RATE, 0)
+                            codec.queueInputBuffer(inputIndex, 0, width * height * 3 / 2, frame * 1_000_000L / FRAME_RATE, 0)
                             frame++
                         } else {
-                            codec.queueInputBuffer(inputIndex, 0, 0, 0, MediaCodec.BUFFER_FLAG_END_OF_STREAM)
+                            codec.queueInputBuffer(inputIndex, 0, 0, frameCount * 1_000_000L / FRAME_RATE, MediaCodec.BUFFER_FLAG_END_OF_STREAM)
                             inputDone = true
                         }
                     }
@@ -99,6 +102,7 @@ object GeneratedClips {
                         muxerStarted = true
                     }
                     MediaCodec.INFO_TRY_AGAIN_LATER -> Unit
+                    MediaCodec.INFO_OUTPUT_BUFFERS_CHANGED -> Unit
                     else -> {
                         progressed = true
                         val buffer = codec.getOutputBuffer(outputIndex)

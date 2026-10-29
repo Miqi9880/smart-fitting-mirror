@@ -1,6 +1,7 @@
 package com.smartfitting.mirror.video
 
 import android.content.Context
+import android.app.AlertDialog
 import android.graphics.Color
 import android.graphics.SurfaceTexture
 import android.graphics.drawable.Drawable
@@ -18,15 +19,16 @@ import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.SeekBar
 import android.widget.TextView
+import android.widget.ImageView
+import android.net.Uri
 import androidx.core.content.ContextCompat
 import java.io.File
 import java.util.concurrent.Executors
 
 /**
- * Recommendation card list + video player for FR-VID-01/02/05 (#7). Independent
- * component: it is hosted by [VideoActivity] for review and is deliberately NOT wired
- * into StandbyActivity's disabled `home.video` entry yet — that shared entry stays
- * off until integration is coordinated on the issue card.
+ * Recommendation cards + player for FR-VID-01/02/05 (#7). Product navigation uses
+ * [VideoExperience] inside the shared fitting session. [VideoActivity] is a separate,
+ * internal synthetic fixture for component tests.
  *
  * The panel owns a MediaPlayer and releases it (plus any pending clip generation) on
  * [releasePlayer], which hosts must call from onStop / session end. Try-on state lives
@@ -35,9 +37,17 @@ import java.util.concurrent.Executors
 class VideoPanel(context: Context) : FrameLayout(context) {
     var onExit: (() -> Unit)? = null
     var onRetry: (() -> Unit)? = null
+    var onInteraction: (() -> Unit)? = null
 
     private val handler = Handler(Looper.getMainLooper())
     private val worker = Executors.newSingleThreadExecutor()
+    private val posters = VideoPosterLoader()
+    private var volumePreference = 0f
+    private var availableCount = 0
+    private var prepareTimeout: Runnable? = null
+    private var renderedFrame = false
+    private var sourceDialog: AlertDialog? = null
+    private var endSession: (() -> Unit)? = null
     private var controller: PlaybackController? = null
     private var items: List<VideoItem> = emptyList()
     private var player: MediaPlayer? = null
@@ -79,7 +89,7 @@ class VideoPanel(context: Context) : FrameLayout(context) {
         volumeBar = SeekBar(context).apply {
             tag = "video.volume"
             max = 100
-            progress = 100
+            progress = 0
             contentDescription = "音量"
         }
         stateMessage = TextView(context).apply {
@@ -121,15 +131,17 @@ class VideoPanel(context: Context) : FrameLayout(context) {
 
     /** Renders a repository result: card list, or a readable empty/failure state with a way back. */
     fun present(result: VideoResult) {
+        releasePlayer(); posters.clear(); listPane.removeAllViews()
         when (result) {
             is VideoResult.Items -> {
                 items = result.videos
+                availableCount = result.availableCount
                 attachController()
                 buildCards()
                 showPane(listScroll)
             }
             is VideoResult.Empty -> showState(result.message, retryable = false)
-            is VideoResult.Failure -> showState(result.message, retryable = true)
+            is VideoResult.Failure -> showState(result.message, retryable = result.retryable)
         }
     }
 
@@ -141,9 +153,23 @@ class VideoPanel(context: Context) : FrameLayout(context) {
     fun currentIndex(): Int = controller?.snapshot?.index ?: -1
     fun currentPositionMs(): Int = player?.let { runCatching { it.currentPosition }.getOrDefault(0) } ?: resumePositionMs
     fun isPlaying(): Boolean = controller?.snapshot?.status == PlaybackStatus.PLAYING
-    fun volume(): Float = controller?.snapshot?.volume ?: 1f
+    fun volume(): Float = controller?.snapshot?.volume ?: volumePreference
+    fun hasRenderedFrame(): Boolean = renderedFrame
+    fun isPlayerVisible(): Boolean = playerPane.visibility == View.VISIBLE
+    fun showLoading() { releasePlayer(); posters.clear(); showState("正在根据当前搭配查找视频…", false) }
+    fun clearContent() {
+        releasePlayer(); posters.clear(); sourceDialog?.dismiss(); sourceDialog = null
+        listPane.removeAllViews(); items = emptyList(); controller = null
+        playerTitle.text = ""; playerStatus.text = ""
+    }
+    fun enableSessionEnd(action: () -> Unit) {
+        endSession = action
+        playerPane.findViewWithTag<View>("video.end.player").visibility = View.VISIBLE
+        statePane.findViewWithTag<View>("video.end.state").visibility = View.VISIBLE
+    }
     fun setVolumePreference(volume: Float) {
-        controller?.setVolume(volume)
+        volumePreference = if (volume.isFinite()) volume.coerceIn(0f,1f) else 0f
+        controller?.setVolume(volumePreference)
         volumeBar.progress = (volume() * 100).toInt()
     }
 
@@ -159,12 +185,14 @@ class VideoPanel(context: Context) : FrameLayout(context) {
     fun releaseAll() {
         releasePlayer()
         worker.shutdownNow()
+        posters.close()
+        sourceDialog?.dismiss(); sourceDialog = null
         surface?.release()
         surface = null
     }
 
     private fun attachController() {
-        val volume = controller?.snapshot?.volume ?: 1f
+        val volume = controller?.snapshot?.volume ?: volumePreference
         controller = PlaybackController(items).also { created ->
             created.setVolume(volume)
             created.listener = { snapshot -> renderControls(snapshot) }
@@ -182,7 +210,8 @@ class VideoPanel(context: Context) : FrameLayout(context) {
         }
         val note = TextView(context).apply {
             tag = "video.listnote"
-            text = "以下全部为测试数据 · 程序生成短片，等待授权内容接入"
+            text = if (items.any { it.isTestData }) "测试数据 · 不计入授权视频验收" else
+                "显示 ${items.size} 条，共 $availableCount 条相关内容 · 穿搭参考，非同款商品 · 默认静音"
             textSize = 14f
             setTextColor(Color.rgb(192, 57, 43))
             setPadding(0, 0, 0, dp(8))
@@ -195,16 +224,17 @@ class VideoPanel(context: Context) : FrameLayout(context) {
             text = "返回试衣"
             textSize = 18f
             minHeight = dp(56)
-            setOnClickListener { onExit?.invoke() }
+            setOnClickListener { onInteraction?.invoke(); onExit?.invoke() }
         }
         listPane.addView(exit)
+        if (endSession != null) listPane.addView(endButton("video.end.list"))
     }
 
     private fun card(index: Int, item: VideoItem): View {
         val minutes = item.durationSeconds / 60
         val seconds = item.durationSeconds % 60
         val orientationWord = if (item.orientation == ClipOrientation.LANDSCAPE) "横屏" else "竖屏"
-        val meta = "时长 %d:%02d · %s · 测试数据".format(minutes, seconds, orientationWord)
+        val meta = "时长 %d:%02d · %s · %s".format(minutes, seconds, orientationWord, if (item.isTestData) "测试数据" else "授权参考片")
         val tags = "标签：" + item.tags.joinToString(" · ")
         val card = LinearLayout(context).apply {
             tag = "video.card.$index"
@@ -216,11 +246,29 @@ class VideoPanel(context: Context) : FrameLayout(context) {
             minimumHeight = dp(56)
             contentDescription = "播放视频：${item.title}，$meta，$tags"
             layoutParams = LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(8) }
-            setOnClickListener { openClip(index, 0, autoplay = true) }
+            setOnClickListener { onInteraction?.invoke(); openClip(index, 0, autoplay = true) }
         }
         card.addView(cardText(item.title, 18f, bold = true))
+        if (item.coverUrl != null) {
+            val poster = ImageView(context).apply {
+                tag = "video.cover.$index"; scaleType = ImageView.ScaleType.FIT_CENTER
+                layoutParams = LinearLayout.LayoutParams(-1, dp(150))
+                importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+            }
+            card.addView(poster); posters.load(item.coverUrl, poster)
+        }
         card.addView(cardText(meta, 14f))
         card.addView(cardText(tags, 14f))
+        if (item.matchesText.isNotBlank()) card.addView(cardText("相关依据：" + item.matchesText, 14f))
+        if (item.sourceText.isNotBlank()) card.addView(Button(context).apply {
+            text = "来源与许可"; tag = "video.source.$index"; minHeight = dp(48)
+            contentDescription = "查看${item.title}的来源与许可"
+            setOnClickListener {
+                onInteraction?.invoke(); sourceDialog?.dismiss()
+                sourceDialog = AlertDialog.Builder(context).setTitle("素材来源与许可")
+                    .setMessage(item.sourceText).setPositiveButton("关闭",null).show()
+            }
+        })
         return card
     }
 
@@ -235,6 +283,11 @@ class VideoPanel(context: Context) : FrameLayout(context) {
         releaseMediaPlayer()
         pendingAutoplay = autoplay
         resumePositionMs = positionMs
+        if (item.playbackUrl != null) {
+            startPlayer(null, item)
+            return
+        }
+        if (!item.isTestData) { controller.onError("视频暂不可用，请返回列表选择其他内容。"); return }
         worker.execute {
             val file = try {
                 GeneratedClips.ensure(context, item)
@@ -252,11 +305,23 @@ class VideoPanel(context: Context) : FrameLayout(context) {
         }
     }
 
-    private fun startPlayer(file: File, item: VideoItem) {
+    private fun startPlayer(file: File?, item: VideoItem) {
         val mediaPlayer = MediaPlayer()
         player = mediaPlayer
-        mediaPlayer.setDataSource(file.absolutePath)
+        try {
+            if (file != null) mediaPlayer.setDataSource(file.absolutePath)
+            else mediaPlayer.setDataSource(context, Uri.parse(item.playbackUrl!!), emptyMap())
+        } catch (_: Exception) {
+            releaseMediaPlayer(); controller?.onError("视频暂不可用，请返回列表后重试。"); return
+        }
+        renderedFrame = false
+        mediaPlayer.setOnInfoListener { _, what, _ ->
+            if (player === mediaPlayer && what == MediaPlayer.MEDIA_INFO_VIDEO_RENDERING_START) renderedFrame = true
+            false
+        }
         mediaPlayer.setOnPreparedListener {
+            if (player !== mediaPlayer) return@setOnPreparedListener
+            prepareTimeout?.let(handler::removeCallbacks); prepareTimeout = null
             fitSurface(item)
             val volume = volume()
             mediaPlayer.setVolume(volume, volume)
@@ -271,18 +336,28 @@ class VideoPanel(context: Context) : FrameLayout(context) {
                 controller?.pause()
             }
         }
-        mediaPlayer.setOnCompletionListener { controller?.onCompleted() }
+        mediaPlayer.setOnCompletionListener { if (player === mediaPlayer) controller?.onCompleted() }
         mediaPlayer.setOnErrorListener { _, what, _ ->
-            controller?.onError("该测试短片暂时无法播放（错误码 $what），可返回列表选择其他视频。")
+            if (player === mediaPlayer) {
+                releaseMediaPlayer()
+                controller?.onError("视频暂时无法播放（错误码 $what），可返回列表选择其他视频。")
+            }
             true
         }
-        mediaPlayer.setOnVideoSizeChangedListener { _, _, _ -> fitSurface(item) }
+        mediaPlayer.setOnVideoSizeChangedListener { _, _, _ -> if (player === mediaPlayer) fitSurface(item) }
         surface?.let { mediaPlayer.setSurface(it) }
-        mediaPlayer.prepareAsync()
+        try { mediaPlayer.prepareAsync() }
+        catch (_: Exception) { releaseMediaPlayer(); controller?.onError("视频准备失败，请返回后重试。"); return }
+        prepareTimeout = Runnable {
+            if (player === mediaPlayer && controller?.snapshot?.status == PlaybackStatus.LOADING) {
+                releaseMediaPlayer(); controller?.onError("视频加载超时，请返回列表后重试。")
+            }
+        }.also { handler.postDelayed(it, 15_000) }
     }
 
     private fun wireControls() {
         toggleButton.setOnClickListener {
+            onInteraction?.invoke()
             val controller = controller ?: return@setOnClickListener
             when (controller.snapshot.status) {
                 PlaybackStatus.ERROR -> openClip(controller.snapshot.index, 0, autoplay = true)
@@ -298,26 +373,29 @@ class VideoPanel(context: Context) : FrameLayout(context) {
             }
         }
         nextButton.setOnClickListener {
+            onInteraction?.invoke()
             val controller = controller ?: return@setOnClickListener
             if (controller.next()) {
                 openClip(controller.snapshot.index, 0, autoplay = true)
             } else {
-                playerStatus.text = "已经是最后一条测试视频。"
+                playerStatus.text = "已经是最后一条视频。"
             }
         }
-        playerPane.findViewWithTag<Button>("video.back").setOnClickListener { releasePlayer() }
+        playerPane.findViewWithTag<Button>("video.back").setOnClickListener { onInteraction?.invoke(); releasePlayer() }
         volumeBar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
             override fun onProgressChanged(seekBar: SeekBar, progress: Int, fromUser: Boolean) {
                 if (!fromUser) return
+                onInteraction?.invoke()
                 controller?.setVolume(progress / 100f)
+                volumePreference = volume()
                 val volume = volume()
                 player?.setVolume(volume, volume)
             }
             override fun onStartTrackingTouch(seekBar: SeekBar) = Unit
             override fun onStopTrackingTouch(seekBar: SeekBar) = Unit
         })
-        retryButton.setOnClickListener { onRetry?.invoke() }
-        statePane.findViewWithTag<Button>("video.state.back").setOnClickListener { onExit?.invoke() }
+        retryButton.setOnClickListener { onInteraction?.invoke(); onRetry?.invoke() }
+        statePane.findViewWithTag<Button>("video.state.back").setOnClickListener { onInteraction?.invoke(); onExit?.invoke() }
     }
 
     private fun applyPlayPause() {
@@ -337,8 +415,8 @@ class VideoPanel(context: Context) : FrameLayout(context) {
             else -> "暂停"
         }
         playerStatus.text = when (snapshot.status) {
-            PlaybackStatus.LOADING -> "正在准备测试短片…"
-            PlaybackStatus.PLAYING -> "播放中 · 测试数据"
+            PlaybackStatus.LOADING -> "正在准备视频…"
+            PlaybackStatus.PLAYING -> if (controller?.current?.isTestData == true) "播放中 · 测试数据" else "播放中 · 授权参考片"
             PlaybackStatus.PAUSED -> "已暂停"
             PlaybackStatus.COMPLETED -> "已播完，可重新播放或切换下一条。"
             PlaybackStatus.ERROR -> snapshot.message
@@ -353,6 +431,7 @@ class VideoPanel(context: Context) : FrameLayout(context) {
     }
 
     private fun showState(message: String, retryable: Boolean) {
+        releasePlayer()
         items = emptyList()
         stateMessage.text = message
         retryButton.visibility = if (retryable) View.VISIBLE else View.GONE
@@ -390,10 +469,14 @@ class VideoPanel(context: Context) : FrameLayout(context) {
     }
 
     private fun releaseMediaPlayer() {
+        prepareTimeout?.let(handler::removeCallbacks); prepareTimeout = null
+        renderedFrame = false
         player?.let { media ->
             runCatching { media.setOnPreparedListener(null) }
             runCatching { media.setOnCompletionListener(null) }
             runCatching { media.setOnErrorListener(null) }
+            runCatching { media.setOnInfoListener(null) }
+            runCatching { media.setOnVideoSizeChangedListener(null) }
             runCatching { if (media.isPlaying) media.stop() }
             runCatching { media.release() }
         }
@@ -425,6 +508,7 @@ class VideoPanel(context: Context) : FrameLayout(context) {
         controls.addView(playerButton("返回列表", "video.back"))
         controls.addView(toggleButton)
         controls.addView(nextButton)
+        controls.addView(endButton("video.end.player").apply { visibility = View.GONE })
         val volumeLabel = overlayLabel("音量", 14f)
         controls.addView(volumeLabel)
         controls.addView(volumeBar, LinearLayout.LayoutParams(dp(120), -2))
@@ -447,6 +531,12 @@ class VideoPanel(context: Context) : FrameLayout(context) {
             textSize = 18f
             minHeight = dp(56)
         })
+        addView(endButton("video.end.state").apply { visibility = View.GONE })
+    }
+
+    private fun endButton(tag: String) = Button(context).apply {
+        this.tag = tag; text = "结束体验"; textSize = 16f; minHeight = dp(56)
+        setOnClickListener { onInteraction?.invoke(); endSession?.invoke() }
     }
 
     private fun cardBackground(): Drawable? {

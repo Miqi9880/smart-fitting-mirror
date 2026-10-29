@@ -10,14 +10,13 @@ class VideoModel : ViewModel() {
     var index = -1
     var positionMs = 0
     var playing = false
-    var volume = 1f
+    var volume = 0f
 }
 
 /**
- * Standalone host for [VideoPanel] (#7, FR-VID-01/02/05). Deliberately not linked from
- * StandbyActivity's disabled `home.video` entry yet — wiring that shared entry is
- * coordinated on the issue card first. Reviewers can launch it directly:
- * `adb shell am start -n com.smartfitting.mirror/.video.VideoActivity`
+ * Internal instrumentation host for [VideoPanel] (#7, FR-VID-01/02/05).
+ * It is not exported or used by product navigation. Use VideoPlaybackFlowTest
+ * to launch the synthetic fixture; the product uses the shared guest session.
  *
  * Uses [FakeVideoRepository] only: synthetic test metadata plus program-generated local
  * clips, no network, no camera, no uploads. Leaving the screen (background, rotation,

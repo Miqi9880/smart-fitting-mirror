@@ -112,7 +112,7 @@ class StandbyExperienceTest {
                     assertFalse(recreatedModel.sensingRequested); assertFalse(recreatedModel.waitingGuest)
                     homeModel(it).baseUrl = existingOrigin; homeModel(it).saveConnection()
                     assertTrue(it.window.decorView.findViewWithTag<TextView>("home.status").text.contains("未开启"))
-                    assertFalse(it.window.decorView.findViewWithTag<Button>("home.video").isEnabled)
+                    assertTrue(it.window.decorView.findViewWithTag<Button>("home.video").isEnabled)
                     assertFalse(it.window.decorView.findViewWithTag<Button>("home.makeup").isEnabled)
                     it.window.decorView.findViewWithTag<Button>("home.demo").performClick()
                 }

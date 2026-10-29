@@ -129,7 +129,8 @@ class VideoPlaybackFlowTest {
             var first: VideoActivity? = null
             scenario.onActivity { first = it }
             instrumentation.runOnMainSync {
-                first!!.requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+                first!!.requestedOrientation = if (first!!.resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE)
+                    android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT else android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
             }
             await {
                 var current: VideoActivity? = null

@@ -11,7 +11,7 @@ data class PlaybackSnapshot(
     val status: PlaybackStatus = PlaybackStatus.IDLE,
     val index: Int = -1,
     /** 0f..1f, survives release so a reopened clip keeps the guest's volume. */
-    val volume: Float = 1f,
+    val volume: Float = 0f,
     val message: String = "",
 )
 
@@ -76,6 +76,7 @@ class PlaybackController(private val items: List<VideoItem>) {
     }
 
     fun setVolume(volume: Float) {
+        if (!volume.isFinite()) return
         val clamped = volume.coerceIn(0f, 1f)
         if (clamped != snapshot.volume) update(snapshot.copy(volume = clamped))
     }

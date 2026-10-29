@@ -1,6 +1,6 @@
 # 后端与服装接口
 
-2026-10-29：HTTP合同增加[视频推荐V0.4.0](video-recommendation.md)，新增VideoApi和双端数据类型；后端推荐库／路由随PR #52交付，负责人复核及两项补修见[记录](../reports/pr52-review-2026-10-29.md)。默认内容库为空，未取得5条真实授权可播内容；合同、后端代码和实际播放闭环是不同验收状态。
+2026-10-29：HTTP合同[视频增量V0.4.1](video-recommendation.md)保留0.4.0推荐JSON，增加公共授权媒体／封面GET、HEAD与Range。PR #52的目录／规则／路由现接7条授权参考短片和同一App播放器，见[记录](../reports/video-playback-2026-10-29.md)；媒体包需另装，缺文件返回空库。
 
 [OpenAPI 合同](../../contracts/openapi.json) 定义字段和响应，本文定义行为。采用 [OpenAPI 3.0.3](https://spec.openapis.org/oas/v3.0.3)，合同不表示已有可运行服务。
 
@@ -8,7 +8,7 @@
 
 API 前缀 /api/v1，JSON 使用 snake_case，时间为 UTC RFC3339。Base URL 可配置。
 
-POST /sessions 创建游客会话，返回本项目的 session_token；其余业务请求使用 Authorization: Bearer，不使用供应商密钥。服务端校验上传、任务归属，不能仅靠客户端传来的 session_id 授权。
+POST /sessions 创建游客会话，返回本项目的 session_token；其余会话业务请求使用 Authorization: Bearer，不使用供应商密钥。公共授权视频／封面不携带游客凭证。服务端校验上传、任务归属，不能仅靠客户端传来的 session_id 授权。
 
 模拟服务在本机或受控网络运行，跨网络真实传图使用 HTTPS。服务端对会话创建、上传和生成限流。错误格式统一为 error:{code,message,retryable,request_id}，不返回堆栈或密钥。
 
@@ -29,7 +29,7 @@ POST /sessions 创建游客会话，返回本项目的 session_token；其余业
 | POST /tryon-jobs/{job_id}/cancel | 请求取消 | 200 当前 Job |
 | DELETE /sessions/current | 撤销与清理 | 204，无正文 |
 
-视频推荐、后台管理和统计查询在后续阶段扩展，不阻塞首次联调。
+视频推荐与公共媒体流已接入，字段和路由见[视频接口](video-recommendation.md)；后台管理完整页面和统计扩展另行推进。
 
 ## 素材与上传
 

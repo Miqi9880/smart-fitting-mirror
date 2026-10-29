@@ -1,5 +1,7 @@
 # 已有基础与四人接手清单
 
+2026-10-29视频集成：负责人委托Codex接收yyyrrrxxx的PR #46～#50原作者提交，修正源码位置、短片编码与测试旋转条件，完成共享会话HTTP／主页入口／授权媒体流、封面、播放释放和0.3.8；#45占位文件不导入。[交付与验证](reports/video-playback-2026-10-29.md)覆盖下方早先“默认空库／播放器待接”状态。新增7条Pexels参考片以独立包安装，不走COS/Aidge；同学不重复这些集成。yyyrrrxxx下一项只做真实TalkBack焦点查漏，后端继续通用目录只读盘点，lyf继续原任务，镜子／真人仍仅负责人执行。
+
 2026-10-29后端增量：haiyangniu191-design通过PR #52交付真实调用禁用、每日匿名计数／本机只读报告、视频目录／精确规则／HTTP路由；负责人补位修正颜色标签兼容和云停用后本地换衣状态，[复核和边界](reports/pr52-review-2026-10-29.md)。不重做已交付的开关、计数骨架或推荐接口；后端接目录离线校验／盘点，Android在既有播放器组件审查后接现成HTTP。默认空库、5条授权视频／实际播放、语义模型、费用管理完整页面／预算仍有缺口；不恢复COS，现场仍只归负责人。
 
 2026-10-28视频接口补位：负责人委托Codex统一[HTTP0.4.0视频合同](interfaces/video-recommendation.md)、共享JSON、Python／Kotlin DTO、VideoApi／HttpFittingApi与FittingSession入口；不改变旧生成合同或接手内容库／播放器。haiyangniu191-design复用DTO接规则／路由，yyyrrrxxx先完成已提交PR #45～#50的组件验收，再按正式映射适配HTTP。合同不表示service.py已有视频路由；授权内容、实际播放闭环和模型语义仍未完成，不恢复COS或要求成员现场验收。

@@ -52,6 +52,8 @@ backend/assets/real/studio_*.png
 backend/assets/real/manifest.json
 backend/assets/real/README.txt
 backend/assets/smart-fitting-mirror-studio-assets-*.zip
+backend/assets/videos/media/
+backend/assets/videos/*.zip
 
 # Editor / OS
 .idea/

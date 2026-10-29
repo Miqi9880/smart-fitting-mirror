@@ -21,7 +21,7 @@ from typing import Callable, Literal
 
 from fastapi import FastAPI, Request, Query
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse, Response
+from fastapi.responses import JSONResponse, Response, FileResponse
 from pydantic import BaseModel, ConfigDict, Field
 from starlette.concurrency import run_in_threadpool
 from starlette.datastructures import UploadFile
@@ -600,7 +600,25 @@ def create_app(mode: Mode = "success", *, clock=time.time, ttl=1800, catalog_pat
             except ValueError:
                 raise Problem(400, "INVALID_REQUEST", "服装或妆容上下文暂不可用")
             result.validate_context(body)
+            result = store.video_library.public_urls(result, str(request.base_url))
         return JSONResponse(result.model_dump(mode="json"), headers={"Cache-Control": "no-store"})
+
+    def video_media(video_id: str, poster: bool):
+        # Public curated content, never a guest photo or generated result. Resolve
+        # only catalogued, published/verified filenames, never arbitrary paths.
+        path = store.video_library.media_path(video_id, poster=poster)
+        if path is None:
+            raise Problem(404, "RESOURCE_NOT_FOUND", "视频素材暂不可用")
+        return FileResponse(path, media_type="image/jpeg" if poster else "video/mp4",
+                            headers={"Cache-Control": "public, max-age=3600", "X-Content-Type-Options": "nosniff"})
+
+    @app.api_route("/api/v1/video-media/{video_id}.mp4", methods=["GET", "HEAD"])
+    def licensed_video(video_id: str):
+        return video_media(video_id, False)
+
+    @app.api_route("/api/v1/video-covers/{video_id}.jpg", methods=["GET", "HEAD"])
+    def licensed_video_cover(video_id: str):
+        return video_media(video_id, True)
 
     @app.get("/api/v1/garments/{gid}")
     def garment_detail(request: Request, gid: str):

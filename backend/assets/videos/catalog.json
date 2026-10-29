@@ -1,3 +1,300 @@
 {
-  "items": []
+  "items": [
+    {
+      "content": {
+        "video_id": "pexels-5901089",
+        "title": "黑白上装与贝雷帽街头搭配",
+        "duration_seconds": 12,
+        "orientation": "landscape",
+        "cover_url": null,
+        "playback_url": "https://videos.pexels.com/video-files/5901089/5901089-hd_1280_720_30fps.mp4",
+        "tags": [
+          {
+            "dimension": "category",
+            "value": "upper_body"
+          },
+          {
+            "dimension": "category",
+            "value": "headwear"
+          },
+          {
+            "dimension": "color",
+            "value": "黑色"
+          },
+          {
+            "dimension": "style",
+            "value": "简约"
+          },
+          {
+            "dimension": "scene",
+            "value": "街头"
+          }
+        ],
+        "garment_ids": [],
+        "makeup_ids": [],
+        "source": {
+          "kind": "licensed",
+          "attribution": "Leeloo The First · Pexels · https://www.pexels.com/video/woman-walking-and-modelling-in-the-street-5901089/",
+          "authorization": "Pexels License（2026-10-29核对）；应用内穿搭参考；截取前段、压缩并去音轨，不表示人物或品牌背书。https://www.pexels.com/license/"
+        }
+      },
+      "published": true,
+      "authorization_verified": true,
+      "playable_verified": true,
+      "media_file": "pexels-5901089.mp4",
+      "poster_file": "pexels-5901089.jpg"
+    },
+    {
+      "content": {
+        "video_id": "pexels-6769384",
+        "title": "白T与牛仔裤日常搭配",
+        "duration_seconds": 12,
+        "orientation": "portrait",
+        "cover_url": null,
+        "playback_url": "https://videos.pexels.com/video-files/6769384/6769384-hd_720_1280_25fps.mp4",
+        "tags": [
+          {
+            "dimension": "category",
+            "value": "upper_body"
+          },
+          {
+            "dimension": "category",
+            "value": "lower_body"
+          },
+          {
+            "dimension": "color",
+            "value": "白色"
+          },
+          {
+            "dimension": "color",
+            "value": "蓝色"
+          },
+          {
+            "dimension": "style",
+            "value": "休闲"
+          },
+          {
+            "dimension": "scene",
+            "value": "日常"
+          }
+        ],
+        "garment_ids": [],
+        "makeup_ids": [],
+        "source": {
+          "kind": "licensed",
+          "attribution": "cottonbro studio · Pexels · https://www.pexels.com/video/woman-bending-wearing-a-white-shirt-and-jeans-6769384/",
+          "authorization": "Pexels License（2026-10-29核对）；应用内穿搭参考；截取前段、压缩并去音轨，不表示人物或品牌背书。https://www.pexels.com/license/"
+        }
+      },
+      "published": true,
+      "authorization_verified": true,
+      "playable_verified": true,
+      "media_file": "pexels-6769384.mp4",
+      "poster_file": "pexels-6769384.jpg"
+    },
+    {
+      "content": {
+        "video_id": "pexels-4723041",
+        "title": "白衬衫与牛仔裤穿搭参考",
+        "duration_seconds": 12,
+        "orientation": "portrait",
+        "cover_url": null,
+        "playback_url": "https://videos.pexels.com/video-files/4723041/4723041-hd_720_1280_25fps.mp4",
+        "tags": [
+          {
+            "dimension": "category",
+            "value": "upper_body"
+          },
+          {
+            "dimension": "category",
+            "value": "lower_body"
+          },
+          {
+            "dimension": "color",
+            "value": "白色"
+          },
+          {
+            "dimension": "color",
+            "value": "蓝色"
+          },
+          {
+            "dimension": "style",
+            "value": "休闲"
+          },
+          {
+            "dimension": "scene",
+            "value": "日常"
+          }
+        ],
+        "garment_ids": [],
+        "makeup_ids": [],
+        "source": {
+          "kind": "licensed",
+          "attribution": "olia danilevich · Pexels · https://www.pexels.com/video/female-model-wearing-a-white-shirts-and-denim-pants-4723041/",
+          "authorization": "Pexels License（2026-10-29核对）；应用内穿搭参考；截取前段、压缩并去音轨，不表示人物或品牌背书。https://www.pexels.com/license/"
+        }
+      },
+      "published": true,
+      "authorization_verified": true,
+      "playable_verified": true,
+      "media_file": "pexels-4723041.mp4",
+      "poster_file": "pexels-4723041.jpg"
+    },
+    {
+      "content": {
+        "video_id": "pexels-6532083",
+        "title": "深色外套通勤参考",
+        "duration_seconds": 12,
+        "orientation": "landscape",
+        "cover_url": null,
+        "playback_url": "https://videos.pexels.com/video-files/6532083/6532083-uhd_4096_2160_25fps.mp4",
+        "tags": [
+          {
+            "dimension": "category",
+            "value": "upper_body"
+          },
+          {
+            "dimension": "color",
+            "value": "黑色"
+          },
+          {
+            "dimension": "style",
+            "value": "简约"
+          },
+          {
+            "dimension": "scene",
+            "value": "通勤"
+          }
+        ],
+        "garment_ids": [],
+        "makeup_ids": [],
+        "source": {
+          "kind": "licensed",
+          "attribution": "cottonbro studio · Pexels · https://www.pexels.com/video/a-woman-walking-6532083/",
+          "authorization": "Pexels License（2026-10-29核对）；应用内穿搭参考；截取前段、压缩并去音轨，不表示人物或品牌背书。https://www.pexels.com/license/"
+        }
+      },
+      "published": true,
+      "authorization_verified": true,
+      "playable_verified": true,
+      "media_file": "pexels-6532083.mp4",
+      "poster_file": "pexels-6532083.jpg"
+    },
+    {
+      "content": {
+        "video_id": "pexels-6566210",
+        "title": "灰色外套都市搭配",
+        "duration_seconds": 10,
+        "orientation": "landscape",
+        "cover_url": null,
+        "playback_url": "https://videos.pexels.com/video-files/6566210/6566210-hd_1280_720_24fps.mp4",
+        "tags": [
+          {
+            "dimension": "category",
+            "value": "upper_body"
+          },
+          {
+            "dimension": "color",
+            "value": "灰色"
+          },
+          {
+            "dimension": "style",
+            "value": "简约"
+          },
+          {
+            "dimension": "scene",
+            "value": "通勤"
+          }
+        ],
+        "garment_ids": [],
+        "makeup_ids": [],
+        "source": {
+          "kind": "licensed",
+          "attribution": "Tim Douglas · Pexels · https://www.pexels.com/video/two-women-walking-at-the-sidewalk-6566210/",
+          "authorization": "Pexels License（2026-10-29核对）；应用内穿搭参考；截取前段、压缩并去音轨，不表示人物或品牌背书。https://www.pexels.com/license/"
+        }
+      },
+      "published": true,
+      "authorization_verified": true,
+      "playable_verified": true,
+      "media_file": "pexels-6566210.mp4",
+      "poster_file": "pexels-6566210.jpg"
+    },
+    {
+      "content": {
+        "video_id": "pexels-7671653",
+        "title": "印花连衣裙户外参考",
+        "duration_seconds": 12,
+        "orientation": "portrait",
+        "cover_url": null,
+        "playback_url": "https://videos.pexels.com/video-files/7671653/7671653-hd_720_1280_24fps.mp4",
+        "tags": [
+          {
+            "dimension": "category",
+            "value": "dress"
+          },
+          {
+            "dimension": "style",
+            "value": "休闲"
+          },
+          {
+            "dimension": "scene",
+            "value": "户外"
+          }
+        ],
+        "garment_ids": [],
+        "makeup_ids": [],
+        "source": {
+          "kind": "licensed",
+          "attribution": "Anastasia Shuraeva · Pexels · https://www.pexels.com/video/woman-looking-at-camera-while-walking-7671653/",
+          "authorization": "Pexels License（2026-10-29核对）；应用内穿搭参考；截取前段、压缩并去音轨，不表示人物或品牌背书。https://www.pexels.com/license/"
+        }
+      },
+      "published": true,
+      "authorization_verified": true,
+      "playable_verified": true,
+      "media_file": "pexels-7671653.mp4",
+      "poster_file": "pexels-7671653.jpg"
+    },
+    {
+      "content": {
+        "video_id": "pexels-9511253",
+        "title": "浅色连衣裙优雅搭配",
+        "duration_seconds": 12,
+        "orientation": "landscape",
+        "cover_url": null,
+        "playback_url": "https://videos.pexels.com/video-files/9511253/9511253-uhd_4096_2160_25fps.mp4",
+        "tags": [
+          {
+            "dimension": "category",
+            "value": "dress"
+          },
+          {
+            "dimension": "color",
+            "value": "绿色"
+          },
+          {
+            "dimension": "style",
+            "value": "优雅"
+          },
+          {
+            "dimension": "scene",
+            "value": "聚会"
+          }
+        ],
+        "garment_ids": [],
+        "makeup_ids": [],
+        "source": {
+          "kind": "licensed",
+          "attribution": "cottonbro studio · Pexels · https://www.pexels.com/video/a-woman-posing-while-walking-on-the-runway-9511253/",
+          "authorization": "Pexels License（2026-10-29核对）；应用内穿搭参考；截取前段、压缩并去音轨，不表示人物或品牌背书。https://www.pexels.com/license/"
+        }
+      },
+      "published": true,
+      "authorization_verified": true,
+      "playable_verified": true,
+      "media_file": "pexels-9511253.mp4",
+      "poster_file": "pexels-9511253.jpg"
+    }
+  ]
 }

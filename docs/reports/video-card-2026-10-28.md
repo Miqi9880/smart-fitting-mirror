@@ -1,5 +1,7 @@
 # 视频卡片与播放：FakeVideoRepository 首个独立增量
 
+历史原稿说明：本页保留yyyrrrxxx首稿范围和当时未实测声明。2026-10-29由负责人修正编码与旋转测试条件、整合授权HTTP及主页，最新证据见[集成记录](video-playback-2026-10-29.md)。独立VideoActivity不导出，不能从普通ADB shell直接启动；现用VideoPlaybackFlowTest内部启动，产品走待机／TryOnActivity共享游客入口。
+
 2026-10-28，#7／企业 FR-VID-01／02／05（依据 8.2、10 与草案 docs/interfaces/video-recommendation-draft.md）。本页记录 yyyrrrxxx 侧首个可审阅小 PR：同一 App 内的视频数据消费、推荐卡片与播放组件。后端合同未定稿，本轮不接 HTTP、不改公共合同、不动 StandbyActivity 的 `home.video` 入口（仍为禁用，接入前需在本卡协调）。
 
 ## 用户操作（验收路径）
