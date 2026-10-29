@@ -19,6 +19,18 @@ macOS/Linux 将 `.venv\Scripts\python` 换成 `.venv/bin/python`。仅运行服�
 
 健康检查 `GET http://127.0.0.1:8000/health`，业务前缀 `/api/v1`。Android 模拟器通过 `http://10.0.2.2:8000` 访问主机；真实设备地址和企业网络需另行配置。该命令只绑定本机，适合开发联调。
 
+## 本地匿名用量统计
+
+后端默认把每日汇总写入 Git 忽略的 `data/usage-metrics.sqlite3`。统计只保存UTC日期、固定功能／提供方／模式／模型分类、事件次数与总耗时；不保存游客、任务、上传、素材URL、Token或图片标识。幂等重放和状态轮询不另计任务；没有实现的缓存只显示“未实现／未计量”。真实模型SKU暂未从供应商响应取得，记为 `unknown`。
+
+只读查看命令：
+
+```powershell
+.venv\Scripts\python -m backend.usage_metrics --db data/usage-metrics.sqlite3
+```
+
+报告将模型调用、COS存储、COS流量和请求费用分别标为“未知”；没有账单／费率证据时，未知不代表0元。受控汇总接口仅有草案，当前没有新增公网统计路由、管理页、限额或费用告警，见[接口草案](../docs/interfaces/usage-metrics-draft.md)和[实现记录](../docs/reports/usage-metrics-2026-10-29.md)。
+
 ## 显式启用真实 Aidge 提供方
 
 真实模式默认关闭。停用真实服务时使用 `--provider aidge-cos`（不要加启用开关）：`/health` 返回 `mode=provider-disabled`、`is_mock=false`，创建任务返回 `503 PROVIDER_UNAVAILABLE`，提示本地预览仍可使用。默认的 `--provider mock` 可独立运行本地模拟。只有在负责人明确批准预算后，才在本机配置好 Git 忽略的 `.env.cos` 与 `.env.aliyun`，并同时显式启用：
