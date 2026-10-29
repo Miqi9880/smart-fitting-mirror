@@ -1,5 +1,7 @@
 import io
 import json
+import runpy
+import sys
 import threading
 import time
 import uuid
@@ -13,6 +15,7 @@ from backend.aliyun_tryon_smoke import Settings as AidgeSettings
 from backend.cos_storage import CosSettings
 from backend.service import create_app
 from backend.tryon_provider import AidgeCosProvider, ProviderFailure, ProviderResult
+from backend.usage_metrics import UsageMetrics, render_report
 
 
 def png(size=(32, 48), color="#345678") -> bytes:
@@ -49,18 +52,26 @@ class FakeProvider:
         self.calls = 0
         self.started = threading.Event()
         self.release = threading.Event()
+        self.submission_observer = None
         if not blocked:
             self.release.set()
+
+    def set_submission_observer(self, observer):
+        self.submission_observer = observer
 
     def generate(self, model_image: bytes, garment_image: Path, cloth_type: str, *, budget=None) -> ProviderResult:
         self.calls += 1
         assert model_image.startswith(b"\x89PNG")
         assert garment_image.is_file()
         assert cloth_type == "tops"
+        if self.submission_observer is not None:
+            self.submission_observer("provider_submit_attempt")
         self.started.set()
         assert self.release.wait(3)
         if self.failure:
             raise self.failure
+        if self.submission_observer is not None:
+            self.submission_observer("provider_submit_accepted")
         return ProviderResult(png((40, 60), "#112233"), 40, 60)
 
 
@@ -81,6 +92,93 @@ def test_real_provider_uses_existing_contract_and_idempotency():
         result = client.get(done["result"]["image_url"], headers=headers)
         assert result.status_code == 200 and result.content.startswith(b"\x89PNG")
         assert provider.calls == 1
+
+
+def test_real_provider_disabled_blocks_retries_before_creating_a_job_and_mock_is_independent():
+    disabled_app = create_app(provider_disabled=True, catalog_profile="regression")
+    with TestClient(disabled_app) as client:
+        assert client.get("/health").json() == {
+            "status": "ok", "mode": "provider-disabled", "is_mock": False
+        }
+        headers, upload_id = session_and_upload(client)
+        key = str(uuid.uuid4())
+        request_headers = {**headers, "Idempotency-Key": key}
+        body = {"upload_id": upload_id, "garment_id": "upper_blue"}
+
+        first = client.post("/api/v1/tryon-jobs", headers=request_headers, json=body)
+        replay = client.post("/api/v1/tryon-jobs", headers=request_headers, json=body)
+
+        for response in (first, replay):
+            assert response.status_code == 503
+            assert response.json()["error"]["code"] == "PROVIDER_UNAVAILABLE"
+            assert "本地预览仍可使用" in response.json()["error"]["message"]
+        store = disabled_app.state.store
+        assert store.provider is None and store.executor is None
+        assert not store.guests[next(iter(store.guests))].jobs
+        assert not store.guests[next(iter(store.guests))].keys
+
+    with TestClient(create_app(catalog_profile="regression")) as client:
+        headers, upload_id = session_and_upload(client)
+        response = client.post(
+            "/api/v1/tryon-jobs",
+            headers={**headers, "Idempotency-Key": str(uuid.uuid4())},
+            json={"upload_id": upload_id, "garment_id": "upper_blue"},
+        )
+        assert response.status_code == 202
+        result = wait_terminal(client, headers, response.json()["job_id"])
+        assert result["status"] == "succeeded" and result["is_mock"] is True
+
+
+def test_cli_real_provider_selection_does_not_read_env_without_enable_flag(monkeypatch, tmp_path):
+    import uvicorn
+
+    captured = {}
+    monkeypatch.setattr(uvicorn, "run", lambda app, **kwargs: captured.setdefault("app", app))
+    monkeypatch.setattr(sys, "argv", [
+        "backend", "--provider", "aidge-cos",
+        "--cos-env-file", str(tmp_path / "missing.cos"),
+        "--aliyun-env-file", str(tmp_path / "missing.aliyun"),
+        "--catalog-db", str(tmp_path / "catalog.sqlite3"),
+        "--usage-metrics-db", str(tmp_path / "usage.sqlite3"),
+    ])
+
+    runpy.run_module("backend.__main__", run_name="__main__")
+
+    app = captured["app"]
+    assert app.state.store.provider_disabled is True
+    assert app.state.store.provider is None and app.state.store.executor is None
+
+
+def test_usage_metrics_aggregate_without_ids_and_ignore_replay_and_polling(tmp_path):
+    metrics = UsageMetrics(tmp_path / "usage.sqlite3")
+    provider = FakeProvider()
+    with TestClient(create_app(provider=provider, usage_metrics=metrics,
+                               catalog_profile="regression")) as client:
+        headers, upload_id = session_and_upload(client)
+        key = str(uuid.uuid4())
+        body = {"upload_id": upload_id, "garment_id": "upper_blue"}
+        first = client.post("/api/v1/tryon-jobs", headers={**headers, "Idempotency-Key": key}, json=body)
+        replay = client.post("/api/v1/tryon-jobs", headers={**headers, "Idempotency-Key": key}, json=body)
+        assert first.status_code == 202 and replay.status_code == 200
+        assert wait_terminal(client, headers, first.json()["job_id"])["status"] == "succeeded"
+        client.get(f"/api/v1/tryon-jobs/{first.json()['job_id']}", headers=headers)
+
+    rows = metrics.read()
+    counts = {row["metric"]: row["event_count"] for row in rows}
+    assert counts == {
+        "task_created": 1,
+        "provider_submit_attempt": 1,
+        "provider_submit_accepted": 1,
+        "succeeded": 1,
+    }
+    assert all(row["duration_count"] == 1 for row in rows if row["metric"] == "succeeded")
+    assert all(not ({"session_id", "job_id", "upload_id", "task_id"} & row.keys()) for row in rows)
+    report = render_report(rows)
+    assert "缓存复用：未实现／未计量" in report
+    assert "模型调用：未知" in report
+    assert "COS存储：未知" in report
+    assert "COS外网流量：未知" in report
+    assert "请求费用：未知" in report
 
 
 def test_cancel_wins_and_late_provider_result_is_discarded():

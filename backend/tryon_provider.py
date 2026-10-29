@@ -15,7 +15,7 @@ import urllib.error
 import urllib.request
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Protocol
+from typing import Callable, Protocol
 
 from PIL import Image, UnidentifiedImageError
 from alibabacloud_aidge20260428 import models as aidge_models
@@ -122,6 +122,11 @@ class AidgeCosProvider:
         self.max_wait_seconds = max_wait_seconds
         self.cos_client = cos_client or build_cos_client(cos_settings)
         self.aidge_client = aidge_client or build_aidge_client(aidge_settings)
+        self.submission_observer: Callable[[str], None] | None = None
+
+    def set_submission_observer(self, observer: Callable[[str], None]) -> None:
+        """Observe submit attempts and acceptance without exposing the provider task ID."""
+        self.submission_observer = observer
 
     @classmethod
     def from_env(cls, cos_env: Path, aliyun_env: Path) -> "AidgeCosProvider":
@@ -155,8 +160,12 @@ class AidgeCosProvider:
                     garment_image_url=garment.download_url,
                     cloth_type=cloth_type,
                 )
+                request = build_request(settings)
+                runtime = self.runtime(budget)
                 try:
-                    response = self.aidge_client.virtual_try_on_with_options(build_request(settings), self.runtime(budget))
+                    if self.submission_observer is not None:
+                        self.submission_observer("provider_submit_attempt")
+                    response = self.aidge_client.virtual_try_on_with_options(request, runtime)
                     budget.check()
                 except ProviderFailure:
                     raise
@@ -167,6 +176,8 @@ class AidgeCosProvider:
                 task_id = getattr(getattr(body, "data", None), "task_id", None)
                 if not getattr(body, "success", False) or not task_id:
                     raise ProviderFailure("PROVIDER_REJECTED", "虚拟试衣服务未接受任务")
+                if self.submission_observer is not None:
+                    self.submission_observer("provider_submit_accepted")
 
                 while True:
                     time.sleep(min(self.poll_interval, budget.remaining()))

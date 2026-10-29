@@ -4,6 +4,7 @@ import asyncio
 import hashlib
 import hmac
 import io
+import logging
 import re
 import secrets
 import threading
@@ -30,6 +31,9 @@ from .catalog import ASSET_SPECS, CATALOG_CAPACITY, GarmentWrite, initial_catalo
 from .catalog_repository import CatalogRepository
 from .tryon_provider import ProviderFailure, ProviderResult, TryOnProvider
 from .provider_control import GenerationBudget
+from .usage_metrics import UsageMetrics
+from .video_contracts import VideoRecommendationRequest
+from .video_library import VideoLibrary
 
 MAX_FILE = 10 * 1024 * 1024
 MAX_BODY = MAX_FILE + 64 * 1024
@@ -38,6 +42,7 @@ MAX_STORED = 128 * 1024 * 1024
 ASSETS = Path(__file__).parent / "assets"
 TERMINAL = {"succeeded", "failed", "cancelled"}
 Mode = Literal["success", "failure", "delayed", "timeout", "rate-limit"]
+LOGGER = logging.getLogger(__name__)
 
 
 def stamp(epoch: float) -> str:
@@ -134,6 +139,8 @@ class Job:
     result_bytes: bytes | None = None
     is_mock: bool = True
     budget: GenerationBudget | None = None
+    started_monotonic: float = 0.0
+    metrics_terminal_recorded: bool = False
 
 
 @dataclass
@@ -149,10 +156,13 @@ class Guest:
 
 class Store:
     """One-process service. State transitions and ownership checks share a lock."""
-    def __init__(self, mode: Mode = "success", clock: Callable[[], float] = time.time, ttl: float = 1800, catalog_path=None, catalog_profile="studio", provider: TryOnProvider | None = None, monotonic: Callable[[], float] = time.monotonic):
+    def __init__(self, mode: Mode = "success", clock: Callable[[], float] = time.time, ttl: float = 1800, catalog_path=None, catalog_profile="studio", provider: TryOnProvider | None = None, monotonic: Callable[[], float] = time.monotonic, provider_disabled: bool = False, metrics: UsageMetrics | None = None, video_library: VideoLibrary | None = None):
         self.mode, self.clock, self.ttl = mode, clock, ttl
         self.monotonic = monotonic
         self.provider = provider
+        self.provider_disabled = provider_disabled
+        self.metrics = metrics
+        self.video_library = video_library if video_library is not None else VideoLibrary.from_file()
         # Keep one local provider worker in flight, including its cleanup.
         # The upstream cannot be cancelled; a local timeout is not cloud cancellation.
         self.executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="tryon-provider") if provider else None
@@ -163,6 +173,32 @@ class Store:
         self.secret = secrets.token_bytes(32)
         self.catalog_factory = regression_catalog if catalog_profile == "regression" else initial_catalog
         self.catalog_repository = CatalogRepository(catalog_path,profile=catalog_profile) if catalog_path is not None else None
+        observe_submission = getattr(provider, "set_submission_observer", None)
+        if metrics is not None and callable(observe_submission):
+            observe_submission(lambda metric: self._record_usage(metric, is_mock=False))
+
+    def _record_usage(self, metric: str, *, is_mock: bool, duration_ms: int | None = None) -> None:
+        if self.metrics is None:
+            return
+        provider = "mock" if is_mock else getattr(self.provider, "name", "unknown")
+        if provider not in {"mock", "aidge-cos"}:
+            provider = "unknown"
+        model = "mock-static" if is_mock else "unknown"
+        try:
+            self.metrics.record(provider=provider, model=model, mode="mock" if is_mock else "real",
+                                metric=metric, duration_ms=duration_ms)
+        except Exception:
+            # Metrics failures must not fail a fitting request or provider cleanup.
+            LOGGER.warning("Anonymous usage metric could not be recorded (metric=%s)", metric)
+
+    def _record_terminal(self, job: Job) -> None:
+        if job.metrics_terminal_recorded:
+            return
+        job.metrics_terminal_recorded = True
+        status = job.value["status"]
+        if status in {"succeeded", "failed", "cancelled"}:
+            duration_ms = max(0, round((self.monotonic() - job.started_monotonic) * 1000))
+            self._record_usage(status, is_mock=job.is_mock, duration_ms=duration_ms)
 
     def token(self, sid: str) -> str:
         return sid + "." + hmac.new(self.secret, sid.encode(), hashlib.sha256).hexdigest()
@@ -253,6 +289,8 @@ class Store:
                 if prior != fingerprint:
                     raise Problem(409, "IDEMPOTENCY_CONFLICT", "相同幂等键不能用于不同输入")
                 return guest.jobs[jid].value.copy(), 200
+            if self.provider_disabled:
+                raise Problem(503, "PROVIDER_UNAVAILABLE", "真实试衣调用当前未启用；本地预览仍可使用", False)
             if upload_id not in guest.uploads or garment_id not in guest.catalog:
                 raise Problem(404, "RESOURCE_NOT_FOUND", "上传或服装不存在")
             asset_id = guest.catalog[garment_id].asset_id
@@ -275,8 +313,10 @@ class Store:
                      "status": "queued", "is_mock": self.provider is None, "created_at": stamp(now), "updated_at": stamp(now),
                      "result": None, "error": None}
             budget = GenerationBudget(120, clock=self.monotonic) if self.provider is not None else None
-            guest.jobs[jid] = Job(value, now, self.mode, asset_id, is_mock=self.provider is None, budget=budget)
+            guest.jobs[jid] = Job(value, now, self.mode, asset_id, is_mock=self.provider is None,
+                                  budget=budget, started_monotonic=self.monotonic())
             guest.keys[key] = fingerprint, jid
+            self._record_usage("task_created", is_mock=self.provider is None)
             if self.provider is not None:
                 assert garment_path is not None and cloth_type is not None
                 work = (guest.sid, jid, bytes(guest.uploads[upload_id].data), garment_path, cloth_type)
@@ -343,6 +383,7 @@ class Store:
             job.value["status"] = "failed"
             job.value["error"] = detail(error.code, error.message, error.retryable)
             job.value["updated_at"] = stamp(self.clock())
+            self._record_terminal(job)
 
     def finish_provider_success(self, sid: str, jid: str, result: ProviderResult):
         with self.lock:
@@ -361,6 +402,7 @@ class Store:
                 job.value["result"] = {"image_url": f"results/{jid}.png", "width": result.width,
                                        "height": result.height, "expires_at": stamp(guest.expires)}
             job.value["updated_at"] = stamp(self.clock())
+            self._record_terminal(job)
 
     def advance(self, guest: Guest, job: Job):
         if job.value["status"] in TERMINAL:
@@ -371,6 +413,7 @@ class Store:
                 job.value.update(status="failed", result=None,
                     error=detail("GENERATION_TIMEOUT", "虚拟试衣超过120秒总等待时限", True),
                     updated_at=stamp(self.clock()))
+                self._record_terminal(job)
             # Keep the local slot until the worker and its cleanup finish, even
             # after timeout/cancel. No implicit paid retry is queued here.
             return
@@ -400,6 +443,8 @@ class Store:
         if job.value["status"] != status:
             job.value["status"] = status
             job.value["updated_at"] = stamp(now)
+            if status in TERMINAL:
+                self._record_terminal(job)
 
     def get_job(self, authorization, jid, cancel=False):
         with self.lock:
@@ -410,6 +455,7 @@ class Store:
             if cancel and job.value["status"] not in TERMINAL:
                 job.value["status"] = "cancelled"
                 job.value["updated_at"] = stamp(self.clock())
+                self._record_terminal(job)
             return job.value.copy()
 
 
@@ -460,7 +506,7 @@ class CreateInput(BaseModel):
     garment_id: str = Field(min_length=1, max_length=128)
 
 
-def create_app(mode: Mode = "success", *, clock=time.time, ttl=1800, catalog_path=None, catalog_profile="studio", provider: TryOnProvider | None = None, monotonic=time.monotonic) -> FastAPI:
+def create_app(mode: Mode = "success", *, clock=time.time, ttl=1800, catalog_path=None, catalog_profile="studio", provider: TryOnProvider | None = None, monotonic=time.monotonic, provider_disabled: bool = False, usage_metrics: UsageMetrics | None = None, video_library: VideoLibrary | None = None) -> FastAPI:
     if mode not in {"success", "failure", "delayed", "timeout", "rate-limit"}:
         raise ValueError("Unknown mock mode")
     if not 0 < ttl <= 1800:
@@ -469,7 +515,10 @@ def create_app(mode: Mode = "success", *, clock=time.time, ttl=1800, catalog_pat
         raise ValueError("Unknown catalog profile")
     if provider is not None and mode != "success":
         raise ValueError("Mock failure modes cannot be combined with a real provider")
-    store = Store(mode, clock, ttl, catalog_path, catalog_profile, provider, monotonic)
+    if provider is not None and provider_disabled:
+        raise ValueError("A provider cannot be active while real-provider calls are disabled")
+    store = Store(mode, clock, ttl, catalog_path, catalog_profile, provider, monotonic,
+                  provider_disabled, usage_metrics, video_library)
 
     @asynccontextmanager
     async def lifespan(app):
@@ -520,8 +569,9 @@ def create_app(mode: Mode = "success", *, clock=time.time, ttl=1800, catalog_pat
 
     @app.get("/health")
     def health():
-        return {"status": "ok", "mode": store.mode if store.provider is None else store.provider.name,
-                "is_mock": store.provider is None}
+        mode = "provider-disabled" if store.provider_disabled else (store.mode if store.provider is None else store.provider.name)
+        return {"status": "ok", "mode": mode,
+                "is_mock": store.provider is None and not store.provider_disabled}
 
     @app.post("/api/v1/sessions", status_code=201)
     def sessions(request: Request):
@@ -535,6 +585,22 @@ def create_app(mode: Mode = "success", *, clock=time.time, ttl=1800, catalog_pat
             root = str(request.base_url) + "api/v1/assets/"
             items = [public_item(item, root) for item in guest.catalog.values() if matches(item, q, tag)]
         return JSONResponse({"items": items}, headers={"Cache-Control": "no-store"})
+
+    @app.post("/api/v1/video-recommendations")
+    def video_recommendations(request: Request, body: VideoRecommendationRequest):
+        with store.lock:
+            guest = store.guest(auth(request))
+            store.rate("video-recommendations:" + guest.sid, 30)
+            if body.makeup_ids:
+                raise Problem(400, "INVALID_REQUEST", "妆容目录尚未接入，请暂时不要传 makeup_ids")
+            if any(garment_id not in guest.catalog for garment_id in body.garment_ids):
+                raise Problem(400, "INVALID_REQUEST", "服装ID不属于当前会话衣柜")
+            try:
+                result = store.video_library.recommend(body, guest.catalog)
+            except ValueError:
+                raise Problem(400, "INVALID_REQUEST", "服装或妆容上下文暂不可用")
+            result.validate_context(body)
+        return JSONResponse(result.model_dump(mode="json"), headers={"Cache-Control": "no-store"})
 
     @app.get("/api/v1/garments/{gid}")
     def garment_detail(request: Request, gid: str):

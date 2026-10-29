@@ -23,6 +23,7 @@ class FittingSessionTest {
             return onVideos(request)
         }
         var createFailures = 0
+        var createApiFailure: ApiFailure? = null
         var endFails = false
         var resultFails = false
         var cancelReturnsSuccess = false
@@ -58,6 +59,7 @@ class FittingSessionTest {
         override suspend fun upload(sessionToken: String, photo: CapturedPhoto): Upload { photo.bytes; uploads++; return Upload("upload_one", 2,2,time) }
         override suspend fun createJob(sessionToken: String, request: CreateJob, idempotencyKey: String): TryOnJob {
             keys += idempotencyKey
+            createApiFailure?.let { throw it }
             if (createFailures-- > 0) throw IOException("创建响应超时")
             return job(JobStatus.QUEUED)
         }
@@ -211,6 +213,35 @@ class FittingSessionTest {
         assertEquals(1, fake.uploads)
         assertEquals(4, fake.keys.size)
         assertEquals(1, fake.keys.distinct().size)
+        controller.end(); advanceUntilIdle()
+    }
+
+    @Test fun disabledProviderKeepsPreviewAndAllowsOnlyAnExplicitNewCapture() = runTest {
+        val alternative = garment.copy(garmentId = "upper_other", name = "另一件测试上衣")
+        val fake = Fake().apply {
+            items = listOf(garment, alternative)
+            createApiFailure = ApiFailure(503, "PROVIDER_UNAVAILABLE", "真实试衣调用当前未启用；本地预览仍可使用", false)
+        }
+        val controller = FittingSession(fake, this, nowMs = { testScheduler.currentTime })
+        controller.connect(); runCurrent()
+        controller.generate(photo()); advanceUntilIdle()
+
+        assertEquals(FittingPhase.READY, controller.state.value.phase)
+        assertEquals("真实试衣调用当前未启用；本地预览仍可使用", controller.state.value.message)
+        assertEquals(RetryAction.NONE, controller.state.value.retry)
+        assertTrue(controller.state.value.canCapture)
+        assertTrue(controller.state.value.canSelect)
+        assertNotNull(controller.state.value.original)
+        assertEquals(1, fake.uploads)
+        assertEquals(1, fake.keys.size)
+
+        controller.select(alternative.garmentId)
+        assertEquals(alternative.garmentId, controller.state.value.selectedId)
+        assertArrayEquals(byteArrayOf(4,5,6), controller.outfitPreview(alternative))
+
+        controller.retry(); advanceUntilIdle()
+        assertEquals(1, fake.uploads)
+        assertEquals(1, fake.keys.size)
         controller.end(); advanceUntilIdle()
     }
 

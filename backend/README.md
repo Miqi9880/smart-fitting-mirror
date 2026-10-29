@@ -1,8 +1,8 @@
 # 智能穿衣镜后端服务
 
-实现 HTTP 合同 V0.3.0，含会话、上传、生成任务、六品类初始衣柜及详情/增删改，当前下架连帽款后48件。SQLite 保存内置基础目录，游客的临时编辑隔离保存。默认仍为不联网的 MOCK；显式使用 `--provider aidge-cos` 时，生成任务通过腾讯云 COS 临时签名链接调用阿里云 Aidge，返回 `is_mock=false`。[当前商品素材与组合预览](../docs/studio-outfits.md)。
+实现 HTTP 合同 V0.4.0（兼容旧试衣路径），含会话、上传、生成任务、六品类初始衣柜及详情/增删改，当前下架连帽款后48件。SQLite 保存内置基础目录，游客的临时编辑隔离保存。默认仍为不联网的 MOCK。选择 `--provider aidge-cos` 但不加 `--enable-real-provider` 时，服务明确拒绝生成，不读云端配置、不创建假成功任务；只有同时提供启用开关才会构造 Aidge/COS 客户端。[当前商品素材与组合预览](../docs/studio-outfits.md)。
 
-2026-10-28视频合同升级0.4.0，`video_contracts.py`提供共享DTO和`response.validate_context(request)`；**service.py尚未实现推荐路由／内容库**。按[正式视频接口](../docs/interfaces/video-recommendation.md)接入，不能因OpenAPI新增路径就宣称运行服务支持。COS/Aidge仍按负责人当前决定暂停，不为视频接口启用付费服务。
+2026-10-28视频合同升级0.4.0，`video_contracts.py`提供共享DTO；本分支增加只读推荐路由与精确标签规则，默认内容库为空，只返回已上架、授权状态已核验且可播状态已核验的条目。当前没有5条真实授权内容，因此不能宣称播放闭环完成。按[正式视频接口](../docs/interfaces/video-recommendation.md)；实现边界与检查见[本地记录](../docs/reports/video-library-route-2026-10-29.md)。COS/Aidge仍按负责人当前决定暂停，不为视频接口启用付费服务。
 
 ## 启动
 
@@ -19,12 +19,24 @@ macOS/Linux 将 `.venv\Scripts\python` 换成 `.venv/bin/python`。仅运行服�
 
 健康检查 `GET http://127.0.0.1:8000/health`，业务前缀 `/api/v1`。Android 模拟器通过 `http://10.0.2.2:8000` 访问主机；真实设备地址和企业网络需另行配置。该命令只绑定本机，适合开发联调。
 
-## 显式启用真实 Aidge 提供方
+## 本地匿名用量统计
 
-真实模式不会因安装依赖或导入模块而自动启用。先在 Git 忽略的 `.env.cos` 与 `.env.aliyun` 中完成本机配置，再显式启动：
+后端默认把每日汇总写入 Git 忽略的 `data/usage-metrics.sqlite3`。统计只保存UTC日期、固定功能／提供方／模式／模型分类、事件次数与总耗时；不保存游客、任务、上传、素材URL、Token或图片标识。幂等重放和状态轮询不另计任务；没有实现的缓存只显示“未实现／未计量”。真实模型SKU暂未从供应商响应取得，记为 `unknown`。
+
+只读查看命令：
 
 ```powershell
-.venv312\Scripts\python -m backend --host 127.0.0.1 --port 8000 --provider aidge-cos
+.venv\Scripts\python -m backend.usage_metrics --db data/usage-metrics.sqlite3
+```
+
+报告将模型调用、COS存储、COS流量和请求费用分别标为“未知”；没有账单／费率证据时，未知不代表0元。受控汇总接口仅有草案，当前没有新增公网统计路由、管理页、限额或费用告警，见[接口草案](../docs/interfaces/usage-metrics-draft.md)和[实现记录](../docs/reports/usage-metrics-2026-10-29.md)。
+
+## 显式启用真实 Aidge 提供方
+
+真实模式默认关闭。停用真实服务时使用 `--provider aidge-cos`（不要加启用开关）：`/health` 返回 `mode=provider-disabled`、`is_mock=false`，创建任务返回 `503 PROVIDER_UNAVAILABLE`，提示本地预览仍可使用。默认的 `--provider mock` 可独立运行本地模拟。只有在负责人明确批准预算后，才在本机配置好 Git 忽略的 `.env.cos` 与 `.env.aliyun`，并同时显式启用：
+
+```powershell
+.venv312\Scripts\python -m backend --host 127.0.0.1 --port 8000 --provider aidge-cos --enable-real-provider
 ```
 
 服务保留上传原图，另将人物与上衣等比例缩小、透明背景合成白色、去元数据并编码成符合Aidge范围的JPEG；不拉伸或裁切，不合格输入在两张图均准备完成前不会外传。仅把准备图私有上传COS，30分钟签名URL只在后端内存中交给Aidge。

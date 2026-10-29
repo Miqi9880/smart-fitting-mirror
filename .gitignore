@@ -36,6 +36,7 @@ dist/
 # Runtime data: do not commit user images or recordings
 data/private/
 data/catalog*.sqlite3*
+data/usage-metrics.sqlite3*
 captures/
 recordings/
 generated-results/
