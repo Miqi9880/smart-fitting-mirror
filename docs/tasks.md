@@ -8,13 +8,13 @@ COS因费用已禁用，Aidge/COS链路暂停，见[状态与边界](reports/clo
 
 | 人员／长期Issue | 当前一个主要任务 | 当前验收后继续 | 原文依据 |
 | --- | --- | --- | --- |
-| haiyangniu191-design／[#5](https://github.com/Miqi9880/smart-fitting-mirror/issues/5) | 真实调用禁用开关、离线失败恢复和匿名调用／费用记录，拆小PR，无付费测试 | 按已统一的[视频0.4.0合同](interfaces/video-recommendation.md)和Python DTO接内容库／规则／HTTP路由，不重复设计字段或凑5条候选 | 7.3、8.1、9／12.1；FR-VID-01／02 |
+| haiyangniu191-design／[#5](https://github.com/Miqi9880/smart-fitting-mirror/issues/5) | 调用禁用／离线恢复、匿名费用记录、视频内容库／规则／HTTP路由均已完成并推送到 `feat/hyl-video-library-rules`，3个提交组成一个待审PR；未合并前按待审计 | PR审阅／合并后，依据负责人更新的Issue领取下一项；不虚构5条授权候选，真实内容仍由负责人协调 | 7.3、8.1、9／12.1；FR-VID-01／02 |
 | lyf-bee／[#6](https://github.com/Miqi9880/smart-fitting-mirror/issues/6) | PR #42头部保护修正已合并，接渲染耗时／资源诊断及实际新缺陷，不重复修同一领口问题 | 可靠Depth／mask接入按负责人输入继续 | FR-VTO-04、8.2、11 |
-| yyyrrrxxx／[#7](https://github.com/Miqi9880/smart-fitting-mirror/issues/7) | PR #45～#50已提交的视频组件待整体审查／验证，不重复布置首版FakeVideoRepository；不重做照片导入或待机站位 | 按[视频0.4.0映射](interfaces/video-recommendation.md)接协程HTTP／共享会话，待后端路由就绪联调；补视频异常／释放和新界面可访问性 | 8.2、10；FR-VID-01／02／05 |
+| yyyrrrxxx／[#7](https://github.com/Miqi9880/smart-fitting-mirror/issues/7) | PR #45～#50已提交的视频组件待整体审查／验证，不重复布置首版FakeVideoRepository；不重做照片导入或待机站位 | 后端推荐路由已在 `feat/hyl-video-library-rules` 可审阅；合并后按[视频0.4.0映射](interfaces/video-recommendation.md)接协程HTTP／共享会话联调，补视频异常／释放和新界面可访问性 | 8.2、10；FR-VID-01／02／05 |
 | Miqi9880／[#3](https://github.com/Miqi9880/smart-fitting-mirror/issues/3)、[#26](https://github.com/Miqi9880/smart-fitting-mirror/issues/26) | [结果切换](reports/result-comparison-2026-10-28.md)、[待机／站位](reports/standby-standing-2026-10-28.md)与[视频合同／双端类型](reports/video-contract-2026-10-28.md)已补齐；继续授权视频与素材交接、审查组员播放器、真实Depth／对齐／mask条件 | 本人镜子／真人／实际站位、遮挡和性能长稳；模型资源独立探索 | FR-001～004、FR-VTO-01／02／06、8.3、11／12 |
 
 全部现场与真人确认只归Miqi9880，其他人不用设备或云账号，交合成／模拟器／FakeProvider证据。修改影响或新缺陷才补相关回归，不重做全部历史报告。
 
-企业重点缺口仍有Depth／对齐／mask和真实手臂遮挡、完整待机／站位、原文切换／滑杆对比、5条视频候选与播放、AI语义标签和费用治理。后台／Token统计的原文章节分期不同，已列待老师确认，没有静默删除。一次真生成成功不等于全部P0交付。
+企业重点缺口仍有Depth／对齐／mask和真实手臂遮挡、完整待机／站位、原文切换／滑杆对比、至少5条真实授权视频与同一App播放、AI语义标签，以及调用费用管理的后续完善。后端调用开关、匿名统计和规则推荐代码已推送待审，但不等于已合并或现场播放验收。后台／Token统计的原文章节分期不同，已列待老师确认，没有静默删除。一次真生成成功不等于全部P0交付。
 
 跨模块按[协作规范](collaboration.md)与CONTRIBUTING审阅。长期Assignee保持，负责人补位不算成员本人交付；待修PR不叠加另一主要功能，完成后直接取队列下一项。
