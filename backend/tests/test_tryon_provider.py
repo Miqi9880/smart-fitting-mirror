@@ -1,5 +1,7 @@
 import io
 import json
+import runpy
+import sys
 import threading
 import time
 import uuid
@@ -81,6 +83,60 @@ def test_real_provider_uses_existing_contract_and_idempotency():
         result = client.get(done["result"]["image_url"], headers=headers)
         assert result.status_code == 200 and result.content.startswith(b"\x89PNG")
         assert provider.calls == 1
+
+
+def test_real_provider_disabled_blocks_retries_before_creating_a_job_and_mock_is_independent():
+    disabled_app = create_app(provider_disabled=True, catalog_profile="regression")
+    with TestClient(disabled_app) as client:
+        assert client.get("/health").json() == {
+            "status": "ok", "mode": "provider-disabled", "is_mock": False
+        }
+        headers, upload_id = session_and_upload(client)
+        key = str(uuid.uuid4())
+        request_headers = {**headers, "Idempotency-Key": key}
+        body = {"upload_id": upload_id, "garment_id": "upper_blue"}
+
+        first = client.post("/api/v1/tryon-jobs", headers=request_headers, json=body)
+        replay = client.post("/api/v1/tryon-jobs", headers=request_headers, json=body)
+
+        for response in (first, replay):
+            assert response.status_code == 503
+            assert response.json()["error"]["code"] == "PROVIDER_UNAVAILABLE"
+            assert "本地预览仍可使用" in response.json()["error"]["message"]
+        store = disabled_app.state.store
+        assert store.provider is None and store.executor is None
+        assert not store.guests[next(iter(store.guests))].jobs
+        assert not store.guests[next(iter(store.guests))].keys
+
+    with TestClient(create_app(catalog_profile="regression")) as client:
+        headers, upload_id = session_and_upload(client)
+        response = client.post(
+            "/api/v1/tryon-jobs",
+            headers={**headers, "Idempotency-Key": str(uuid.uuid4())},
+            json={"upload_id": upload_id, "garment_id": "upper_blue"},
+        )
+        assert response.status_code == 202
+        result = wait_terminal(client, headers, response.json()["job_id"])
+        assert result["status"] == "succeeded" and result["is_mock"] is True
+
+
+def test_cli_real_provider_selection_does_not_read_env_without_enable_flag(monkeypatch, tmp_path):
+    import uvicorn
+
+    captured = {}
+    monkeypatch.setattr(uvicorn, "run", lambda app, **kwargs: captured.setdefault("app", app))
+    monkeypatch.setattr(sys, "argv", [
+        "backend", "--provider", "aidge-cos",
+        "--cos-env-file", str(tmp_path / "missing.cos"),
+        "--aliyun-env-file", str(tmp_path / "missing.aliyun"),
+        "--catalog-db", str(tmp_path / "catalog.sqlite3"),
+    ])
+
+    runpy.run_module("backend.__main__", run_name="__main__")
+
+    app = captured["app"]
+    assert app.state.store.provider_disabled is True
+    assert app.state.store.provider is None and app.state.store.executor is None
 
 
 def test_cancel_wins_and_late_provider_result_is_discarded():

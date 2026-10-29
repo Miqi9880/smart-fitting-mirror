@@ -149,10 +149,11 @@ class Guest:
 
 class Store:
     """One-process service. State transitions and ownership checks share a lock."""
-    def __init__(self, mode: Mode = "success", clock: Callable[[], float] = time.time, ttl: float = 1800, catalog_path=None, catalog_profile="studio", provider: TryOnProvider | None = None, monotonic: Callable[[], float] = time.monotonic):
+    def __init__(self, mode: Mode = "success", clock: Callable[[], float] = time.time, ttl: float = 1800, catalog_path=None, catalog_profile="studio", provider: TryOnProvider | None = None, monotonic: Callable[[], float] = time.monotonic, provider_disabled: bool = False):
         self.mode, self.clock, self.ttl = mode, clock, ttl
         self.monotonic = monotonic
         self.provider = provider
+        self.provider_disabled = provider_disabled
         # Keep one local provider worker in flight, including its cleanup.
         # The upstream cannot be cancelled; a local timeout is not cloud cancellation.
         self.executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="tryon-provider") if provider else None
@@ -253,6 +254,8 @@ class Store:
                 if prior != fingerprint:
                     raise Problem(409, "IDEMPOTENCY_CONFLICT", "相同幂等键不能用于不同输入")
                 return guest.jobs[jid].value.copy(), 200
+            if self.provider_disabled:
+                raise Problem(503, "PROVIDER_UNAVAILABLE", "真实试衣调用当前未启用；本地预览仍可使用", False)
             if upload_id not in guest.uploads or garment_id not in guest.catalog:
                 raise Problem(404, "RESOURCE_NOT_FOUND", "上传或服装不存在")
             asset_id = guest.catalog[garment_id].asset_id
@@ -460,7 +463,7 @@ class CreateInput(BaseModel):
     garment_id: str = Field(min_length=1, max_length=128)
 
 
-def create_app(mode: Mode = "success", *, clock=time.time, ttl=1800, catalog_path=None, catalog_profile="studio", provider: TryOnProvider | None = None, monotonic=time.monotonic) -> FastAPI:
+def create_app(mode: Mode = "success", *, clock=time.time, ttl=1800, catalog_path=None, catalog_profile="studio", provider: TryOnProvider | None = None, monotonic=time.monotonic, provider_disabled: bool = False) -> FastAPI:
     if mode not in {"success", "failure", "delayed", "timeout", "rate-limit"}:
         raise ValueError("Unknown mock mode")
     if not 0 < ttl <= 1800:
@@ -469,7 +472,9 @@ def create_app(mode: Mode = "success", *, clock=time.time, ttl=1800, catalog_pat
         raise ValueError("Unknown catalog profile")
     if provider is not None and mode != "success":
         raise ValueError("Mock failure modes cannot be combined with a real provider")
-    store = Store(mode, clock, ttl, catalog_path, catalog_profile, provider, monotonic)
+    if provider is not None and provider_disabled:
+        raise ValueError("A provider cannot be active while real-provider calls are disabled")
+    store = Store(mode, clock, ttl, catalog_path, catalog_profile, provider, monotonic, provider_disabled)
 
     @asynccontextmanager
     async def lifespan(app):
@@ -520,8 +525,9 @@ def create_app(mode: Mode = "success", *, clock=time.time, ttl=1800, catalog_pat
 
     @app.get("/health")
     def health():
-        return {"status": "ok", "mode": store.mode if store.provider is None else store.provider.name,
-                "is_mock": store.provider is None}
+        mode = "provider-disabled" if store.provider_disabled else (store.mode if store.provider is None else store.provider.name)
+        return {"status": "ok", "mode": mode,
+                "is_mock": store.provider is None and not store.provider_disabled}
 
     @app.post("/api/v1/sessions", status_code=201)
     def sessions(request: Request):
