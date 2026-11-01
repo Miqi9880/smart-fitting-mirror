@@ -8,7 +8,7 @@
 | --- | --- | --- |
 | lyf-bee／[#6](https://github.com/Miqi9880/smart-fitting-mirror/issues/6) | 固定输入的贴合问题归因与对照，优先修上衣／下装最明显的1—2处定位、比例或形变缺陷；伴随记录渲染耗时 | 根据负责人获准输入补实际新问题；可靠Depth／mask输入具备后再接遮挡 |
 | yyyrrrxxx／[#7](https://github.com/Miqi9880/smart-fitting-mirror/issues/7) | 在既有贴合控件中直接选择当前搭配的调整品类；不移除裤子也能调上衣，切换／重置／返回不串值 | 视频页实际TalkBack与键盘焦点查漏，已有报告可直接交接，不重复播放集成 |
-| haiyangniu191-design／[#5](https://github.com/Miqi9880/smart-fitting-mirror/issues/5) | 按[内部草案](interfaces/local-model-draft.md)完成独立本地模型适配组件及fake测试；复用提供方／预算／图片边界，暂不接公共默认服务 | 模型就绪后另开真实集成PR；通用视频目录只读盘点排队，已有实现直接交 |
+| haiyangniu191-design／[#5](https://github.com/Miqi9880/smart-fitting-mirror/issues/5) | 独立本地模型HTTP适配组件与fake测试已完成，待审分支见[验证报告](reports/local-model-provider-2026-11-01.md)；暂不接公共默认服务 | 模型就绪后另开真实集成PR；通用视频目录只读盘点排队，已有实现直接交 |
 | Miqi9880／[#3](https://github.com/Miqi9880/smart-fitting-mirror/issues/3)、[#26](https://github.com/Miqi9880/smart-fitting-mirror/issues/26) | 处理`/data_new`权限前置，建立独立模型环境并跑通现成权重推理／资源记录；提供获准贴合问题样例，处理视觉／素材归因 | 基线与数据具备后再小规模微调；模型就绪后协调后端实际接入，全部现场本人执行 |
 
 ## 已完成，不再重复布置
