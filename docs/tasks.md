@@ -6,7 +6,7 @@
 
 | 人员／长期Issue | 本周主要交付 | 当前完成后继续 |
 | --- | --- | --- |
-| lyf-bee／[#6](https://github.com/Miqi9880/smart-fitting-mirror/issues/6) | 固定输入的贴合问题归因与对照，优先修上衣／下装最明显的1—2处定位、比例或形变缺陷；伴随记录渲染耗时 | 根据负责人获准输入补实际新问题；可靠Depth／mask输入具备后再接遮挡 |
+| lyf-bee／[#6](https://github.com/Miqi9880/smart-fitting-mirror/issues/6) | 优先修已复现的长裤中缝连续性；允许FitPlacement必要计算／网格与测试改动，默认比例保持；[11/2审阅](https://github.com/Miqi9880/smart-fitting-mirror/issues/6#issuecomment-6580155366)明确独立腿轴与像素回归要求，修复尚未提交 | 根据负责人获准输入补实际新问题；可靠Depth／mask输入具备后再接遮挡 |
 | yyyrrrxxx／[#7](https://github.com/Miqi9880/smart-fitting-mirror/issues/7) | 调整目标已由#56整合#57完成软件复核，见[记录](reports/pr56-fit-target-2026-11-02.md)，不重复开发；接视频页读屏语义与键盘焦点查漏 | 模拟器暂不可用时先交代码审查／局部修复和未验清单，由负责人补跑；不重做视频HTTP或播放集成 |
 | haiyangniu191-design／[#5](https://github.com/Miqi9880/smart-fitting-mirror/issues/5) | 按[内部草案](interfaces/local-model-draft.md)完成独立本地模型适配组件及fake测试；复用提供方／预算／图片边界，暂不接公共默认服务 | 模型就绪后另开真实集成PR；通用视频目录只读盘点排队，已有实现直接交 |
 | Miqi9880／[#3](https://github.com/Miqi9880/smart-fitting-mirror/issues/3)、[#26](https://github.com/Miqi9880/smart-fitting-mirror/issues/26) | `/data_new`项目目录与普通账号读写已通过；接独立模型环境及现成权重推理／资源记录；提供获准贴合问题样例，处理视觉／素材归因 | 基线与数据具备后再小规模微调；模型就绪后协调后端实际接入，全部现场本人执行 |
