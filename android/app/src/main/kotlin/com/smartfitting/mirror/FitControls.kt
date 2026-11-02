@@ -2,6 +2,7 @@ package com.smartfitting.mirror
 
 import android.content.Context
 import android.view.View
+import android.view.ViewGroup
 import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.AdapterView
@@ -77,7 +78,14 @@ internal class FitControls(context: Context, private val changed: (GarmentCatego
         categories = available
         if (target.adapter == null || (0 until target.adapter.count).any { target.adapter.getItem(it) != available.getOrNull(it)?.label } ||
             target.adapter.count != available.size) {
-            target.adapter = ArrayAdapter(context,android.R.layout.simple_spinner_item,available.map { it.label })
+            target.adapter = object : ArrayAdapter<String>(context,android.R.layout.simple_spinner_item,available.map { it.label }) {
+                override fun getDropDownView(position: Int, convertView: View?, parent: ViewGroup): View =
+                    super.getDropDownView(position,convertView,parent).apply {
+                        minimumHeight = (48*resources.displayMetrics.density).roundToInt()
+                    }
+            }.apply {
+                setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+            }
         }
         category = value; fit = calibration
         target.isEnabled = value != null

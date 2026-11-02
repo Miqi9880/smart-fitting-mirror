@@ -6,8 +6,8 @@ android {
         applicationId = "com.smartfitting.mirror"
         minSdk = 23
         targetSdk = 35
-        versionCode = 11
-        versionName = "0.3.8-mock"
+        versionCode = 12
+        versionName = "0.3.9-mock"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }

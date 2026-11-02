@@ -223,6 +223,16 @@ class FitControlsTest {
                         assertEquals("上衣",selected.text)
                         assertTrue("Target text must not clip at font=$scale width=$widthDp",
                             selected.layout.height<=selected.height-selected.compoundPaddingTop-selected.compoundPaddingBottom)
+                        for (index in categories.indices) {
+                            val choice=target.adapter.getDropDownView(index,null,target) as TextView
+                            choice.measure(View.MeasureSpec.makeMeasureSpec(width,View.MeasureSpec.EXACTLY),
+                                View.MeasureSpec.makeMeasureSpec(0,View.MeasureSpec.UNSPECIFIED))
+                            choice.layout(0,0,width,choice.measuredHeight)
+                            assertTrue("Each target choice needs a 48dp touch area",choice.height>=48*context.resources.displayMetrics.density)
+                            assertEquals(categories[index].label,choice.text)
+                            assertTrue("Dropdown labels must not clip",choice.layout.height<=
+                                choice.height-choice.compoundPaddingTop-choice.compoundPaddingBottom)
+                        }
                     }
                 }
             }
