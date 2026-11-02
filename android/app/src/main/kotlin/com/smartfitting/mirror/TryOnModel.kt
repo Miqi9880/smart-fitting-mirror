@@ -43,6 +43,8 @@ class TryOnModel(application: Application) : AndroidViewModel(application) {
     var catalogQuery = ""
     var catalogAssets = emptyList<com.smartfitting.mirror.contracts.Garment>()
     var outfit = emptyMap<GarmentCategory,Garment>()
+    var fitTarget: GarmentCategory? = null
+    internal var fitTargetExplicit = false
     var lastOutfitSelection: Garment? = null
     val videoExperience = com.smartfitting.mirror.video.VideoExperienceMemory()
     internal val experienceClock = GuestExperienceClock()
@@ -83,7 +85,7 @@ class TryOnModel(application: Application) : AndroidViewModel(application) {
         experienceClock.end(); startExperience()
         bridge?.cancel()
         controller?.close()
-        outfit = emptyMap(); lastOutfitSelection = null
+        outfit = emptyMap(); fitTarget = null; fitTargetExplicit = false; lastOutfitSelection = null
         resultComparisonMode = ResultComparisonMode.SIDE_BY_SIDE
         baseUrl = url.trim()
         val next = FittingSession(api, viewModelScope)
