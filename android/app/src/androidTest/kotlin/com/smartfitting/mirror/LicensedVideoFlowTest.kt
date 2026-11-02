@@ -127,6 +127,21 @@ class LicensedVideoFlowTest {
             val bytes=ByteArrayOutputStream().apply { image.compress(Bitmap.CompressFormat.PNG,100,this) }.toByteArray(); image.recycle()
             s.onActivity { model(it).controller!!.generate(CapturedPhoto("generated-test",1,200,300,"image/png",bytes)) }
             await { var ready=false; s.onActivity { ready=model(it).state.value.phase==FittingPhase.SUCCEEDED }; ready }
+            s.onActivity {
+                val m=model(it); val hat=m.state.value.garments.first { it.category==GarmentCategory.HEADWEAR }
+                m.controller!!.select(hat.garmentId)
+            }
+            await { var ready=false; s.onActivity { ready=model(it).outfit.containsKey(GarmentCategory.HEADWEAR) }; ready }
+            // A real user must expand the controls before selecting a target. A GONE
+            // Spinner need not dispatch its selection callback until its next layout.
+            click(s,"fitting.fit.toggle")
+            instrumentation.waitForIdleSync()
+            s.onActivity {
+                val target=it.window.decorView.findViewWithTag<Spinner>("fitting.fit.target")
+                target.setSelection((0 until target.adapter.count).first { index -> target.adapter.getItem(index)==GarmentCategory.UPPER_BODY.label })
+            }
+            await { var ready=false; s.onActivity { ready=model(it).fitTarget==GarmentCategory.UPPER_BODY }; ready }
+            s.onActivity { assertTrue(model(it).fitTargetExplicit) }
             var original=byteArrayOf(); var result=byteArrayOf(); var job=""; var garmentIds=emptySet<String>()
             s.onActivity { val m=model(it); original=m.state.value.original!!.copyOf(); result=m.state.value.result!!.copyOf(); job=m.state.value.job!!.jobId; garmentIds=m.outfit.values.map { v->v.garmentId }.toSet() }
             open(s); play(s)
@@ -148,6 +163,7 @@ class LicensedVideoFlowTest {
                 val m=model(it); assertEquals(job,m.state.value.job!!.jobId)
                 assertArrayEquals(original,m.state.value.original); assertArrayEquals(result,m.state.value.result)
                 assertEquals(garmentIds,m.outfit.values.map { v->v.garmentId }.toSet())
+                assertEquals(GarmentCategory.UPPER_BODY,m.fitTarget)
                 m.controller!!.end()
             }
         }
