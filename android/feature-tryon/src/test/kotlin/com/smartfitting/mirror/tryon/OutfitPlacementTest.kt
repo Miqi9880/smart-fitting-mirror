@@ -31,34 +31,47 @@ class OutfitPlacementTest {
         val crossed = good.keypoints.copy(leftAnkle=good.keypoints.rightAnkle,rightAnkle=good.keypoints.leftAnkle)
         assertTrue(OutfitPlacement.patches(frame(crossed),pants).isEmpty())
     }
-    @Test fun trouserEaseCoversBothSidesOfEachLegWithoutChangingLengthOrSpreadingTheLegs() {
+    @Test fun trouserEaseWidensOutsideEachOwnLegLineAndKeepsTheCrotchColumnSingleValued() {
         val base=frame().keypoints
         val spread=base.copy(rightKnee=base.rightKnee!!.copy(x=.28f),leftKnee=base.leftKnee!!.copy(x=.72f),
             rightAnkle=base.rightAnkle!!.copy(x=.24f),leftAnkle=base.leftAnkle!!.copy(x=.76f))
-        for (pose in listOf(base,spread)) {
+        val tilt=base.copy(rightKnee=base.rightKnee!!.copy(x=.36f,y=.68f),leftKnee=base.leftKnee!!.copy(x=.64f,y=.72f),
+            rightAnkle=base.rightAnkle!!.copy(x=.33f,y=.85f),leftAnkle=base.leftAnkle!!.copy(x=.67f,y=.89f))
+        val rows=listOf(.12f,.55f,.94f).map { .5f+it*1399 }
+        fun legX(pose: Keypoints, y: Float, left: Boolean): Float {
+            val row=if (y<=rows[1]) 0 else 1
+            val t=(y-rows[row])/(rows[row+1]-rows[row])
+            val a=if (row==0) (if (left) pose.leftHip!! else pose.rightHip!!) else (if (left) pose.leftKnee!! else pose.rightKnee!!)
+            val b=if (row==0) (if (left) pose.leftKnee!! else pose.rightKnee!!) else (if (left) pose.leftAnkle!! else pose.rightAnkle!!)
+            return .5f+(a.x+(b.x-a.x)*t)*479
+        }
+        for (pose in listOf(base,spread,tilt)) for (width in listOf(.6f,.7f,1f,1.12f,1.6f,2.4f)) {
             val raw=OutfitPlacement.patches(frame(pose),pants,OutfitFit())
-            val fitted=OutfitPlacement.patches(frame(pose),pants,OutfitFit(width=1.12f))
-            val lengthened=OutfitPlacement.patches(frame(pose),pants)
-            assertFalse(raw.isEmpty())
-            assertEquals(raw.size,fitted.size)
-            assertEquals(raw.size,lengthened.size)
-            val hips=listOf(pose.rightHip!!,pose.leftHip!!)
-            val knees=listOf(pose.rightKnee!!,pose.leftKnee!!)
-            val ankles=listOf(pose.rightAnkle!!,pose.leftAnkle!!)
-            val rows=listOf(.12f,.55f,.94f).map { .5f+it*1399 }
-            for ((a,b) in raw.zip(fitted)) {
-                val side=if (a.source.indices.filter { it%2==0 }.any { a.source[it]>500f }) 1 else 0
-                for (i in a.source.indices step 2) {
-                    val y=a.source[i+1]; val row=if (y<=rows[1]) 0 else 1
-                    val t=(y-rows[row])/(rows[row+1]-rows[row])
-                    val p=if (row==0) hips[side] else knees[side]
-                    val q=if (row==0) knees[side] else ankles[side]
-                    val centre=.5f+(p.x+(q.x-p.x)*t)*479
-                    assertEquals("Widen around this leg, not the body midpoint",centre+(a.destination[i]-centre)*1.12f,b.destination[i],.002f)
-                    assertEquals("Leave the trouser length/height unchanged",a.destination[i+1],b.destination[i+1],.002f)
+            val fitted=OutfitPlacement.patches(frame(pose),pants,OutfitFit(width=width))
+            assertFalse(raw.isEmpty()); assertEquals(raw.size,fitted.size)
+            for ((a,b) in raw.zip(fitted)) for (i in a.source.indices step 2) {
+                val right=legX(pose,a.source[i+1],false); val left=legX(pose,a.source[i+1],true)
+                val x=a.destination[i]
+                val expected=when {
+                    x<right -> right+(x-right)*width
+                    x>left -> left+(x-left)*width
+                    else -> x
                 }
+                // Inside the two leg lines nothing may move at all: that is what keeps
+                // the crotch column shared and the distance between the legs unchanged.
+                assertEquals("Ease stays outside this leg's own line, crotch untouched",
+                    expected,b.destination[i],if (x in right..left) 0f else .002f)
+                assertEquals("Leave the trouser length/height unchanged",a.destination[i+1],b.destination[i+1],.002f)
+            }
+            // A source point drawn by both panels must have exactly one destination.
+            val seen=HashMap<String,Float>()
+            for (p in fitted) for (i in p.source.indices step 2) {
+                val key="%.2f,%.2f".format(p.source[i],p.source[i+1])
+                val previous=seen.put(key,p.destination[i])
+                if (previous!=null) assertEquals("Shared source point must stay continuous",previous,p.destination[i],0f)
             }
             val hipY=.5f+(pose.rightHip!!.y+pose.leftHip!!.y)*.5f*639
+            val lengthened=OutfitPlacement.patches(frame(pose),pants)
             for ((a,b) in raw.zip(lengthened)) for (i in a.destination.indices step 2) {
                 assertEquals("Scale length from hips, not the image origin",hipY+(a.destination[i+1]-hipY)*1.12f,b.destination[i+1],.002f)
             }

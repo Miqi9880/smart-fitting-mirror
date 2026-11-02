@@ -44,14 +44,22 @@ internal object FitPlacement {
         val legs = if (item.category == GarmentCategory.LOWER_BODY) legLines(frame,item) ?: return emptyList() else null
         val fitted = patches.map { patch ->
             val dst = patch.destination.copyOf()
-            // Each source half belongs to one trouser leg. Widen its fabric
-            // around that leg, not around the gap between the two legs.
-            val leftLeg = patch.source.indices.filter { it%2==0 }.any { patch.source[it] > item.previewImage.width/2f }
             for (i in dst.indices step 2) {
                 val dx = dst[i]-cx; val dy = dst[i+1]-cy
-                val centre = legs?.centre(patch.source[i+1],leftLeg)
-                val pivot = centre?.let { (it.first-cx)*ux+(it.second-cy)*uy } ?: 0f
-                val across = pivot+(dx*ux+dy*uy-pivot)*fit.width
+                val x = dx*ux+dy*uy
+                // Ease is anchored on each leg's own line and only applied outside
+                // it: the span between the two leg lines keeps its mapping, so a
+                // source point shared by both panels (the crotch column) always
+                // lands on one destination value instead of splitting or overlapping.
+                val across = if (legs == null) x*fit.width else {
+                    val band = legs.band(patch.source[i+1],cx,cy,ux,uy)
+                    when {
+                        band.first < band.second && x < band.first -> band.first+(x-band.first)*fit.width
+                        band.first < band.second && x > band.second -> band.second+(x-band.second)*fit.width
+                        band.first < band.second -> x
+                        else -> { val pivot=(band.first+band.second)*.5f; pivot+(x-pivot)*fit.width }
+                    }
+                }
                 val down = (-dx*uy+dy*ux)*fit.length + fit.offset*span
                 dst[i] = cx+across*ux-down*uy
                 dst[i+1] = cy+across*uy+down*ux
@@ -74,6 +82,11 @@ internal object FitPlacement {
             val t = (y-rows[index])/(rows[index+1]-rows[index])
             val a=points[index]; val b=points[index+1]
             return (a.first+(b.first-a.first)*t) to (a.second+(b.second-a.second)*t)
+        }
+        /** Both leg lines of row [y], projected on the hip axis: right, then left. */
+        fun band(y: Float, cx: Float, cy: Float, ux: Float, uy: Float): Pair<Float,Float> {
+            fun across(leftLeg: Boolean) = centre(y,leftLeg).let { (x,yy) -> (x-cx)*ux+(yy-cy)*uy }
+            return across(false) to across(true)
         }
     }
     private fun legLines(frame: VisionFrame,item: Garment): LegLines? {
