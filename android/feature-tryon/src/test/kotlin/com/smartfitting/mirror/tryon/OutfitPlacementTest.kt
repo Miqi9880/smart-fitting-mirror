@@ -15,7 +15,7 @@ class OutfitPlacementTest {
     private val hat = item(GarmentCategory.HEADWEAR,mapOf("right_ear" to Anchor(.12f,.92f),"left_ear" to Anchor(.88f,.92f)))
     @Test fun pantsUseBothLegsAndMoveWithTheCurrentBody() {
         val base = OutfitPlacement.patches(frame(),pants)
-        assertEquals(16,base.size)
+        assertEquals(48,base.size)
         val moved = OutfitPlacement.patches(frame(SyntheticScene.sample(SyntheticScenario.TRANSLATE,20)),pants)
         for ((a,b) in base.zip(moved)) {
             assertTrue(a.destination.all { it.isFinite() })
@@ -31,7 +31,7 @@ class OutfitPlacementTest {
         val crossed = good.keypoints.copy(leftAnkle=good.keypoints.rightAnkle,rightAnkle=good.keypoints.leftAnkle)
         assertTrue(OutfitPlacement.patches(frame(crossed),pants).isEmpty())
     }
-    @Test fun trouserEaseWidensOutsideEachOwnLegLineAndKeepsTheCrotchColumnSingleValued() {
+    @Test fun trouserEaseWidensEachLegAroundItsOwnAxisAndCrossesOverContinuouslyBetweenThem() {
         val base=frame().keypoints
         val spread=base.copy(rightKnee=base.rightKnee!!.copy(x=.28f),leftKnee=base.leftKnee!!.copy(x=.72f),
             rightAnkle=base.rightAnkle!!.copy(x=.24f),leftAnkle=base.leftAnkle!!.copy(x=.76f))
@@ -52,26 +52,49 @@ class OutfitPlacementTest {
             for ((a,b) in raw.zip(fitted)) for (i in a.source.indices step 2) {
                 val right=legX(pose,a.source[i+1],false); val left=legX(pose,a.source[i+1],true)
                 val x=a.destination[i]
-                val expected=when {
-                    x<right -> right+(x-right)*width
-                    x>left -> left+(x-left)*width
-                    else -> x
-                }
-                // Inside the two leg lines nothing may move at all: that is what keeps
-                // the crotch column shared and the distance between the legs unchanged.
-                assertEquals("Ease stays outside this leg's own line, crotch untouched",
-                    expected,b.destination[i],if (x in right..left) 0f else .002f)
+                val d=left-right
+                // The same crossover FitPlacement applies: exact per-leg
+                // widening outside the band, continuous blend inside it.
+                val h=minOf(.35f*d,.45f*d/width)
+                val t=((x-(right+h))/(d-2*h)).coerceIn(0f,1f)
+                val expected=(1-t)*(right+(x-right)*width)+t*(left+(x-left)*width)
+                assertEquals("Ease widens each leg around its own axis and crosses over continuously",
+                    expected,b.destination[i],.002f)
                 assertEquals("Leave the trouser length/height unchanged",a.destination[i+1],b.destination[i+1],.002f)
+                // Pin "both edges must expand": fabric just outside a leg line
+                // has to move away from it. A band-style clamp that freezes the
+                // span between the leg lines would break exactly this.
+                if (width>1f && x>right+1f && x<right+h-1f)
+                    assertTrue("Inner side of the right leg must widen outward",b.destination[i]>x+.5f)
+                if (width>1f && x<left-1f && x>left-h+1f)
+                    assertTrue("Inner side of the left leg must widen outward",b.destination[i]<x-.5f)
+                if (kotlin.math.abs(x-right)<.01f||kotlin.math.abs(x-left)<.01f)
+                    assertEquals("A leg axis never moves",x,b.destination[i],.002f)
             }
-            // A source point drawn by both panels must have exactly one destination.
+            // A source point drawn by two triangles must have exactly one destination.
             val seen=HashMap<String,Float>()
             for (p in fitted) for (i in p.source.indices step 2) {
                 val key="%.2f,%.2f".format(p.source[i],p.source[i+1])
                 val previous=seen.put(key,p.destination[i])
                 if (previous!=null) assertEquals("Shared source point must stay continuous",previous,p.destination[i],0f)
             }
+            // The across mapping stays strictly increasing on every row: the
+            // crossover never folds the fabric back, even at 240 percent.
+            val rawAt=HashMap<String,Float>()
+            for (p in raw) for (i in p.source.indices step 2)
+                rawAt["%.2f,%.2f".format(p.source[i],p.source[i+1])]=p.destination[i]
+            val rowPts=HashMap<Float,MutableMap<Float,Float>>()
+            for (p in fitted) for (i in p.source.indices step 2)
+                rowPts.getOrPut(p.source[i+1]){mutableMapOf()}
+                    .put(rawAt.getValue("%.2f,%.2f".format(p.source[i],p.source[i+1])),p.destination[i])
+            for ((_,points) in rowPts) {
+                val sorted=points.entries.sortedBy { it.key }
+                for (i in 1..sorted.lastIndex) assertTrue("Across mapping must not fold",
+                    sorted[i].value>sorted[i-1].value)
+            }
             val hipY=.5f+(pose.rightHip!!.y+pose.leftHip!!.y)*.5f*639
             val lengthened=OutfitPlacement.patches(frame(pose),pants)
+            assertEquals(raw.size,lengthened.size)
             for ((a,b) in raw.zip(lengthened)) for (i in a.destination.indices step 2) {
                 assertEquals("Scale length from hips, not the image origin",hipY+(a.destination[i+1]-hipY)*1.12f,b.destination[i+1],.002f)
             }

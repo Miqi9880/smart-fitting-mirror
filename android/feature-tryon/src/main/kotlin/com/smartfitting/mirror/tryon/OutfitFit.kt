@@ -47,17 +47,26 @@ internal object FitPlacement {
             for (i in dst.indices step 2) {
                 val dx = dst[i]-cx; val dy = dst[i+1]-cy
                 val x = dx*ux+dy*uy
-                // Ease is anchored on each leg's own line and only applied outside
-                // it: the span between the two leg lines keeps its mapping, so a
-                // source point shared by both panels (the crotch column) always
-                // lands on one destination value instead of splitting or overlapping.
+                // Widen each leg's fabric around its own leg line. Between the
+                // two leg lines the mapping crosses over continuously from one
+                // line to the other, so both edges of every leg keep widening
+                // while the crotch fabric stays single-valued (no tear, no fold).
                 val across = if (legs == null) x*fit.width else {
-                    val band = legs.band(patch.source[i+1],cx,cy,ux,uy)
-                    when {
-                        band.first < band.second && x < band.first -> band.first+(x-band.first)*fit.width
-                        band.first < band.second && x > band.second -> band.second+(x-band.second)*fit.width
-                        band.first < band.second -> x
-                        else -> { val pivot=(band.first+band.second)*.5f; pivot+(x-pivot)*fit.width }
+                    val rightAxis = legs.axis(patch.source[i+1],false).let { p -> (p.first-cx)*ux+(p.second-cy)*uy }
+                    val leftAxis = legs.axis(patch.source[i+1],true).let { p -> (p.first-cx)*ux+(p.second-cy)*uy }
+                    val d = leftAxis-rightAxis
+                    if (d < 8f) {
+                        val pivot = (rightAxis+leftAxis)*.5f
+                        pivot+(x-pivot)*fit.width
+                    } else {
+                        // Crossover half-width: wide enough to bridge the gap
+                        // between the legs at ease levels, shrunk for extreme
+                        // widths so the crossover stays strictly monotone.
+                        val h = minOf(.35f*d,.45f*d/fit.width)
+                        val t = ((x-(rightAxis+h))/(d-2*h)).coerceIn(0f,1f)
+                        val rightWide = rightAxis+(x-rightAxis)*fit.width
+                        val leftWide = leftAxis+(x-leftAxis)*fit.width
+                        (1-t)*rightWide+t*leftWide
                     }
                 }
                 val down = (-dx*uy+dy*ux)*fit.length + fit.offset*span
@@ -76,17 +85,13 @@ internal object FitPlacement {
     }
 
     private class LegLines(val rows: List<Float>, val right: List<Pair<Float,Float>>, val left: List<Pair<Float,Float>>) {
-        fun centre(y: Float, leftLeg: Boolean): Pair<Float,Float> {
+        /** Leg line at source row [y], interpolated along hip-knee-ankle. */
+        fun axis(y: Float, leftLeg: Boolean): Pair<Float,Float> {
             val points = if (leftLeg) left else right
             val index = if (y<=rows[1]) 0 else 1
             val t = (y-rows[index])/(rows[index+1]-rows[index])
             val a=points[index]; val b=points[index+1]
             return (a.first+(b.first-a.first)*t) to (a.second+(b.second-a.second)*t)
-        }
-        /** Both leg lines of row [y], projected on the hip axis: right, then left. */
-        fun band(y: Float, cx: Float, cy: Float, ux: Float, uy: Float): Pair<Float,Float> {
-            fun across(leftLeg: Boolean) = centre(y,leftLeg).let { (x,yy) -> (x-cx)*ux+(yy-cy)*uy }
-            return across(false) to across(true)
         }
     }
     private fun legLines(frame: VisionFrame,item: Garment): LegLines? {
