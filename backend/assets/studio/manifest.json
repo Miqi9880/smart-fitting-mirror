@@ -2198,11 +2198,11 @@
       "anchors": null,
       "attachment_anchors": {
         "right_ear": {
-          "x": 0.13534,
+          "x": 0.18269,
           "y": 0.71761
         },
         "left_ear": {
-          "x": 0.86927,
+          "x": 0.82192,
           "y": 0.71761
         }
       },
@@ -2227,7 +2227,7 @@
         1019,
         1085
       ],
-      "calibration_status": "initial_synthetic_only"
+      "calibration_status": "scale_adjusted_field_pending"
     },
     {
       "garment_id": "studio_bucket_09",
@@ -2242,11 +2242,11 @@
       "anchors": null,
       "attachment_anchors": {
         "right_ear": {
-          "x": 0.14828,
+          "x": 0.195031,
           "y": 0.73234
         },
         "left_ear": {
-          "x": 0.87292,
+          "x": 0.826169,
           "y": 0.73234
         }
       },
@@ -2271,7 +2271,7 @@
         1022,
         1108
       ],
-      "calibration_status": "initial_synthetic_only"
+      "calibration_status": "scale_adjusted_field_pending"
     },
     {
       "garment_id": "studio_bucket_35",
@@ -2286,11 +2286,11 @@
       "anchors": null,
       "attachment_anchors": {
         "right_ear": {
-          "x": 0.18876,
+          "x": 0.229217,
           "y": 0.6988
         },
         "left_ear": {
-          "x": 0.81585,
+          "x": 0.775393,
           "y": 0.6988
         }
       },
@@ -2315,7 +2315,7 @@
         950,
         1054
       ],
-      "calibration_status": "initial_synthetic_only"
+      "calibration_status": "field_confirmed_2026_11_03"
     },
     {
       "garment_id": "studio_cap_12",
