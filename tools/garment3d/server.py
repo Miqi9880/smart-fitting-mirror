@@ -6,9 +6,9 @@ import argparse
 
 ROOT = Path(__file__).resolve().parent
 STATIC = {"/": "index.html", "/index.html": "index.html", "/style.css": "style.css",
-          "/viewer.mjs": "viewer.mjs", "/template.mjs": "template.mjs"}
+          "/viewer.mjs": "viewer.mjs", "/rig.mjs": "rig.mjs", "/motion-player.mjs": "motion-player.mjs"}
 ASSETS = {"/assets/blue-tee.glb": "blue-tee.glb", "/assets/source.png": "source.png",
-          "/assets/sample.json": "sample.json"}
+          "/assets/sample.json": "sample.json", "/assets/motion.json": "motion.json", "/assets/motion.bin": "motion.bin"}
 
 
 def resolve_asset(url):

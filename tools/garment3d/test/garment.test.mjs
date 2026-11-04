@@ -42,6 +42,7 @@ test('sleeves follow shoulder bones while torso remains stable',()=>{
     if(p.getX(i)>p.getX(sleeve))sleeve=i;
     if(Math.abs(p.getX(i))<.02&&p.getY(i)>.1&&p.getY(i)<.4)torso=i;
   }
+  setPose(mesh.skeleton.bones,'rest');
   const before=sampleSkinned(mesh,sleeve).clone(),core=sampleSkinned(mesh,torso).clone();
   setPose(mesh.skeleton.bones,'raise');
   assert.ok(sampleSkinned(mesh,sleeve).distanceTo(before)>.15);
