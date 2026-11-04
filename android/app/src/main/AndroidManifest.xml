@@ -5,6 +5,7 @@
         android:usesCleartextTraffic="false">
         <activity android:name=".MainActivity" android:exported="false" />
         <activity android:name=".TryOnActivity" android:exported="false" android:launchMode="singleTop" />
+        <activity android:name=".garment3d.Garment3dActivity" android:exported="false" android:configChanges="orientation|screenSize" />
         <!-- Internal synthetic test host; product video uses the shared fitting activity/session. -->
         <activity android:name=".video.VideoActivity" android:exported="false" />
         <activity android:name=".StandbyActivity" android:exported="true" android:launchMode="singleTop">

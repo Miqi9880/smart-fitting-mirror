@@ -3,11 +3,11 @@
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
   <title>一件 T 恤 · 3D 样件 / 智能穿衣镜</title>
-  <link rel="stylesheet" href="/style.css">
-  <script type="importmap">{"imports":{"three":"/vendor/three.module.js","three/addons/":"/vendor/addons/"}}</script>
+  <link rel="stylesheet" href="./style.css">
+  <script type="importmap">{"imports":{"three":"./vendor/three.module.js","three/addons/":"./vendor/addons/"}}</script>
 </head>
 <body>
-  <header><a class="wordmark" href="/">SMART FITTING MIRROR</a><span>形态实验 <i>01</i></span><span class="status">本地 3D 样件</span></header>
+  <header><a class="wordmark" href="./index.html">SMART FITTING MIRROR</a><span>形态实验 <i>01</i></span><span class="status">本地 3D 样件</span></header>
   <main>
     <section class="stage" aria-label="三维服装预览">
       <div class="stage-title"><span class="eyebrow">GARMENT STUDY / 004</span><h1>从正面照片，<br>走向立体服装。</h1><p>圆领短袖 T 恤 · 蓝色</p></div>
@@ -17,17 +17,28 @@
     </section>
     <aside>
       <div class="section-number">04 / 肩部体积复核</div><h2>先让一件衣服动得自然。</h2><p class="intro">固定合成人台，复核站立、抬臂、前伸与转身。动作由姿态约束修形预计算。</p>
-      <div class="source"><img src="/assets/source.png" alt="原始官网蓝色 T 恤正面素材"><div><span class="eyebrow">FRONT REFERENCE</span><strong>现有官网素材</strong><a href="https://www.uniqlo.com/us/en/products/E465185-000/00?colorDisplayCode=65" target="_blank" rel="noreferrer">查看素材来源 ↗</a></div></div>
+      <div class="source"><img src="./assets/source.png" alt="原始官网蓝色 T 恤正面素材"><div><span class="eyebrow">FRONT REFERENCE</span><strong>现有官网素材</strong><a href="https://www.uniqlo.com/us/en/products/E465185-000/00?colorDisplayCode=65" target="_blank" rel="noreferrer">查看素材来源 ↗</a></div></div>
       <fieldset disabled id="controls"><legend>合成人台动作</legend><div class="poses"><button data-pose="rest" aria-pressed="true">站立</button><button data-pose="raise" aria-pressed="false">抬臂</button><button data-pose="reach" aria-pressed="false">前伸</button><button data-pose="turn" aria-pressed="false">转身</button></div>
       <label class="option"><span>循环当前动作</span><input id="animate" type="checkbox"></label>
       <label class="option"><span>转身角度 <output id="yaw-value">90°</output></span><input id="yaw" aria-label="转身角度" type="range" min="-180" max="180" value="90" step="1"></label>
       <label class="option"><span>显示合成人台</span><input id="body" type="checkbox" checked></label>
       <label class="option"><span>查看网格</span><input id="wireframe" type="checkbox"></label></fieldset>
-      <a id="download" class="download" href="/assets/blue-tee.glb" download>下载基础模型（T 姿态） <span>GLB ↓</span></a>
+      <a id="download" class="download" href="./assets/blue-tee.glb" download>下载基础模型（T 姿态） <span>GLB ↓</span></a>
       <div class="limits"><strong>当前验证范围</strong><p>近似模板与预计算的姿态约束修形，包含简化人台碰撞。背面材质仍为近似；未实现完整布料动力学、自碰撞或真人驱动。</p><p>这四个动作的桌面预览不代表镜子实测。GLB 是基础网格和骨架，动作修形数据单独加载。</p></div>
       <div id="mesh-info" class="mesh-info">—</div>
     </aside>
   </main>
   <footer><span>模板可以复用，版型决定建模工作量。</span><span>同版型换色 → 换纹理　／　结构变化 → 调网格</span></footer>
-  <script type="module" src="/viewer.mjs"></script>
+  <script>
+    document.documentElement.classList.toggle('android-host',new URLSearchParams(location.search).get('host')==='android');
+    if(document.documentElement.classList.contains('android-host')){
+      document.querySelector('.stage-bottom span:nth-child(2)').textContent='单指旋转 · 双指缩放';
+      document.querySelector('.limits p:nth-of-type(2)').textContent='当前为合成人台动作展示，尚未接入真人姿态与遮挡；目标镜子性能另行实测。';
+    }
+    if(!HTMLScriptElement.supports||!HTMLScriptElement.supports('importmap')){
+      document.querySelector('#load-status').textContent='当前浏览组件不支持模块加载，请更新系统 WebView 或返回常规试衣。';
+      document.querySelector('#viewport').dataset.sceneState='unsupported';
+    }
+  </script>
+  <script type="module" src="./viewer.mjs"></script>
 </body></html>

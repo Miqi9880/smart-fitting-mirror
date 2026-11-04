@@ -101,6 +101,11 @@ class StandbyActivity : ComponentActivity() {
                 .putExtra(EXTRA_VIDEO,true).putExtra(EXTRA_ORIGIN,model.baseUrl).putExtra(EXTRA_CAMERA,model.cameraId))
         }
         root.addView(video)
+        root.addView(button("3D 人台样件（实验，不开启摄像头）", "home.garment3d") {
+            if (model.waitingGuest) return@button
+            pendingPermission = false; model.sensingRequested = false; stopSensing(); render()
+            startActivity(Intent(this, com.smartfitting.mirror.garment3d.Garment3dActivity::class.java))
+        })
         sensing = button("开启本地人体感应", "home.sensing") {
             model.notice = ""
             if (model.sensingRequested) {

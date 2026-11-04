@@ -71,7 +71,25 @@ backend/assets/studio/studio_blue_tee.png
 - 独立 Khronos glTF Validator 要求零 error、零 warning，验证嵌入原 PNG 字节；原图非 POT 尺寸是保留源图产生的信息项。
 - 动作文件与模型摘要、帧布局及文件摘要一致；本地服务不提供目录列表、`.env` 或路径穿越读取。
 
-实机和真人尚未接入。后续还需端侧 3D 渲染、姿态/体型适配、相机投影和镜像裁切、真人遮挡、运行时修形及目标镜子帧率验证；此工具不替代 #6 的现有正式渲染修复，也不关闭企业 P0 验收任务。
+Android 已提供离线人台实验入口，见下节；目标镜子与真人 3D 驱动尚未验证。后续还需姿态/体型适配、相机投影和镜像裁切、真人遮挡、运行时修形及目标镜子帧率验证；此工具不替代 #6 的现有正式渲染修复，也不关闭企业 P0 验收任务。
+
+## Android 软件接入（第一阶段）
+
+App 首页点「3D 人台样件（实验，不开启摄像头）」。它在本机 WebView 中渲染同一 GLB 和预计算动作，提供四动作、六视角、旋转/缩放、人台/线框开关；**当前仍为合成人台，未把该 3D 衣服穿到真人身上**。不依赖电脑预览服务器、后端或外部 API。进入前停止首页感应；退出后不会自动重新开相机。普通游客会话不插入该独立实验页，保留原会话超时/清理路径。
+
+负责人已有完整 `.local/` 资源和 `npm ci` 安装的 Three.js 时，正常 Android 构建会将运行页面、选定的本地 JS、Three.js MIT LICENSE、模型/原图/动作自动复制到 **build 生成目录**后打入 APK。构建核对 GLB、PNG、动作摘要及几何版本，拒绝混用资源；无需把品牌图片和二进制提交 Git。
+
+```powershell
+# 先在本目录准备 npm 依赖和私有模型/动作（前述 npm run build）。
+cd ../../android
+./gradlew.bat :app:assembleDebug
+# 显式复现没有私有素材的协作者/CI 构建：
+./gradlew.bat -PincludeGarment3d=false :app:assembleDebug
+```
+
+没有私有资源/依赖时 App 仍可构建，但实验入口显示明确的缺包提示；不是自动下载，也不会用空画面冒充三维成功。CI 显式关闭该私有包，其 APK 不包含蓝色品牌样件；负责人提供的本机 APK 单独验证。页面更新需重建/覆盖安装 APK，改电脑服务器不会更新已安装的离线包。
+
+后台停止动画，恢复不计入暂停的墙钟时间；退出销毁 WebView/渲染资源；渲染进程异常退出提供重新加载。原图/动作资源只允许固定 APK 来源，拒绝网络回退、文件/内容 URL、下载与相机/定位权限请求，没有暴露原生 JS 接口。功能与验证边界详见 [Android 接入记录](../../docs/reports/android-garment3d-2026-11-04.md)。
 
 ## 批量素材的成本
 
@@ -87,6 +105,7 @@ backend/assets/studio/studio_blue_tee.png
 - `cloth.mjs`：姿态约束修形和代理碰撞。
 - `bake-motion.mjs`：可独立测试的 CPU 预计算与逐帧记录。
 - `motion-player.mjs`：经站立衔接的片段时序。
+- `viewer-lifecycle.mjs`：逐视图暂停/恢复/终止的时钟与渲染循环。
 - `viewer.mjs`：实际 GLB/动作数据预览，动画与人台同步。
 - `quality.mjs`：边长与代理表面采样检查；`test/`：几何、时序、动作、导出和路由回归。
 
