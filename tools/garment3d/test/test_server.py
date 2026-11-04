@@ -9,7 +9,7 @@ spec.loader.exec_module(server)
 
 class RoutesTest(unittest.TestCase):
     def test_known_assets_resolve(self):
-        for route in ("/", "/style.css", "/viewer.mjs", "/template.mjs", "/assets/blue-tee.glb",
+        for route in ("/", "/style.css", "/viewer.mjs", "/rig.mjs", "/motion-player.mjs", "/assets/blue-tee.glb", "/assets/motion.bin",
                       "/vendor/three.module.js", "/vendor/addons/loaders/GLTFLoader.js"):
             self.assertIsNotNone(server.resolve_asset(route))
 

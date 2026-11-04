@@ -2,7 +2,6 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import crypto from 'node:crypto';
-import * as THREE from 'three';
 import {buildGarment,createRig,TEMPLATE_ID,SOURCE_SIZE} from './template.mjs';
 
 const here=path.dirname(fileURLToPath(import.meta.url)), root=path.resolve(here,'../..');
@@ -33,28 +32,20 @@ const attributes={
   JOINTS_0:accessor(geometry.attributes.skinIndex.array,'VEC4',5123,34962),
   WEIGHTS_0:accessor(geometry.attributes.skinWeight.array,'VEC4',5126,34962),
 };
-const primitives=geometry.groups.map(g=>({attributes:g.materialIndex===0?attributes:Object.fromEntries(Object.entries(attributes).filter(([k])=>k!=='TEXCOORD_0')),indices:accessor(geometry.index.array.slice(g.start,g.start+g.count),'SCALAR',5123,34963),material:g.materialIndex}));
+const primitives=geometry.groups.map(g=>({attributes,indices:accessor(geometry.index.array.slice(g.start,g.start+g.count),'SCALAR',5123,34963),material:g.materialIndex}));
 const inverses=accessor(new Float32Array(mesh.skeleton.boneInverses.flatMap(m=>m.toArray())),'MAT4',5126);
 const imageView=view(image);
-const blue=new THREE.Color('#7187a6').toArray();
-const nodes=[{name:mesh.name,mesh:0,skin:0,children:[1]},...mesh.skeleton.bones.map((b,i)=>({name:b.name,translation:b.position.toArray(),...(b.children.length?{children:b.children.map(c=>mesh.skeleton.bones.indexOf(c)+1)}:{})}))];
-const times=accessor(new Float32Array([0,1.5,3]),'SCALAR',5126,undefined,true);
-const channels=[],samplers=[];
-for(const [node,sign] of [[2,1],[3,-1]]) {
-  const q=new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,0,1),sign*1.05);
-  const output=accessor(new Float32Array([0,0,0,1,...q.toArray(),0,0,0,1]),'VEC4',5126);
-  channels.push({sampler:samplers.length,target:{node,path:'rotation'}});samplers.push({input:times,output,interpolation:'LINEAR'});
-}
+const nodes=[{name:mesh.name,mesh:0,skin:0,children:[1]},...mesh.skeleton.bones.map((b,i)=>({name:b.name,translation:b.position.toArray(),rotation:b.quaternion.toArray(),...(b.children.length?{children:b.children.map(c=>mesh.skeleton.bones.indexOf(c)+1)}:{})}))];
 const extras={template_id:TEMPLATE_ID,source_garment_id:source.garment_id,source_sha256:source.sha256,
   source_url:source.source_url,geometry:'Authored approximate template, not a scan or AI reconstruction',
-  unseen_surfaces:'Solid blue approximation; no verified back/side reference',motion:'Synthetic skeletal animation; no cloth physics',
+  unseen_surfaces:'Back/side approximate fabric sampled from the front; no verified back reference',motion:'Neutral T-pose GLB; separate precomputed pose-guided constrained corrections, not full cloth dynamics',
   size_basis:'Nominal template proportions, not product measurements',rights:source.rights};
 const binary=Buffer.concat(binParts);const binPadding=(4-binary.length%4)%4;
 const gltf={asset:{version:'2.0',generator:'smart-fitting-mirror garment3d sample v0.1',extras},scene:0,scenes:[{nodes:[0]}],nodes,
   skins:[{name:'tee_rig',joints:mesh.skeleton.bones.map((_,i)=>i+1),skeleton:1,inverseBindMatrices:inverses}],
-  meshes:[{name:'crewneck_tee',primitives}],animations:[{name:'synthetic_raise_arms',channels,samplers}],
+  meshes:[{name:'crewneck_tee',primitives}],
   materials:[{name:'official_blue_front',pbrMetallicRoughness:{baseColorTexture:{index:0},metallicFactor:0,roughnessFactor:.88},doubleSided:true,alphaMode:'MASK',alphaCutoff:.5},
-    {name:'unverified_blue_back_and_seams',pbrMetallicRoughness:{baseColorFactor:[...blue,1],metallicFactor:0,roughnessFactor:.94},doubleSided:true}],
+    {name:'approximate_fabric_back_and_seams',pbrMetallicRoughness:{baseColorTexture:{index:0},metallicFactor:0,roughnessFactor:.88},doubleSided:true}],
   textures:[{source:0,sampler:0}],samplers:[{magFilter:9729,minFilter:9987,wrapS:33071,wrapT:33071}],images:[{bufferView:imageView,mimeType:'image/png'}],
   accessors,bufferViews:views,buffers:[{byteLength:binary.length}]};
 const json=Buffer.from(JSON.stringify(gltf)), jsonPad=(4-json.length%4)%4;

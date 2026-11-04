@@ -25,4 +25,7 @@ jobs:
         working-directory: tools/garment3d
       - run: npm test
         working-directory: tools/garment3d
+      - name: Verify all synthetic motion frames without private images
+        run: npm run test:motion
+        working-directory: tools/garment3d
       - run: python -m unittest discover -s tools/garment3d/test -p "test_*.py"
