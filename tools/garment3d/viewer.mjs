@@ -70,11 +70,16 @@ function syncBody(){
 const viewDirections={front:[0,.18,1],threequarter:[.55,.22,1],side:[1,.16,.03],back:[0,.18,-1]};
 function setView(view){
   cameraView=view;
+  // Drain drag/pan inertia through the public API before applying a preset.
+  const damping=orbit.enableDamping;orbit.enableDamping=false;orbit.update();
+  orbit.target.set(0,.93,0);
   const dir=new THREE.Vector3(...viewDirections[view]).normalize();camera.position.copy(orbit.target).addScaledVector(dir,3.15);orbit.update();
+  orbit.enableDamping=damping;
   document.querySelectorAll('[data-view]').forEach(button=>button.setAttribute('aria-pressed',String(button.dataset.view===view)));
   if(mesh)status.textContent=view==='back'?'背面近似补全 · 尚无商品背面参考':view==='side'?'侧面体积为近似 · 未核对实物尺寸':'3D 模型已加载 · 合成人台';
 }
 setView(cameraView);
+orbit.addEventListener('start',()=>document.querySelectorAll('[data-view]').forEach(button=>button.setAttribute('aria-pressed','false')));
 document.querySelectorAll('[data-view]').forEach(button=>button.addEventListener('click',()=>setView(button.dataset.view)));
 document.querySelectorAll('[data-pose]').forEach(button=>button.addEventListener('click',()=>{
   pose=button.dataset.pose;document.querySelector('#animate').checked=false;
