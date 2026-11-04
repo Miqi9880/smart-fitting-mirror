@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>一件 T 恤 · 3D 样件 / 智能穿衣镜</title>
+  <link rel="stylesheet" href="/style.css">
+  <script type="importmap">{"imports":{"three":"/vendor/three.module.js","three/addons/":"/vendor/addons/"}}</script>
+</head>
+<body>
+  <header><a class="wordmark" href="/">SMART FITTING MIRROR</a><span>形态实验 <i>01</i></span><span class="status">本地 3D 样件</span></header>
+  <main>
+    <section class="stage" aria-label="三维服装预览">
+      <div class="stage-title"><span class="eyebrow">GARMENT STUDY / 001</span><h1>从正面照片，<br>走向立体服装。</h1><p>圆领短袖 T 恤 · 蓝色</p></div>
+      <div id="viewport" role="img" aria-label="可拖动旋转的立体 T 恤与合成人台"></div>
+      <div class="views" aria-label="观察方向"><button data-view="front" aria-pressed="false">正面</button><button data-view="threequarter" aria-pressed="true">立体</button><button data-view="side" aria-pressed="false">侧面</button><button data-view="back" aria-pressed="false">背面</button></div>
+      <div class="stage-bottom"><span id="load-status" role="status">正在加载本地模型…</span><span>拖动旋转 · 滚轮缩放</span><span id="fps">桌面帧率 —</span></div>
+    </section>
+    <aside>
+      <div class="section-number">01 / 单件验证</div><h2>有厚度，也能运动。</h2><p class="intro">同一件衣服，从四个角度观察，再看看袖子如何随合成动作变化。</p>
+      <div class="source"><img src="/assets/source.png" alt="原始官网蓝色 T 恤正面素材"><div><span class="eyebrow">FRONT REFERENCE</span><strong>现有官网素材</strong><a href="https://www.uniqlo.com/us/en/products/E465185-000/00?colorDisplayCode=65" target="_blank" rel="noreferrer">查看素材来源 ↗</a></div></div>
+      <fieldset disabled id="controls"><legend>合成人台动作</legend><div class="poses"><button data-pose="rest" aria-pressed="true">自然站立</button><button data-pose="raise" aria-pressed="false">抬臂</button><button data-pose="reach" aria-pressed="false">前伸</button></div>
+      <label class="option"><span>循环抬臂</span><input id="animate" type="checkbox"></label>
+      <label class="option"><span>显示合成人台</span><input id="body" type="checkbox" checked></label>
+      <label class="option"><span>查看网格</span><input id="wireframe" type="checkbox"></label></fieldset>
+      <a id="download" class="download" href="/assets/blue-tee.glb" download>下载此件 3D 模型 <span>GLB ↓</span></a>
+      <div class="limits"><strong>这件样件能说明什么？</strong><p>验证立体轮廓、贴纹理与骨骼运动。网格是近似模板，背面和侧面是补全；尚未加入布料物理、真人遮挡或镜子实测。</p><p>不是 AI 重建，也不代表实际衣服尺码。桌面帧率不能替代镜子帧率。</p></div>
+      <div id="mesh-info" class="mesh-info">—</div>
+    </aside>
+  </main>
+  <footer><span>模板可以复用，版型决定建模工作量。</span><span>同版型换色 → 换纹理　／　结构变化 → 调网格</span></footer>
+  <script type="module" src="/viewer.mjs"></script>
+</body></html>
