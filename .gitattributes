@@ -1,0 +1,3 @@
+# Keep the server environment scripts usable after a Windows checkout.
+tools/model_env/*.sh text eol=lf
+tools/model_env/*.py text eol=lf
