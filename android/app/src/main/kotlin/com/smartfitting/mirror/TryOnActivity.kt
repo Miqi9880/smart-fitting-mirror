@@ -156,6 +156,11 @@ class TryOnActivity : ComponentActivity() {
         root.addView(outfitStatus)
         videoButton = button("查看当前搭配的相关视频", "fitting.videos") { videos.show() }
         root.addView(videoButton)
+        root.addView(button("3D 人台样件（实验，不开启摄像头）", "fitting.garment3d") {
+            pendingPermission = false; model.running = false; model.visionFailure = null; stopVision()
+            if (model.previewFullscreen) setPreviewFullscreen(false)
+            startActivity(Intent(this, com.smartfitting.mirror.garment3d.Garment3dActivity::class.java))
+        }.apply { if (guestRoute) visibility = View.GONE })
         root.addView(row(button("加入搭配","fitting.outfit.add") {
             model.state.value.selected?.let { model.outfit = OutfitSelection.add(model.outfit,it) }; renderOutfit()
         },button("移除本类","fitting.outfit.remove") {

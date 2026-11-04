@@ -3,14 +3,15 @@ import {OrbitControls} from 'three/addons/controls/OrbitControls.js';
 import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
 import {BODY,setPose} from './rig.mjs';
 import {MotionPlayer} from './motion-player.mjs';
+import {ViewerLifecycle} from './viewer-lifecycle.mjs';
 
 const host=document.querySelector('#viewport'),status=document.querySelector('#load-status');
 const scene=new THREE.Scene(),avatar=new THREE.Group(),body=new THREE.Group();
 scene.background=new THREE.Color('#e9eeea');scene.add(avatar);avatar.add(body);
-let renderer,proxy,bones,garment,motion,data,player,pose='rest',loopStarted=performance.now();
+let renderer,proxy,bones,garment,motion,data,player,pose='rest';
 const camera=new THREE.PerspectiveCamera(35,1,.02,30);
 try{renderer=new THREE.WebGLRenderer({antialias:true});}
-catch(error){status.textContent='无法启动 WebGL，请使用支持 WebGL 的浏览器。';throw error;}
+catch(error){host.dataset.sceneState='unsupported';status.textContent='无法启动 WebGL2，请更新浏览器／系统 WebView，或返回常规试衣。';throw error;}
 renderer.setPixelRatio(Math.min(devicePixelRatio,2));renderer.shadowMap.enabled=true;
 renderer.shadowMap.type=THREE.PCFSoftShadowMap;renderer.outputColorSpace=THREE.SRGBColorSpace;
 renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.25;host.append(renderer.domElement);
@@ -58,30 +59,60 @@ function syncBody(){
     s.hand.position.copy(c).add(delta.subVectors(c,b).normalize().multiplyScalar(.045));s.hand.quaternion.copy(s.lower.group.quaternion);
   }
 }
+let activeView=null;
 const views={front:[0,.18,1],threequarter:[.55,.22,1],side:[1,.16,.03],back:[0,.18,-1],detail:[.55,.18,1],top:[0,1,.21]};
 function setView(view){
+  activeView=view;
   const damping=orbit.enableDamping;orbit.enableDamping=false;orbit.update();orbit.target.set(0,view==='detail'?1.19:view==='top'?1.20:.93,0);
   const distance=view==='detail'?Math.max(1.65,1/(2*Math.tan(35*Math.PI/360)*camera.aspect)):view==='top'?Math.max(2.0,1/(2*Math.tan(35*Math.PI/360)*camera.aspect)):3.15;
   camera.position.copy(orbit.target).addScaledVector(new THREE.Vector3(...views[view]).normalize(),distance);orbit.update();orbit.enableDamping=damping;
-  document.querySelectorAll('[data-view]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.view===view)));
+  document.querySelectorAll('button[data-view]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.view===view)));
 }
-setView('threequarter');orbit.addEventListener('start',()=>document.querySelectorAll('[data-view]').forEach(b=>b.setAttribute('aria-pressed','false')));
-document.querySelectorAll('[data-view]').forEach(b=>b.addEventListener('click',()=>setView(b.dataset.view)));
+setView('threequarter');orbit.addEventListener('start',()=>{activeView=null;document.querySelectorAll('button[data-view]').forEach(b=>b.setAttribute('aria-pressed','false'));});
+document.querySelectorAll('button[data-view]').forEach(b=>b.addEventListener('click',()=>setView(b.dataset.view)));
 function choosePose(value){
-  pose=value;loopStarted=performance.now();document.querySelector('#animate').checked=false;player?.choose(value);
-  document.querySelectorAll('[data-pose]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.pose===value)));
+  pose=value;elapsed=0;document.querySelector('#animate').checked=false;player?.choose(value);
+  document.querySelectorAll('button[data-pose]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.pose===value)));
 }
-document.querySelectorAll('[data-pose]').forEach(b=>b.addEventListener('click',()=>choosePose(b.dataset.pose)));
+document.querySelectorAll('button[data-pose]').forEach(b=>b.addEventListener('click',()=>choosePose(b.dataset.pose)));
 document.querySelector('#yaw').addEventListener('input',e=>{document.querySelector('#yaw-value').value=`${e.target.value}°`;if(pose!=='turn')choosePose('turn');});
-document.querySelector('#animate').addEventListener('change',e=>{loopStarted=performance.now();if(player)player.loop=e.target.checked;});
+document.querySelector('#animate').addEventListener('change',e=>{elapsed=0;if(player)player.loop=e.target.checked;});
 document.querySelector('#body').addEventListener('change',e=>{body.visible=e.target.checked;});
 document.querySelector('#wireframe').addEventListener('change',e=>{if(garment)for(const m of garment.material)m.wireframe=e.target.checked;});
-new ResizeObserver(()=>{renderer.setSize(host.clientWidth,host.clientHeight);camera.aspect=host.clientWidth/host.clientHeight;camera.updateProjectionMatrix();}).observe(host);
+const resize=new ResizeObserver(()=>{
+  if(host.clientWidth<=0||host.clientHeight<=0)return;
+  renderer.setSize(host.clientWidth,host.clientHeight);camera.aspect=host.clientWidth/host.clientHeight;camera.updateProjectionMatrix();
+  if(activeView)setView(activeView);
+});resize.observe(host);
+let frames=0,lastStats=performance.now(),elapsed=0;
+const lifecycle=new ViewerLifecycle({setLoop:callback=>renderer.setAnimationLoop(callback),render:renderFrame,changed:state=>{
+  host.dataset.playback=state;frames=0;lastStats=performance.now();
+}});
+lifecycle.setVisible(!document.hidden);lifecycle.setHostActive(window.garment3dHostActive!==false);
+document.addEventListener('visibilitychange',()=>lifecycle.setVisible(!document.hidden));
+window.addEventListener('garment3d-host-state',()=>lifecycle.setHostActive(window.garment3dHostActive!==false));
+function disposeScene(){
+  if(lifecycle.disposed)return;
+  lifecycle.dispose();resize.disconnect();orbit.dispose();
+  scene.traverse(object=>{
+    object.geometry?.dispose();
+    for(const material of object.material?(Array.isArray(object.material)?object.material:[object.material]):[]){
+      for(const value of Object.values(material))if(value?.isTexture){value.source?.data?.close?.();value.dispose();}
+      material.dispose();
+    }
+  });
+  renderer.dispose();renderer.forceContextLoss();host.dataset.sceneState='disposed';
+}
+window.addEventListener('garment3d-host-destroy',disposeScene);
+window.addEventListener('pagehide',event=>{if(event.persisted)lifecycle.setVisible(false);else disposeScene();});
+window.addEventListener('pageshow',event=>{if(event.persisted)lifecycle.setVisible(!document.hidden);});
+lifecycle.start();
 try{
   const [gltf,summary,manifest,buffer]=await Promise.all([
-    new GLTFLoader().loadAsync('/assets/blue-tee.glb'),fetch('/assets/sample.json').then(r=>r.json()),
-    fetch('/assets/motion.json').then(r=>r.json()),fetch('/assets/motion.bin').then(r=>r.arrayBuffer()),
+    new GLTFLoader().loadAsync('./assets/blue-tee.glb'),fetch('./assets/sample.json').then(r=>r.json()),
+    fetch('./assets/motion.json').then(r=>r.json()),fetch('./assets/motion.bin').then(r=>r.arrayBuffer()),
   ]);
+  if(lifecycle.disposed)throw new Error('Viewer already closed');
   const parts=[];gltf.scene.traverse(o=>{if(o.isSkinnedMesh)parts.push(o);});if(!parts.length)throw new Error('Missing rig');
   proxy=parts[0];bones=proxy.skeleton.bones;const geometry=proxy.geometry.clone(),indices=[],materials=[];geometry.clearGroups();
   for(const p of parts){geometry.addGroup(indices.length,p.geometry.index.count,materials.length);indices.push(...p.geometry.index.array);materials.push(p.material);p.visible=false;}
@@ -92,24 +123,25 @@ try{
   if(motion.version!==2||motion.stride!==motion.vertices*3||motion.vertices!==geometry.attributes.position.count||buffer.byteLength!==motion.byte_length||data.length!==motion.frame_count*motion.stride)throw new Error('Motion topology mismatch');
   if(summary.geometry_sha256!==motion.geometry_sha256)throw new Error('Stale motion data; rebuild model and motions together');
   player=new MotionPlayer(motion.clips);
+  host.dataset.sceneState='ready';
   document.querySelector('#controls').disabled=false;status.textContent='合成人台 · 预计算姿态约束修形';
   document.querySelector('#mesh-info').textContent=`${summary.vertices.toLocaleString()} 顶点 · ${summary.triangles.toLocaleString()} 三角面 · 站立／抬臂／前伸固定动作复核`;
-}catch(error){console.error(error);status.textContent='动作数据加载失败，请先生成模型与动作数据。';}
-let frames=0,lastStats=performance.now(),lastFrame=lastStats;
-renderer.setAnimationLoop(now=>{
-  const seconds=Math.max(0,Math.min(2,(now-lastFrame)/1000));lastFrame=now;
+}catch(error){if(!lifecycle.disposed){console.error(error);host.dataset.sceneState='error';status.textContent='动作数据加载失败，请重新打包模型与动作资源。';}}
+function renderFrame(now,seconds){
+  elapsed+=seconds;
   if(garment&&motion){
     const current=player.advance(seconds),isTurn=pose==='turn',clip=motion.clips[current.pose],loop=document.querySelector('#animate').checked,frame=current.frame;
+    host.dataset.activePose=current.pose;host.dataset.frame=frame.toFixed(3);
     const low=Math.floor(frame),high=Math.min(clip.count-1,low+1),mix=frame-low,output=garment.geometry.attributes.position.array;
     const offset0=(clip.start+low)*motion.stride,offset1=(clip.start+high)*motion.stride;
     for(let i=0;i<output.length;i++)output[i]=data[offset0+i]*(1-mix)+data[offset1+i]*mix;
     garment.geometry.attributes.position.needsUpdate=true;garment.geometry.computeVertexNormals();
     const t=Math.min(1,frame/60),phase=t*t*(3-2*t);setPose(bones,current.pose,phase);
     const yaw=Number(document.querySelector('#yaw').value)*Math.PI/180;
-    const targetYaw=isTurn&&current.pose==='rest'?(loop?Math.sin((now-loopStarted)*.0006)*yaw:yaw):0;
+    const targetYaw=isTurn&&current.pose==='rest'?(loop?Math.sin(elapsed*.6)*yaw:yaw):0;
     avatar.rotation.y+=(targetYaw-avatar.rotation.y)*(1-Math.exp(-seconds*5));
     syncBody();status.textContent=isTurn?`合成人台转身 ${Math.round(avatar.rotation.y*180/Math.PI)}° · 背面近似`:'合成人台 · 预计算姿态约束修形';
   }
   orbit.update();renderer.render(scene,camera);frames++;
-  if(now-lastStats>1200){document.querySelector('#fps').textContent=`桌面 ${Math.round(frames*1000/(now-lastStats))} FPS`;frames=0;lastStats=now;}
-});
+  if(now-lastStats>1200){document.querySelector('#fps').textContent=`${document.documentElement.classList.contains('android-host')?'当前渲染':'桌面'} ${Math.round(frames*1000/(now-lastStats))} FPS`;frames=0;lastStats=now;}
+}

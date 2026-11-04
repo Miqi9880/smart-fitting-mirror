@@ -4,3 +4,9 @@
 
 .option input[type=range]{width:138px;height:20px}.option output{font-size:11px;color:#6c7e75}.poses{gap:4px}
 .views{width:max-content;max-width:calc(100% - 32px);flex-wrap:wrap;justify-content:center}
+.android-host header,.android-host footer,.android-host .download,.android-host .source a{display:none}
+.android-host main{height:100vh;min-height:0}.android-host .stage{min-height:0}
+.android-host .stage-title{top:16px;left:20px}.android-host .stage-title h1{display:none}
+.android-host .stage-title p{margin:6px 0}.android-host aside{padding-top:18px}
+@media(max-width:640px){.android-host main{height:auto}.android-host .stage{height:60vh;min-height:300px}.android-host #viewport{top:48px;bottom:76px}.android-host .views{bottom:28px}.android-host .stage-bottom{bottom:10px}}
+@media(orientation:portrait){.android-host main{display:block;height:auto}.android-host .stage{height:60vh;min-height:300px}.android-host #viewport{top:48px;bottom:76px}.android-host .views{bottom:28px}.android-host .stage-bottom{bottom:10px}.android-host aside{border-left:0;overflow:visible}}
