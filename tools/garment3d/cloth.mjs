@@ -45,11 +45,12 @@ export function penetration(point,collider){
  * Vertices move independently of the skinning targets, including the free hem.
  */
 export class ClothSimulation {
-  constructor(geometry,{iterations=128,follow=.020}={}){
+  constructor(geometry,{iterations=128,follow=.020,stretchLimit=1.08,limitIterations=8}={}){
     this.rest=Float64Array.from(geometry.attributes.position.array);
     this.positions=this.rest.slice();this.previous=this.rest.slice();
     this.mass=new Float64Array(this.rest.length/3).fill(1);
     this.iterations=iterations;this.follow=follow;this.colliders=[];
+    this.stretchLimit=stretchLimit;this.limitIterations=limitIterations;
     const map=new Map(),indices=geometry.index.array;
     for(let i=0;i<indices.length;i+=3)for(let j=0;j<3;j++){
       const a=indices[i+j],b=indices[i+(j+1)%3],other=indices[i+(j+2)%3],key=edgeKey(a,b);
@@ -101,6 +102,13 @@ export class ClothSimulation {
       this.solveCollisions();
       if(pass%4===3)this.solveSurfaceCollisions();
     }
+    // Distance/bending/rest-shape constraints compete around the shoulder.
+    // Finish with bounded tensile projection rather than letting a few short
+    // seam edges absorb all of that conflict. Collision remains active.
+    for(let pass=0;pass<this.limitIterations;pass++){
+      this.limitStretch(pass%2===1);this.solveCollisions();
+      if(pass%2===1)this.solveSurfaceCollisions();
+    }
     // Resolve intersections with the union of overlapping collision proxies.
     this.solveCollisions();this.solveSurfaceCollisions();this.solveCollisions();
     return x;
@@ -118,6 +126,20 @@ export class ClothSimulation {
       const s=change/length;
       x[ia]+=wa*s*dx;x[ia+1]+=wa*s*dy;x[ia+2]+=wa*s*dz;
       x[ib]-=wb*s*dx;x[ib+1]-=wb*s*dy;x[ib+2]-=wb*s*dz;
+    }
+  }
+
+  limitStretch(reverse){
+    const x=this.positions,{indices,lengths}=this.edges,n=lengths.length;
+    for(let k=0;k<n;k++){
+      const q=reverse?n-1-k:k,a=indices[q*2],b=indices[q*2+1],ia=a*3,ib=b*3;
+      if(lengths[q]<.008)continue; // thin joining edges are not fabric lengths
+      const dx=x[ia]-x[ib],dy=x[ia+1]-x[ib+1],dz=x[ia+2]-x[ib+2];
+      const length=Math.sqrt(dx*dx+dy*dy+dz*dz),w=this.mass[a]+this.mass[b],maximum=lengths[q]*this.stretchLimit;
+      if(!w||length<=maximum)continue;
+      const scale=(maximum-length)/(w*length);
+      x[ia]+=this.mass[a]*scale*dx;x[ia+1]+=this.mass[a]*scale*dy;x[ia+2]+=this.mass[a]*scale*dz;
+      x[ib]-=this.mass[b]*scale*dx;x[ib+1]-=this.mass[b]*scale*dy;x[ib+2]-=this.mass[b]*scale*dz;
     }
   }
 

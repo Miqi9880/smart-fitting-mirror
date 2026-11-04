@@ -58,10 +58,10 @@ function syncBody(){
     s.hand.position.copy(c).add(delta.subVectors(c,b).normalize().multiplyScalar(.045));s.hand.quaternion.copy(s.lower.group.quaternion);
   }
 }
-const views={front:[0,.18,1],threequarter:[.55,.22,1],side:[1,.16,.03],back:[0,.18,-1],detail:[.55,.18,1]};
+const views={front:[0,.18,1],threequarter:[.55,.22,1],side:[1,.16,.03],back:[0,.18,-1],detail:[.55,.18,1],top:[0,1,.21]};
 function setView(view){
-  const damping=orbit.enableDamping;orbit.enableDamping=false;orbit.update();orbit.target.set(0,view==='detail'?1.19:.93,0);
-  const distance=view==='detail'?Math.max(1.65,1/(2*Math.tan(35*Math.PI/360)*camera.aspect)):3.15;
+  const damping=orbit.enableDamping;orbit.enableDamping=false;orbit.update();orbit.target.set(0,view==='detail'?1.19:view==='top'?1.20:.93,0);
+  const distance=view==='detail'?Math.max(1.65,1/(2*Math.tan(35*Math.PI/360)*camera.aspect)):view==='top'?Math.max(2.0,1/(2*Math.tan(35*Math.PI/360)*camera.aspect)):3.15;
   camera.position.copy(orbit.target).addScaledVector(new THREE.Vector3(...views[view]).normalize(),distance);orbit.update();orbit.enableDamping=damping;
   document.querySelectorAll('[data-view]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.view===view)));
 }

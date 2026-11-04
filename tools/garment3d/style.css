@@ -3,3 +3,4 @@
 @media(max-width:640px){#viewport{top:130px;bottom:64px}.stage-title{top:23px}.stage-title h1{margin:12px 0 6px;font-size:24px}.views{bottom:46px}.stage-bottom{bottom:15px}}
 
 .option input[type=range]{width:138px;height:20px}.option output{font-size:11px;color:#6c7e75}.poses{gap:4px}
+.views{width:max-content;max-width:calc(100% - 32px);flex-wrap:wrap;justify-content:center}

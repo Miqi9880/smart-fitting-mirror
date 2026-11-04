@@ -10,6 +10,34 @@ export function edgeStrain(geometry, positions) {
   ratios.sort((a,b)=>a-b);
   return {edges:ratios.length,p95:ratios[Math.floor(ratios.length*.95)],p99:ratios[Math.floor(ratios.length*.99)],max:ratios.at(-1),over110:ratios.filter(r=>r>1.1).length};
 }
+
+/** Front/back extent of the actual triangulated shoulder at a lateral plane.
+ * This contour check catches a pinched sleeve root that a front view hides.
+ * Coordinates and cut height belong to this nominal raised-arm template.
+ */
+export function shoulderDepth(geometry,positions,planeX){
+  let min=Infinity,max=-Infinity;
+  const inspect=(a,b,t)=>{
+    const y=positions[a+1]+(positions[b+1]-positions[a+1])*t;if(y<.40)return;
+    const z=positions[a+2]+(positions[b+2]-positions[a+2])*t;min=Math.min(min,z);max=Math.max(max,z);
+  };
+  const indices=geometry.index.array;
+  for(let k=0;k<indices.length;k+=3)for(let j=0;j<3;j++){
+    const a=indices[k+j]*3,b=indices[k+(j+1)%3]*3,dx=positions[b]-positions[a];
+    if((positions[a]-planeX)*(positions[b]-planeX)>0)continue;
+    if(Math.abs(dx)<1e-12){if(Math.abs(positions[a]-planeX)<1e-10){inspect(a,b,0);inspect(a,b,1);}continue;}
+    inspect(a,b,(planeX-positions[a])/dx);
+  }
+  return max>=min?max-min:0;
+}
+
+export function shoulderProfile(geometry,positions){
+  return [-1,1].map(sign=>{
+    const cuff=shoulderDepth(geometry,positions,sign*.40);
+    const sections=[.20,.22,.24,.26,.28,.30].map(x=>({x:sign*x,depth:shoulderDepth(geometry,positions,sign*x)}));
+    return {side:sign<0?'right':'left',cuff,sections,minRootRatio:Math.min(...sections.map(s=>s.depth))/cuff};
+  });
+}
 import {penetration} from './cloth.mjs';
 
 

@@ -7,7 +7,7 @@ import {NEUTRAL_ARM_ANGLE as neutral,bodyColliders} from './rig.mjs';
 import {ClothSimulation} from './cloth.mjs';
 import {edgeStrain,surfaceContacts} from './quality.mjs';
 
-export const SOLVER_OPTIONS=Object.freeze({iterations:128,follow:.020});
+export const SOLVER_OPTIONS=Object.freeze({iterations:128,follow:.020,stretchLimit:1.08,limitIterations:8});
 
 export function bakeMotion({onProgress=()=>{},checkSurfaces=true}={}){
   const geometry=buildGarment(),mesh=createRig(geometry,[]),stride=geometry.attributes.position.array.length;

@@ -1,9 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {bakeMotion} from '../bake-motion.mjs';
+import {shoulderProfile} from '../quality.mjs';
 
 test('all fixed action frames avoid the reported triangle stretch and stay outside mannequin proxies',()=>{
-  const {array,manifest}=bakeMotion();
+  const {geometry,array,manifest}=bakeMotion();
   for(const value of array)assert.ok(Number.isFinite(value));
   const samples=[manifest.report.rest,...manifest.report.raise,...manifest.report.reach];
   assert.equal(samples.length,183);
@@ -15,6 +16,11 @@ test('all fixed action frames avoid the reported triangle stretch and stay outsi
     assert.ok(sample.maxCuffError<1e-6,'sleeve rim must not fold into an unaligned pointed opening');
   }
   assert.ok(manifest.report.raise.at(-1).max<1.01,'full raised-arm end pose must no longer pull a triangular wing');
+  const raisedOffset=(manifest.clips.raise.start+manifest.clips.raise.count-1)*manifest.stride;
+  for(const profile of shoulderProfile(geometry,array.subarray(raisedOffset,raisedOffset+manifest.stride))){
+    assert.ok(profile.cuff>.15);
+    assert.ok(profile.minRootRatio>=.97,`raised shoulder must retain its volume: ${JSON.stringify(profile)}`);
+  }
   for(const clip of [manifest.clips.raise,manifest.clips.reach]){
     for(let f=1;f<clip.count;f++){
       let displacement=0;

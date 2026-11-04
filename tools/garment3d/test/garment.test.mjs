@@ -3,8 +3,15 @@ import assert from 'node:assert/strict';
 import * as THREE from 'three';
 import {buildGarment,createRig,setPose,sampleSkinned} from '../template.mjs';
 import {ClothSimulation,penetration} from '../cloth.mjs';
+import {shoulderProfile} from '../quality.mjs';
 
 const g=buildGarment(),p=g.attributes.position;
+test('both shoulder roots retain sleeve depth rather than narrowing into a ring',()=>{
+  for(const profile of shoulderProfile(g,p.array)){
+    assert.ok(profile.cuff>.15);
+    assert.ok(profile.minRootRatio>=.97,JSON.stringify(profile));
+  }
+});
 test('surface contact catches an edge crossing an arm when its endpoints are outside',()=>{
   const cloth=new ClothSimulation(g),[a,b]=cloth.surfaceSamples.find(pair=>pair.length===2&&pair.every(v=>cloth.mass[v]));
   const collider={type:'capsule',a:[0,0,0],b:[0,1,0],radius:1};
