@@ -13,7 +13,7 @@ const OUTLINE=[
   [475,55,'shoulder'],[310,128,'shoulder'],[202,240,'sleeve'],
   [10,650,'cuff'],[251,768,'underarm'],[271,711,'side'],
 ];
-export const TEMPLATE_ID='crewneck-short-sleeve-v2';
+export const TEMPLATE_ID='crewneck-short-sleeve-v3';
 export const SOURCE_SIZE=[1206,1304];
 export const worldPoint=([x,y])=>[(x-603)*.0007,(1240-y)*.00058];
 const smooth=(a,b,x)=>{const t=THREE.MathUtils.clamp((x-a)/(b-a),0,1);return t*t*(3-2*t);};
@@ -95,17 +95,25 @@ export function buildGarment({spacing=.021}={}){
   for(const [side,part,polygon] of [[1,front,fp],[-1,back,backPattern]])for(const original of part.points){
     const flat=materialPattern(polygon),[mx,my]=cagePoint(original,polygon,flat),abs=Math.abs(mx),sign=mx<0?-1:1;
     const theta=THREE.MathUtils.clamp(mx/.30,-1,1)*Math.PI/2;
-    const blend=smooth(.22,.32,abs)*smooth(.39,.48,my);
-    const sleeveAngle=THREE.MathUtils.clamp((my-.545)/.125,-1,1)*Math.PI/2;
+    const blend=smooth(.22,.32,abs)*(1-(1-smooth(.30,.36,abs))*(1-smooth(.39,.48,my)));
+    const upper=abs>=.28?.645+(abs-.28)*.025/.22:
+      abs>=.2044?.64438+(abs-.2044)*.00062/(.28-.2044):
+      .6873+(abs-.0889)*(.64438-.6873)/(.2044-.0889);
+    const lower=.46-Math.max(0,abs-.30)*.04/.20;
+    const sleeveAngle=THREE.MathUtils.clamp((my-(upper+lower)/2)/((upper-lower)/2),-1,1)*Math.PI/2;
     let x=.25*Math.sin(theta)*(1-blend)+sign*(.23+(abs-.28)*.20/.22)*blend;
     let y=my*(1-blend)+(.595+.080*Math.sin(sleeveAngle))*blend;
-    let z=.140*Math.cos(theta)*(1-blend)+.080*Math.cos(sleeveAngle)*blend;
-    const neck=smooth(.55,.64,my)*(1-smooth(.08,.13,abs));z=z*(1-neck)+.078*neck;
+    const neck=smooth(.55,.64,my)*(1-smooth(.08,.13,abs));
     x*=1-.15*neck;if(side===1)y+=.008*neck*(1-smooth(.62,.66,my));
     const seamDistance=Math.min(...OUTLINE.flatMap((p,i)=>sewn(p)?[distance([mx,my],flat[i],flat[(i+1)%flat.length])]:[]));
-    z=.0006+Math.max(0,z-.0006)*smooth(0,.050,seamDistance);
+    const round=smooth(0,.050,seamDistance);
+    const z=Math.max(.0006,((.140*Math.cos(theta)*(1-blend)*round+.080*Math.cos(sleeveAngle)*blend)*(1-neck)+.078*neck*round));
     positions.push(x,y,side*z);
-    uv.push(...(side===1?[(original[0]/.0007+603)/SOURCE_SIZE[0],(1240-original[1]/.00058)/SOURCE_SIZE[1]]:[.5-original[0]/.84*.4,.28+(.69-original[1])/.69*.60]));
+    const photoUV=[(original[0]/.0007+603)/SOURCE_SIZE[0],(1240-original[1]/.00058)/SOURCE_SIZE[1]];
+    const fabricUV=[.5-original[0]/.84*.4,.28+(.69-original[1])/.69*.60];
+    // The plain blue sleeve uses cloth albedo sampled from the body, rather
+    // than carrying the flat photograph's immovable dark sleeve-fold shadows.
+    uv.push(...(side===1?photoUV.map((v,k)=>v*(1-blend)+fabricUV[k]*blend):fabricUV));
     const w=smooth(.16,.29,Math.abs(x))*smooth(.39,.49,y);
     joints.push(0,w>0?(x>=0?1:2):0,0,0);weights.push(1-w,w,0,0);
   }

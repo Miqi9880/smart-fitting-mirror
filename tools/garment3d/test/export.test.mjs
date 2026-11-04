@@ -15,6 +15,8 @@ test('local exported GLB passes Khronos validation and preserves the original PN
   assert.match(data.asset.extras.unseen_surfaces,/approximate/);
   assert.match(data.asset.extras.motion,/Neutral T-pose/);
   assert.equal(data.images[0].mimeType,'image/png');
+  assert.ok(data.materials.every(m=>m.alphaMode===undefined||m.alphaMode==='OPAQUE'),'3D cloth must not inherit photo cutout holes');
+  assert.ok(data.asset.extras.texture_uv_padding.adjusted_vertices>0);
   const imageView=data.bufferViews[data.images[0].bufferView],start=20+jsonLength+8+imageView.byteOffset;
   const image=bytes.subarray(start,start+imageView.byteLength);
   assert.equal(crypto.createHash('sha256').update(image).digest('hex'),data.asset.extras.source_sha256);

@@ -12,6 +12,7 @@ test('all fixed action frames avoid the reported triangle stretch and stay outsi
     assert.ok(sample.max<1.30,`localized stretch at frame ${sample.frame}: ${sample.max}`);
     assert.ok(sample.maxPenetration<.002,`proxy surface intersection: ${JSON.stringify(sample.worstContact)}`);
     assert.ok(sample.contactSamples>12000);
+    assert.ok(sample.maxCuffError<1e-6,'sleeve rim must not fold into an unaligned pointed opening');
   }
   assert.ok(manifest.report.raise.at(-1).max<1.01,'full raised-arm end pose must no longer pull a triangular wing');
   for(const clip of [manifest.clips.raise,manifest.clips.reach]){
