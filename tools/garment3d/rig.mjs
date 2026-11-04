@@ -58,7 +58,7 @@ export function poseGeometry(mesh) {
   return positions;
 }
 
-export function bodyColliders(mesh,margin=.004) {
+export function bodyColliders(mesh,margin=.005) {
   mesh.updateMatrixWorld(true);
   const colliders=Object.values(BODY).filter(v=>v?.radii).map(v=>({type:'ellipsoid',center:v.center,radii:v.radii.map(r=>r+margin)}));
   const inverse=mesh.matrixWorld.clone().invert();

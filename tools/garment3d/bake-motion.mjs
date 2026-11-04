@@ -7,13 +7,17 @@ import {NEUTRAL_ARM_ANGLE as neutral,bodyColliders} from './rig.mjs';
 import {ClothSimulation} from './cloth.mjs';
 import {edgeStrain,surfaceContacts} from './quality.mjs';
 
-export const SOLVER_OPTIONS=Object.freeze({iterations:64,cuffCompliance:2e-6,follow:.02});
+export const SOLVER_OPTIONS=Object.freeze({iterations:128,follow:.020});
 
 export function bakeMotion({onProgress=()=>{},checkSurfaces=true}={}){
   const geometry=buildGarment(),mesh=createRig(geometry,[]),stride=geometry.attributes.position.array.length;
   const options={...SOLVER_OPTIONS},sim=new ClothSimulation(geometry,options);
   const dt=1/240,frames=[],clips={},report={};
-  const measure=()=>({...edgeStrain(geometry,sim.positions),...(checkSurfaces?surfaceContacts(geometry,sim.positions,bodyColliders(mesh,0)):{})});
+  const measure=()=>{
+    let maxCuffError=0;
+    for(const vertex of sim.cuffs){const i=vertex*3;maxCuffError=Math.max(maxCuffError,Math.hypot(sim.positions[i]-sim.targets[i],sim.positions[i+1]-sim.targets[i+1],sim.positions[i+2]-sim.targets[i+2]));}
+    return {...edgeStrain(geometry,sim.positions),maxCuffError,...(checkSurfaces?surfaceContacts(geometry,sim.positions,bodyColliders(mesh,0)):{})};
+  };
   // Lower from neutral T before saving the standing drape. This is a bounded,
   // pose-guided correction pipeline, not a free-running physical fabric model.
   for(let f=0;f<90;f++){

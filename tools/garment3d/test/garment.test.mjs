@@ -2,8 +2,35 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
 import {buildGarment,createRig,setPose,sampleSkinned} from '../template.mjs';
+import {ClothSimulation,penetration} from '../cloth.mjs';
 
 const g=buildGarment(),p=g.attributes.position;
+test('surface contact catches an edge crossing an arm when its endpoints are outside',()=>{
+  const cloth=new ClothSimulation(g),[a,b]=cloth.surfaceSamples.find(pair=>pair.length===2&&pair.every(v=>cloth.mass[v]));
+  const collider={type:'capsule',a:[0,0,0],b:[0,1,0],radius:1};
+  cloth.colliders=[collider];cloth.surfaceSamples=[[a,b]];
+  cloth.positions.set([-1.05,.5,.2],a*3);cloth.positions.set([1.05,.5,.2],b*3);
+  for(const v of [a,b])assert.equal(penetration(Array.from(cloth.positions.slice(v*3,v*3+3)),collider),0);
+  assert.ok(penetration([0,.5,.2],collider)>.7);
+  cloth.solveSurfaceCollisions();
+  const midpoint=[0,1,2].map(j=>(cloth.positions[a*3+j]+cloth.positions[b*3+j])/2);
+  assert.ok(penetration(midpoint,collider)<1e-9,'an underarm edge must stay outside the arm');
+  cloth.mass[a]=0;cloth.positions.set([-1.05,.5,.2],a*3);cloth.positions.set([1.05,.5,.2],b*3);
+  cloth.solveSurfaceCollisions();
+  assert.deepEqual(Array.from(cloth.positions.slice(a*3,a*3+3)),[-1.05,.5,.2],'contact must not move an attached rim');
+});
+test('neutral sleeve openings form planar round rims rather than warped pointed flaps',()=>{
+  const cloth=new ClothSimulation(g);
+  for(const sign of [-1,1]){
+    const rim=cloth.cuffs.filter(i=>Math.sign(p.getX(i))===sign);
+    assert.ok(rim.length>=16);
+    const xs=rim.map(i=>p.getX(i));assert.ok(Math.max(...xs)-Math.min(...xs)<1e-6);
+    for(const i of rim){
+      const radius=Math.hypot(p.getY(i)-.595,p.getZ(i));assert.ok(Math.abs(radius-.08)<1e-4);
+      assert.equal(cloth.mass[i],0,'reinforced cuff boundary must follow its aligned rim');
+    }
+  }
+});
 test('finite nondegenerate volume, UVs and normalized skin weights',()=>{
   assert.ok(g.boundingBox.max.z-g.boundingBox.min.z>.25);
   for(const attr of Object.values(g.attributes))for(const v of attr.array)assert.ok(Number.isFinite(v));

@@ -2,7 +2,9 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import crypto from 'node:crypto';
+import {PNG} from 'pngjs';
 import {buildGarment,createRig,TEMPLATE_ID,SOURCE_SIZE} from './template.mjs';
+import {padFrontUV} from './texture-uv.mjs';
 
 const here=path.dirname(fileURLToPath(import.meta.url)), root=path.resolve(here,'../..');
 const manifest=JSON.parse(await fs.readFile(path.join(root,'backend/assets/studio/manifest.json'),'utf8'));
@@ -13,7 +15,7 @@ if(!source||source.sha256!==inspectedHash||source.width!==SOURCE_SIZE[0]||source
 }
 const image=await fs.readFile(path.join(root,'backend/assets/studio',source.file));
 if(crypto.createHash('sha256').update(image).digest('hex')!==source.sha256)throw new Error('Source image hash mismatch');
-const geometry=buildGarment(), mesh=createRig(geometry,[]);
+const geometry=buildGarment(),texturePadding=padFrontUV(geometry,PNG.sync.read(image)),mesh=createRig(geometry,[]);
 const binParts=[],views=[],accessors=[];let offset=0;
 function view(bytes,target) {
   const padding=(4-offset%4)%4;if(padding){binParts.push(Buffer.alloc(padding));offset+=padding;}
@@ -39,12 +41,13 @@ const nodes=[{name:mesh.name,mesh:0,skin:0,children:[1]},...mesh.skeleton.bones.
 const extras={template_id:TEMPLATE_ID,source_garment_id:source.garment_id,source_sha256:source.sha256,
   source_url:source.source_url,geometry:'Authored approximate template, not a scan or AI reconstruction',
   unseen_surfaces:'Back/side approximate fabric sampled from the front; no verified back reference',motion:'Neutral T-pose GLB; separate precomputed pose-guided constrained corrections, not full cloth dynamics',
+  texture_mapping:'Opaque cloth with front UV boundary inset; PNG bytes unchanged',texture_uv_padding:texturePadding,
   size_basis:'Nominal template proportions, not product measurements',rights:source.rights};
 const binary=Buffer.concat(binParts);const binPadding=(4-binary.length%4)%4;
 const gltf={asset:{version:'2.0',generator:'smart-fitting-mirror garment3d sample v0.1',extras},scene:0,scenes:[{nodes:[0]}],nodes,
   skins:[{name:'tee_rig',joints:mesh.skeleton.bones.map((_,i)=>i+1),skeleton:1,inverseBindMatrices:inverses}],
   meshes:[{name:'crewneck_tee',primitives}],
-  materials:[{name:'official_blue_front',pbrMetallicRoughness:{baseColorTexture:{index:0},metallicFactor:0,roughnessFactor:.88},doubleSided:true,alphaMode:'MASK',alphaCutoff:.5},
+  materials:[{name:'official_blue_front',pbrMetallicRoughness:{baseColorTexture:{index:0},metallicFactor:0,roughnessFactor:.88},doubleSided:true},
     {name:'approximate_fabric_back_and_seams',pbrMetallicRoughness:{baseColorTexture:{index:0},metallicFactor:0,roughnessFactor:.88},doubleSided:true}],
   textures:[{source:0,sampler:0}],samplers:[{magFilter:9729,minFilter:9987,wrapS:33071,wrapT:33071}],images:[{bufferView:imageView,mimeType:'image/png'}],
   accessors,bufferViews:views,buffers:[{byteLength:binary.length}]};
