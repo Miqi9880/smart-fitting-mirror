@@ -24,6 +24,9 @@ export function solveLivePose(packet) {
   const ls=points.left_shoulder,rs=points.right_shoulder;
   const hip=points.left_hip.clone().add(points.right_hip).multiplyScalar(.5);
   const shoulder=ls.clone().add(rs).multiplyScalar(.5),right=ls.clone().sub(rs),up=shoulder.clone().sub(hip);
+  // A common shoulder-vs-hip z bias is NOT a measured torso pitch. Keeping it
+  // here tipped the neck opening toward the camera and exposed the back collar.
+  up.z=0;right.z=clamp(right.z,-Math.hypot(right.x,right.y)*.6,Math.hypot(right.x,right.y)*.6);
   const projectedWidth=Math.hypot(ls.x-rs.x,ls.y-rs.y),height=up.length();
   if(projectedWidth<packet.width*.045 || height<packet.height*.09 || right.length()/height<.30 || right.length()/height>1.9)
     return {valid:false,reason:'请正对摄像头，让上半身完整入镜'};
@@ -35,17 +38,27 @@ export function solveLivePose(packet) {
     up.clone().multiplyScalar(1/(BODY.shoulder[1]-BODY.hip.center[1])),front.normalize().multiplyScalar(Math.sqrt(sx*sy)));
   const anchor=new THREE.Vector3(0,BODY.hip.center[1]+BODY.offset,0).applyMatrix4(matrix);
   matrix.setPosition(hip.clone().sub(anchor));
-  const inverse=matrix.clone().invert(),arms={};
+  const inverse=matrix.clone().invert(),arms={},armDepth={};
   for(const [side,sign] of [['left',1],['right',-1]]){
     const s=points[`${side}_shoulder`].clone().applyMatrix4(inverse),e=points[`${side}_elbow`].clone().applyMatrix4(inverse);
     const w=points[`${side}_wrist`].clone().applyMatrix4(inverse),upper=e.clone().sub(s),lower=w.clone().sub(e);
-    if(upper.length()<.06||lower.length()<.05||upper.length()>.9||lower.length()>.9)return {valid:false,reason:'手臂位置不稳定，请缓慢移动'};
+    // Relative z is only a directional cue. It cannot stretch the nominal
+    // bones or overwhelm an already full-length projected arm.
+    for(const [v,length] of [[upper,Math.hypot(...BODY.elbow)],[lower,Math.hypot(...BODY.wrist)]]){
+      const xy=Math.hypot(v.x,v.y),depth=Math.sqrt(Math.max(0,length*length-xy*xy));
+      v.z=clamp(v.z,-depth,depth);
+    }
+    if(upper.length()<.035||lower.length()<.03||Math.hypot(upper.x,upper.y)>.9||Math.hypot(lower.x,lower.y)>.9)return {valid:false,reason:'手臂位置不稳定，请缓慢移动'};
     const q=new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(sign*BODY.elbow[0],BODY.elbow[1],0).normalize(),upper.normalize());
     const localLower=lower.normalize().applyQuaternion(q.clone().invert());
     const elbow=new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(sign*BODY.wrist[0],BODY.wrist[1],BODY.wrist[2]).normalize(),localLower);
     arms[side]={shoulder:q,elbow};
+    const fittedElbow=new THREE.Vector3(sign*BODY.shoulder[0],BODY.shoulder[1]+BODY.offset,0)
+      .add(new THREE.Vector3(sign*BODY.elbow[0],BODY.elbow[1],0).applyQuaternion(q));
+    const fittedWrist=fittedElbow.clone().add(new THREE.Vector3(sign*BODY.wrist[0],BODY.wrist[1],BODY.wrist[2]).applyQuaternion(q.clone().multiply(elbow)));
+    armDepth[side]={elbow:fittedElbow.applyMatrix4(matrix).z,wrist:fittedWrist.applyMatrix4(matrix).z};
   }
-  return {valid:true,matrix,arms,points,projectedWidth,hip,shoulder};
+  return {valid:true,matrix,arms,armDepth,points,projectedWidth,hip,shoulder};
 }
 
 export function applyLiveRig(bones,solution) {
@@ -62,11 +75,24 @@ export function applyLiveRig(bones,solution) {
  * This first experiment has proxy contact/edge correction, not a full cloth sim.
  */
 export class LiveGarmentDeformer {
-  constructor(proxy){this.proxy=proxy;this.solver=new ClothSimulation(proxy.geometry,{iterations:16,follow:.35,limitIterations:4});this.fresh=true;}
-  update(solution){
-    applyLiveRig(this.proxy.skeleton.bones,solution);
-    if(this.fresh){const p=poseGeometry(this.proxy);this.solver.positions.set(p);this.solver.previous.set(p);this.fresh=false;}
-    return this.solver.step(this.proxy,1/60);
+  constructor(proxy,standing=null){
+    this.proxy=proxy;this.solver=new ClothSimulation(proxy.geometry,{iterations:32,follow:.10,limitIterations:10});
+    this.standing=standing;this.fresh=true;this.poses=null;
+  }
+  update(solution,seconds=.1){
+    const bones=this.proxy.skeleton.bones;
+    if(this.fresh){
+      this.poses=Object.fromEntries(['left','right'].map(side=>[side,{shoulder:new THREE.Quaternion(),elbow:new THREE.Quaternion()}]));
+      const initial={...solution,arms:this.poses};applyLiveRig(bones,initial);
+      const p=this.standing??poseGeometry(this.proxy);this.solver.positions.set(p);this.solver.previous.set(p);this.fresh=false;
+    }
+    const dt=Math.min(.16,Math.max(.02,seconds));
+    for(const side of ['left','right'])for(const joint of ['shoulder','elbow']){
+      const eased=this.poses[side][joint].clone().slerp(solution.arms[side][joint],1-Math.exp(-dt*4));
+      this.poses[side][joint].rotateTowards(eased,dt*3.0);
+    }
+    applyLiveRig(bones,{...solution,arms:this.poses});
+    return this.solver.step(this.proxy,1/90);
   }
 }
 

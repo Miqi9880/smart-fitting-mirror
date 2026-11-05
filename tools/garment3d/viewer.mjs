@@ -6,6 +6,22 @@ import {MotionPlayer} from './motion-player.mjs';
 import {ViewerLifecycle} from './viewer-lifecycle.mjs';
 import {LiveView} from './live-view.mjs';
 
+// The source is an already-lit photo, not calibrated albedo. Keep its colour
+// and add only bounded matte shape cues instead of PBR highlights and ACES.
+function photoClothMaterial(source){
+  const material=new THREE.MeshBasicMaterial({map:source.map,color:source.color,side:THREE.DoubleSide,toneMapped:false});
+  material.name=source.name+'_photo_colour';
+  material.onBeforeCompile=shader=>{
+    shader.vertexShader='varying vec3 vClothNormal;\n'+shader.vertexShader;
+    shader.vertexShader=shader.vertexShader.replace('#include <begin_vertex>',
+      '#include <begin_vertex>\nvClothNormal=normalize(normalMatrix*normal);');
+    shader.fragmentShader='varying vec3 vClothNormal;\n'+shader.fragmentShader;
+    shader.fragmentShader=shader.fragmentShader.replace('#include <color_fragment>',
+      '#include <color_fragment>\nfloat clothShade=0.80+0.20*abs(dot(normalize(vClothNormal),normalize(vec3(0.15,0.25,1.0))));\ndiffuseColor.rgb*=clothShade;');
+  };
+  material.customProgramCacheKey=()=> 'photo-cloth-bounded-light-v1';return material;
+}
+
 const host=document.querySelector('#viewport'),status=document.querySelector('#load-status');
 const scene=new THREE.Scene(),avatar=new THREE.Group(),body=new THREE.Group();
 scene.background=new THREE.Color('#e9eeea');scene.add(avatar);avatar.add(body);
@@ -86,7 +102,7 @@ const resize=new ResizeObserver(()=>{
   if(activeView)setView(activeView);
 });resize.observe(host);
 let frames=0,lastStats=performance.now(),elapsed=0;
-const live=new LiveView({host,scene,avatar,body,ground,pedestal,orbit,status});
+const live=new LiveView({host,scene,avatar,body,ground,pedestal,orbit,status,renderer});
 window.garment3dLive=Object.freeze({
   begin:config=>live.begin(config),push:packet=>live.push(packet),active:()=>live.active,end:()=>{live.end();return true;},
 });
@@ -122,7 +138,7 @@ try{
   if(lifecycle.disposed)throw new Error('Viewer already closed');
   const parts=[];gltf.scene.traverse(o=>{if(o.isSkinnedMesh)parts.push(o);});if(!parts.length)throw new Error('Missing rig');
   proxy=parts[0];bones=proxy.skeleton.bones;const geometry=proxy.geometry.clone(),indices=[],materials=[];geometry.clearGroups();
-  for(const p of parts){geometry.addGroup(indices.length,p.geometry.index.count,materials.length);indices.push(...p.geometry.index.array);materials.push(p.material);p.visible=false;}
+  for(const p of parts){geometry.addGroup(indices.length,p.geometry.index.count,materials.length);indices.push(...p.geometry.index.array);materials.push(photoClothMaterial(p.material));p.visible=false;}
   geometry.setIndex(indices);geometry.setAttribute('position',geometry.attributes.position.clone());
   // GLTF primitives have separate index buffers. Runtime constraints need the
   // whole sewn shell, and a rest-position copy that output deformation cannot mutate.
@@ -133,7 +149,7 @@ try{
   if(motion.version!==2||motion.stride!==motion.vertices*3||motion.vertices!==geometry.attributes.position.count||buffer.byteLength!==motion.byte_length||data.length!==motion.frame_count*motion.stride)throw new Error('Motion topology mismatch');
   if(summary.geometry_sha256!==motion.geometry_sha256)throw new Error('Stale motion data; rebuild model and motions together');
   player=new MotionPlayer(motion.clips);
-  live.ready(proxy,garment);
+  live.ready(proxy,garment,data.slice(motion.clips.rest.start*motion.stride,(motion.clips.rest.start+1)*motion.stride));
   host.dataset.sceneState='ready';
   document.querySelector('#controls').disabled=false;status.textContent='合成人台 · 预计算姿态约束修形';
   document.querySelector('#mesh-info').textContent=`${summary.vertices.toLocaleString()} 顶点 · ${summary.triangles.toLocaleString()} 三角面 · 站立／抬臂／前伸固定动作复核`;
@@ -152,7 +168,8 @@ function renderFrame(now,seconds){
     const yaw=Number(document.querySelector('#yaw').value)*Math.PI/180;
     const targetYaw=isTurn&&current.pose==='rest'?(loop?Math.sin(elapsed*.6)*yaw:yaw):0;
     avatar.rotation.y+=(targetYaw-avatar.rotation.y)*(1-Math.exp(-seconds*5));
-    syncBody();status.textContent=isTurn?`合成人台转身 ${Math.round(avatar.rotation.y*180/Math.PI)}° · 背面近似`:'合成人台 · 预计算姿态约束修形';
+    syncBody();const message=isTurn?`合成人台转身 ${Math.round(avatar.rotation.y*180/Math.PI)}° · 背面近似`:'合成人台 · 预计算姿态约束修形';
+    if(status.textContent!==message)status.textContent=message;
   }
   if(!liveFrame)orbit.update();renderer.render(scene,liveFrame?live.camera:camera);frames++;
   if(now-lastStats>1200){document.querySelector('#fps').textContent=`${document.documentElement.classList.contains('android-host')?'当前渲染':'桌面'} ${Math.round(frames*1000/(now-lastStats))} FPS`;frames=0;lastStats=now;}

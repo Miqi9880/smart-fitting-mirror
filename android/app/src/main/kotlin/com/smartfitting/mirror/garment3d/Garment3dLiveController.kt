@@ -63,6 +63,7 @@ internal class Garment3dLiveController(
                 if(pose?.sessionId==frame.metadata.sessionId && pose.frameId==frame.metadata.frameId) offer(frame,pose.points)
             },{ status ->
                 if(session==id && status.state==SourceState.ERROR) { stop();changed("sample",status.message) }
+                else if(session==id && status.state==SourceState.READY)changed(mode,"本地真人驱动 · 相机已连接 · 不上传照片")
             })
         }
     }
@@ -86,6 +87,7 @@ internal class Garment3dLiveController(
                 }
                 val ls=points.getValue(KeypointName.LEFT_SHOULDER);val rs=points.getValue(KeypointName.RIGHT_SHOULDER)
                 canvas.drawCircle((ls.x+rs.x)*320,(ls.y+rs.y)*240-42,25f,paint)
+                paint.strokeWidth=20f;canvas.drawLine((ls.x+rs.x)*320,(ls.y+rs.y)*240-25,(ls.x+rs.x)*320,(ls.y+rs.y)*240,paint)
                 paint.textSize=19f;paint.color=Color.rgb(43,69,53);canvas.drawText("CG POSE REPLAY / NOT A PERSON",18f,30f,paint)
                 val keypoints=Keypoints.fromMap(points.mapValues { (_,p)->Landmark(p.x,p.y,p.confidence) })
                 val frame=FrameLease(VisionFrame(sessionId=id,frameId=++counter,timestampMs=SystemClock.elapsedRealtime(),

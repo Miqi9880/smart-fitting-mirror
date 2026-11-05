@@ -4,6 +4,7 @@ import * as THREE from 'three';
 import {buildGarment,createRig} from '../template.mjs';
 import {BODY} from '../rig.mjs';
 import {solveLivePose,applyLiveRig,LiveFrameOrder,LiveGarmentDeformer} from '../live-driver.mjs';
+import {edgeStrain} from '../quality.mjs';
 
 function fixture({left=0,right=0,forward=0,shift=0,scale=300,sequence=1}={}){
   const points={},point=v=>[.5+shift+v.x*scale/640,.76-(v.y-.02)*scale/480,-v.z*scale/640,.99];
@@ -49,13 +50,43 @@ test('frame order refuses old sessions, duplicate frames and arrivals after stop
 });
 test('runtime deformation stays finite with independently moving arms across continuous unbaked poses',()=>{
   const geometry=buildGarment(),mesh=createRig(geometry),deformer=new LiveGarmentDeformer(mesh);
-  let previous,maxMove=0;
+  let previous,maxMove=0,maxP99=0,maxEdge=0;
   for(let f=0;f<45;f++){
     const solution=solveLivePose(fixture({left:.8*Math.sin(f/44*Math.PI/2),right:.3*Math.sin(f/44*Math.PI),forward:.45*f/44}));
     assert.ok(solution.valid);const current=deformer.update(solution);
     for(let i=0;i<current.length;i++){assert.ok(Number.isFinite(current[i]));assert.ok(Math.abs(current[i])<1.5);}
     if(previous)for(let i=0;i<current.length;i+=3)maxMove=Math.max(maxMove,Math.hypot(current[i]-previous[i],current[i+1]-previous[i+1],current[i+2]-previous[i+2]));
     previous=current.slice();
+    const strain=edgeStrain(geometry,current);maxP99=Math.max(maxP99,strain.p99);maxEdge=Math.max(maxEdge,strain.max);
   }
   assert.ok(maxMove<.06,`mesh jumped ${maxMove}m within a smooth fixture`);
+  assert.ok(maxP99<1.10,`bulk cloth stretch ${maxP99}`);
+  assert.ok(maxEdge<1.30,`localized cloth stretch ${maxEdge}`);
+});
+test('a shared image-z bias cannot tip the torso or move the back collar over the neck',()=>{
+  const base=fixture(),biased=fixture();
+  for(const name of ['left_shoulder','right_shoulder','left_elbow','right_elbow','left_wrist','right_wrist'])biased.points[name][2]+=.3;
+  const a=solveLivePose(base),b=solveLivePose(biased);assert.ok(a.valid&&b.valid);
+  for(let i=0;i<16;i++)assert.ok(Math.abs(a.matrix.elements[i]-b.matrix.elements[i])<1e-8);
+});
+test('experimental z noise cannot fold a fully projected arm forward or place its occluder arbitrarily in front',()=>{
+  const a=solveLivePose(fixture({left:1.1})),packet=fixture({left:1.1});
+  packet.points.left_elbow[2]+=.5;packet.points.left_wrist[2]-=.5;
+  const b=solveLivePose(packet);assert.ok(a.valid&&b.valid);
+  assert.ok(a.arms.left.shoulder.angleTo(b.arms.left.shoulder)<.01);
+  assert.ok(Math.abs(b.armDepth.left.elbow)<1);
+});
+test('raised-arm corrections bound fabric stretch and limit abrupt pose jumps',()=>{
+  const geometry=buildGarment(),mesh=createRig(geometry),driver=new LiveGarmentDeformer(mesh);
+  let p99=0,maximum=0;
+  for(let f=0;f<75;f++){
+    const packet=fixture({left:1.4*Math.sin(f/74*Math.PI)**2,right:.9*Math.sin(f/74*Math.PI*.8)**2,forward:.30});
+    packet.points.left_elbow[2]+=(f%2?1:-1)*.22;
+    const s=solveLivePose(packet);assert.ok(s.valid);
+    const previous=mesh.skeleton.bones.find(b=>b.name==='left_shoulder').quaternion.clone();
+    const positions=driver.update(s,.1),strain=edgeStrain(geometry,positions);
+    if(f>0)assert.ok(previous.angleTo(mesh.skeleton.bones.find(b=>b.name==='left_shoulder').quaternion)<=.30001);
+    p99=Math.max(p99,strain.p99);maximum=Math.max(maximum,strain.max);
+  }
+  assert.ok(p99<1.10,`raised-arm bulk stretch ${p99}`);assert.ok(maximum<1.30,`raised-arm local stretch ${maximum}`);
 });
