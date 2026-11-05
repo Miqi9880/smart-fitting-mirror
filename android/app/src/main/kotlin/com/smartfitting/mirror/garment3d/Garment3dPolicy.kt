@@ -12,6 +12,7 @@ internal object Garment3dPolicy {
         "viewer.mjs" to "text/javascript", "viewer-lifecycle.mjs" to "text/javascript",
         "rig.mjs" to "text/javascript", "motion-player.mjs" to "text/javascript",
         "live-view.mjs" to "text/javascript", "live-driver.mjs" to "text/javascript", "cloth.mjs" to "text/javascript",
+        "cloth-material.mjs" to "text/javascript",
         "vendor/three.module.js" to "text/javascript", "vendor/three.core.js" to "text/javascript",
         "vendor/addons/controls/OrbitControls.js" to "text/javascript",
         "vendor/addons/loaders/GLTFLoader.js" to "text/javascript",

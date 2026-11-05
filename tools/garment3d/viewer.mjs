@@ -5,6 +5,7 @@ import {BODY,setPose} from './rig.mjs';
 import {MotionPlayer} from './motion-player.mjs';
 import {ViewerLifecycle} from './viewer-lifecycle.mjs';
 import {LiveView} from './live-view.mjs';
+import {photoClothMaterial} from './cloth-material.mjs';
 
 const host=document.querySelector('#viewport'),status=document.querySelector('#load-status');
 const scene=new THREE.Scene(),avatar=new THREE.Group(),body=new THREE.Group();
@@ -86,7 +87,7 @@ const resize=new ResizeObserver(()=>{
   if(activeView)setView(activeView);
 });resize.observe(host);
 let frames=0,lastStats=performance.now(),elapsed=0;
-const live=new LiveView({host,scene,avatar,body,ground,pedestal,orbit,status});
+const live=new LiveView({host,scene,avatar,body,ground,pedestal,orbit,status,renderer});
 window.garment3dLive=Object.freeze({
   begin:config=>live.begin(config),push:packet=>live.push(packet),active:()=>live.active,end:()=>{live.end();return true;},
 });
@@ -122,7 +123,7 @@ try{
   if(lifecycle.disposed)throw new Error('Viewer already closed');
   const parts=[];gltf.scene.traverse(o=>{if(o.isSkinnedMesh)parts.push(o);});if(!parts.length)throw new Error('Missing rig');
   proxy=parts[0];bones=proxy.skeleton.bones;const geometry=proxy.geometry.clone(),indices=[],materials=[];geometry.clearGroups();
-  for(const p of parts){geometry.addGroup(indices.length,p.geometry.index.count,materials.length);indices.push(...p.geometry.index.array);materials.push(p.material);p.visible=false;}
+  for(const p of parts){geometry.addGroup(indices.length,p.geometry.index.count,materials.length);indices.push(...p.geometry.index.array);materials.push(photoClothMaterial(p.material));p.visible=false;}
   geometry.setIndex(indices);geometry.setAttribute('position',geometry.attributes.position.clone());
   // GLTF primitives have separate index buffers. Runtime constraints need the
   // whole sewn shell, and a rest-position copy that output deformation cannot mutate.
@@ -133,7 +134,7 @@ try{
   if(motion.version!==2||motion.stride!==motion.vertices*3||motion.vertices!==geometry.attributes.position.count||buffer.byteLength!==motion.byte_length||data.length!==motion.frame_count*motion.stride)throw new Error('Motion topology mismatch');
   if(summary.geometry_sha256!==motion.geometry_sha256)throw new Error('Stale motion data; rebuild model and motions together');
   player=new MotionPlayer(motion.clips);
-  live.ready(proxy,garment);
+  live.ready(proxy,garment,data.slice(motion.clips.rest.start*motion.stride,(motion.clips.rest.start+1)*motion.stride));
   host.dataset.sceneState='ready';
   document.querySelector('#controls').disabled=false;status.textContent='合成人台 · 预计算姿态约束修形';
   document.querySelector('#mesh-info').textContent=`${summary.vertices.toLocaleString()} 顶点 · ${summary.triangles.toLocaleString()} 三角面 · 站立／抬臂／前伸固定动作复核`;
