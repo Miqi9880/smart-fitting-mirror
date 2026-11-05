@@ -5,7 +5,22 @@ import {BODY,setPose} from './rig.mjs';
 import {MotionPlayer} from './motion-player.mjs';
 import {ViewerLifecycle} from './viewer-lifecycle.mjs';
 import {LiveView} from './live-view.mjs';
-import {photoClothMaterial} from './cloth-material.mjs';
+
+// The source is an already-lit photo, not calibrated albedo. Keep its colour
+// and add only bounded matte shape cues instead of PBR highlights and ACES.
+function photoClothMaterial(source){
+  const material=new THREE.MeshBasicMaterial({map:source.map,color:source.color,side:THREE.DoubleSide,toneMapped:false});
+  material.name=source.name+'_photo_colour';
+  material.onBeforeCompile=shader=>{
+    shader.vertexShader='varying vec3 vClothNormal;\n'+shader.vertexShader;
+    shader.vertexShader=shader.vertexShader.replace('#include <begin_vertex>',
+      '#include <begin_vertex>\nvClothNormal=normalize(normalMatrix*normal);');
+    shader.fragmentShader='varying vec3 vClothNormal;\n'+shader.fragmentShader;
+    shader.fragmentShader=shader.fragmentShader.replace('#include <color_fragment>',
+      '#include <color_fragment>\nfloat clothShade=0.80+0.20*abs(dot(normalize(vClothNormal),normalize(vec3(0.15,0.25,1.0))));\ndiffuseColor.rgb*=clothShade;');
+  };
+  material.customProgramCacheKey=()=> 'photo-cloth-bounded-light-v1';return material;
+}
 
 const host=document.querySelector('#viewport'),status=document.querySelector('#load-status');
 const scene=new THREE.Scene(),avatar=new THREE.Group(),body=new THREE.Group();
@@ -153,7 +168,8 @@ function renderFrame(now,seconds){
     const yaw=Number(document.querySelector('#yaw').value)*Math.PI/180;
     const targetYaw=isTurn&&current.pose==='rest'?(loop?Math.sin(elapsed*.6)*yaw:yaw):0;
     avatar.rotation.y+=(targetYaw-avatar.rotation.y)*(1-Math.exp(-seconds*5));
-    syncBody();status.textContent=isTurn?`合成人台转身 ${Math.round(avatar.rotation.y*180/Math.PI)}° · 背面近似`:'合成人台 · 预计算姿态约束修形';
+    syncBody();const message=isTurn?`合成人台转身 ${Math.round(avatar.rotation.y*180/Math.PI)}° · 背面近似`:'合成人台 · 预计算姿态约束修形';
+    if(status.textContent!==message)status.textContent=message;
   }
   if(!liveFrame)orbit.update();renderer.render(scene,liveFrame?live.camera:camera);frames++;
   if(now-lastStats>1200){document.querySelector('#fps').textContent=`${document.documentElement.classList.contains('android-host')?'当前渲染':'桌面'} ${Math.round(frames*1000/(now-lastStats))} FPS`;frames=0;lastStats=now;}

@@ -28,6 +28,7 @@ export class LiveView {
     });
   }
   ready(proxy,garment,standing){this.proxy=proxy;this.garment=garment;this.standing=standing;}
+  message(value){if(this.status.textContent!==value)this.status.textContent=value;}
   begin(config){
     if(!this.proxy||!['camera','replay'].includes(config?.source)||typeof config.session!=='string'||!config.session.length||config.session.length>80)return false;
     let deformer;try{deformer=new LiveGarmentDeformer(this.proxy,this.standing);}catch{return false;}
@@ -37,7 +38,7 @@ export class LiveView {
     this.ground.visible=false;this.pedestal.visible=false;this.scene.background=null;this.orbit.enabled=false;
     this.renderer.shadowMap.enabled=false;this.renderer.setPixelRatio(1);
     document.documentElement.classList.add('live-mode');this.host.dataset.driverMode=config.source;
-    this.status.textContent=config.source==='replay'?'姿态回放（非真人）· 等待输入':'本地真人驱动 · 等待摄像头画面';
+    this.message(config.source==='replay'?'姿态回放（非真人）· 等待输入':'本地真人驱动 · 等待摄像头画面');
     return true;
   }
   push(packet){
@@ -80,7 +81,7 @@ export class LiveView {
   render(now){
     if(!this.active)return false;
     if(now-this.lastArrival>(this.hasFrame?1200:15000)){
-      this.clearImage();this.status.textContent='画面已中断，上衣与旧画面已清除；请停止后重试';return true;
+      this.clearImage();this.message('画面已中断，上衣与旧画面已清除；请停止后重试');return true;
     }
     if(!this.packet)return true;
     const p=this.packet,scale=Math.min(this.host.clientWidth/p.width,this.host.clientHeight/p.height);
@@ -91,14 +92,14 @@ export class LiveView {
     const solution=solveLivePose(p);this.host.dataset.liveSequence=String(p.sequence);this.host.dataset.tracked=String(solution.valid);
     this.host.dataset.activePose='live';this.host.dataset.frame=String(p.sequence);
     const prefix=p.source==='replay'?'姿态回放（非真人）':'本地真人驱动（实验）';
-    if(!solution.valid){this.avatar.visible=false;this.occluders.visible=false;this.torsoDepth.visible=false;this.status.textContent=`${prefix} · ${solution.reason}`;this.deformer.fresh=true;return true;}
+    if(!solution.valid){this.avatar.visible=false;this.occluders.visible=false;this.torsoDepth.visible=false;this.message(`${prefix} · ${solution.reason}`);this.deformer.fresh=true;return true;}
     this.avatar.matrix.copy(solution.matrix);
     if(p.mirrored)this.avatar.matrix.premultiply(new THREE.Matrix4().makeScale(-1,1,1));
     this.avatar.matrixWorldNeedsUpdate=true;this.avatar.visible=true;
     this.avatar.updateMatrixWorld(true);this.torsoDepth.visible=true;
     let output;
     try{output=this.deformer.update(solution,Math.min(.16,(now-(this.lastSolve??now-100))/1000));this.lastSolve=now;}
-    catch(error){console.error('3D pose solve failed');this.end();this.status.textContent='3D 驱动暂不可用，已清除画面，请停止后重试';return true;}
+    catch(error){console.error('3D pose solve failed');this.end();this.message('3D 驱动暂不可用，已清除画面，请停止后重试');return true;}
     const positions=this.garment.geometry.attributes.position;
     positions.array.set(output);positions.needsUpdate=true;this.garment.geometry.computeVertexNormals();
     this.host.dataset.mirrored=String(p.mirrored);
@@ -115,7 +116,7 @@ export class LiveView {
       arm.cylinder.scale.set(radius,d.length(),radius);arm.ends[0].position.copy(a);arm.ends[1].position.copy(b);
       for(const end of arm.ends)end.scale.setScalar(radius);
     }
-    this.status.textContent=`${prefix} · 上衣随人体姿态变形 · 手臂遮挡为近似`;
+    this.message(`${prefix} · 上衣随人体姿态变形 · 手臂遮挡为近似`);
     return true;
   }
   drawKeypoints(p){

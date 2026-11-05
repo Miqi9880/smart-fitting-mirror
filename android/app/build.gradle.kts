@@ -20,7 +20,7 @@ android {
 // Optional local sample pack. Never download or commit brand images in CI.
 // A source-only checkout builds normally and shows an explicit missing-pack state.
 val garmentSource = rootProject.file("../tools/garment3d")
-val garmentStatic = listOf("index.html", "style.css", "viewer.mjs", "viewer-lifecycle.mjs", "rig.mjs", "motion-player.mjs", "live-view.mjs", "live-driver.mjs", "cloth.mjs", "cloth-material.mjs")
+val garmentStatic = listOf("index.html", "style.css", "viewer.mjs", "viewer-lifecycle.mjs", "rig.mjs", "motion-player.mjs", "live-view.mjs", "live-driver.mjs", "cloth.mjs")
 val garmentData = listOf("blue-tee.glb", "source.png", "sample.json", "motion.json", "motion.bin")
 val garmentVendor = mapOf(
     "build/three.module.js" to "vendor/three.module.js",
