@@ -6,7 +6,7 @@
   "scripts": {
     "build": "node build-sample.mjs && node bake-motion.mjs",
     "build:model": "node build-sample.mjs",
-    "test": "node --test test/garment.test.mjs test/motion-player.test.mjs test/texture-uv.test.mjs test/viewer-lifecycle.test.mjs",
+    "test": "node --test test/garment.test.mjs test/motion-player.test.mjs test/texture-uv.test.mjs test/viewer-lifecycle.test.mjs test/live-driver.test.mjs",
     "test:sample": "node --test test/export.test.mjs test/baked-motion.test.mjs",
     "test:motion": "node --test test/solver.test.mjs"
   },

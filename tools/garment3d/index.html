@@ -33,7 +33,7 @@
     document.documentElement.classList.toggle('android-host',new URLSearchParams(location.search).get('host')==='android');
     if(document.documentElement.classList.contains('android-host')){
       document.querySelector('.stage-bottom span:nth-child(2)').textContent='单指旋转 · 双指缩放';
-      document.querySelector('.limits p:nth-of-type(2)').textContent='当前为合成人台动作展示，尚未接入真人姿态与遮挡；目标镜子性能另行实测。';
+      document.querySelector('.limits p:nth-of-type(2)').textContent='上方可切换连续姿态回放或显式开启本地真人驱动。真人模式仍为实验，尺寸与手臂遮挡为近似；目标镜子的贴合与性能需另行实测。';
     }
     if(!HTMLScriptElement.supports||!HTMLScriptElement.supports('importmap')){
       document.querySelector('#load-status').textContent='当前浏览组件不支持模块加载，请更新系统 WebView 或返回常规试衣。';

@@ -4,13 +4,14 @@ import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
 import {BODY,setPose} from './rig.mjs';
 import {MotionPlayer} from './motion-player.mjs';
 import {ViewerLifecycle} from './viewer-lifecycle.mjs';
+import {LiveView} from './live-view.mjs';
 
 const host=document.querySelector('#viewport'),status=document.querySelector('#load-status');
 const scene=new THREE.Scene(),avatar=new THREE.Group(),body=new THREE.Group();
 scene.background=new THREE.Color('#e9eeea');scene.add(avatar);avatar.add(body);
 let renderer,proxy,bones,garment,motion,data,player,pose='rest';
 const camera=new THREE.PerspectiveCamera(35,1,.02,30);
-try{renderer=new THREE.WebGLRenderer({antialias:true});}
+try{renderer=new THREE.WebGLRenderer({antialias:true,alpha:true});}
 catch(error){host.dataset.sceneState='unsupported';status.textContent='无法启动 WebGL2，请更新浏览器／系统 WebView，或返回常规试衣。';throw error;}
 renderer.setPixelRatio(Math.min(devicePixelRatio,2));renderer.shadowMap.enabled=true;
 renderer.shadowMap.type=THREE.PCFSoftShadowMap;renderer.outputColorSpace=THREE.SRGBColorSpace;
@@ -85,14 +86,20 @@ const resize=new ResizeObserver(()=>{
   if(activeView)setView(activeView);
 });resize.observe(host);
 let frames=0,lastStats=performance.now(),elapsed=0;
+const live=new LiveView({host,scene,avatar,body,ground,pedestal,orbit,status});
+window.garment3dLive=Object.freeze({
+  begin:config=>live.begin(config),push:packet=>live.push(packet),active:()=>live.active,end:()=>{live.end();return true;},
+});
 const lifecycle=new ViewerLifecycle({setLoop:callback=>renderer.setAnimationLoop(callback),render:renderFrame,changed:state=>{
   host.dataset.playback=state;frames=0;lastStats=performance.now();
+  if(state!=='running'&&live.active)live.end();
 }});
 lifecycle.setVisible(!document.hidden);lifecycle.setHostActive(window.garment3dHostActive!==false);
 document.addEventListener('visibilitychange',()=>lifecycle.setVisible(!document.hidden));
 window.addEventListener('garment3d-host-state',()=>lifecycle.setHostActive(window.garment3dHostActive!==false));
 function disposeScene(){
   if(lifecycle.disposed)return;
+  live.end();delete window.garment3dLive;
   lifecycle.dispose();resize.disconnect();orbit.dispose();
   scene.traverse(object=>{
     object.geometry?.dispose();
@@ -117,19 +124,24 @@ try{
   proxy=parts[0];bones=proxy.skeleton.bones;const geometry=proxy.geometry.clone(),indices=[],materials=[];geometry.clearGroups();
   for(const p of parts){geometry.addGroup(indices.length,p.geometry.index.count,materials.length);indices.push(...p.geometry.index.array);materials.push(p.material);p.visible=false;}
   geometry.setIndex(indices);geometry.setAttribute('position',geometry.attributes.position.clone());
+  // GLTF primitives have separate index buffers. Runtime constraints need the
+  // whole sewn shell, and a rest-position copy that output deformation cannot mutate.
+  proxy.geometry=geometry.clone();
   garment=new THREE.Mesh(geometry,materials);garment.castShadow=true;garment.receiveShadow=true;garment.frustumCulled=false;
   gltf.scene.add(garment);gltf.scene.position.y=BODY.offset;avatar.add(gltf.scene);
   motion=manifest;data=new Float32Array(buffer);
   if(motion.version!==2||motion.stride!==motion.vertices*3||motion.vertices!==geometry.attributes.position.count||buffer.byteLength!==motion.byte_length||data.length!==motion.frame_count*motion.stride)throw new Error('Motion topology mismatch');
   if(summary.geometry_sha256!==motion.geometry_sha256)throw new Error('Stale motion data; rebuild model and motions together');
   player=new MotionPlayer(motion.clips);
+  live.ready(proxy,garment);
   host.dataset.sceneState='ready';
   document.querySelector('#controls').disabled=false;status.textContent='合成人台 · 预计算姿态约束修形';
   document.querySelector('#mesh-info').textContent=`${summary.vertices.toLocaleString()} 顶点 · ${summary.triangles.toLocaleString()} 三角面 · 站立／抬臂／前伸固定动作复核`;
 }catch(error){if(!lifecycle.disposed){console.error(error);host.dataset.sceneState='error';status.textContent='动作数据加载失败，请重新打包模型与动作资源。';}}
 function renderFrame(now,seconds){
   elapsed+=seconds;
-  if(garment&&motion){
+  const liveFrame=live.render(now);
+  if(!liveFrame&&garment&&motion){
     const current=player.advance(seconds),isTurn=pose==='turn',clip=motion.clips[current.pose],loop=document.querySelector('#animate').checked,frame=current.frame;
     host.dataset.activePose=current.pose;host.dataset.frame=frame.toFixed(3);
     const low=Math.floor(frame),high=Math.min(clip.count-1,low+1),mix=frame-low,output=garment.geometry.attributes.position.array;
@@ -142,6 +154,6 @@ function renderFrame(now,seconds){
     avatar.rotation.y+=(targetYaw-avatar.rotation.y)*(1-Math.exp(-seconds*5));
     syncBody();status.textContent=isTurn?`合成人台转身 ${Math.round(avatar.rotation.y*180/Math.PI)}° · 背面近似`:'合成人台 · 预计算姿态约束修形';
   }
-  orbit.update();renderer.render(scene,camera);frames++;
+  if(!liveFrame)orbit.update();renderer.render(scene,liveFrame?live.camera:camera);frames++;
   if(now-lastStats>1200){document.querySelector('#fps').textContent=`${document.documentElement.classList.contains('android-host')?'当前渲染':'桌面'} ${Math.round(frames*1000/(now-lastStats))} FPS`;frames=0;lastStats=now;}
 }

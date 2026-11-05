@@ -2,7 +2,7 @@ package com.smartfitting.mirror.garment3d
 
 import java.net.URI
 
-/** Fixed, offline-only origin. No file/content URLs, remote fallback or JS bridge. */
+/** Fixed, offline-only origin. No file/content URLs, remote fallback or page-to-native interface. */
 internal object Garment3dPolicy {
     const val ORIGIN = "https://appassets.androidplatform.net"
     const val PREFIX = "/garment3d/"
@@ -11,6 +11,7 @@ internal object Garment3dPolicy {
         "index.html" to "text/html", "style.css" to "text/css",
         "viewer.mjs" to "text/javascript", "viewer-lifecycle.mjs" to "text/javascript",
         "rig.mjs" to "text/javascript", "motion-player.mjs" to "text/javascript",
+        "live-view.mjs" to "text/javascript", "live-driver.mjs" to "text/javascript", "cloth.mjs" to "text/javascript",
         "vendor/three.module.js" to "text/javascript", "vendor/three.core.js" to "text/javascript",
         "vendor/addons/controls/OrbitControls.js" to "text/javascript",
         "vendor/addons/loaders/GLTFLoader.js" to "text/javascript",
