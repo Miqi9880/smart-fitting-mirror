@@ -8,8 +8,8 @@ android {
         applicationId = "com.smartfitting.mirror"
         minSdk = 23
         targetSdk = 35
-        versionCode = 13
-        versionName = "0.4.0-mock"
+        versionCode = 14
+        versionName = "0.4.1-mock"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
@@ -20,7 +20,7 @@ android {
 // Optional local sample pack. Never download or commit brand images in CI.
 // A source-only checkout builds normally and shows an explicit missing-pack state.
 val garmentSource = rootProject.file("../tools/garment3d")
-val garmentStatic = listOf("index.html", "style.css", "viewer.mjs", "viewer-lifecycle.mjs", "rig.mjs", "motion-player.mjs")
+val garmentStatic = listOf("index.html", "style.css", "viewer.mjs", "viewer-lifecycle.mjs", "rig.mjs", "motion-player.mjs", "live-view.mjs", "live-driver.mjs", "cloth.mjs")
 val garmentData = listOf("blue-tee.glb", "source.png", "sample.json", "motion.json", "motion.bin")
 val garmentVendor = mapOf(
     "build/three.module.js" to "vendor/three.module.js",
