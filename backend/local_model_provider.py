@@ -116,6 +116,11 @@ class LocalModelProvider:
         self.base_url = _validated_endpoint(base_url)
         self.allow_mock_for_tests = allow_mock_for_tests
         self.connection_factory = connection_factory
+        self.submission_observer: Callable[[str], None] | None = None
+
+    def set_submission_observer(self, observer: Callable[[str], None]) -> None:
+        """Report only aggregate submission milestones to the service."""
+        self.submission_observer = observer
 
     def generate(
         self,
@@ -153,12 +158,16 @@ class LocalModelProvider:
                 "garment_image": ("garment." + garment_type.split("/", 1)[1], garment_bytes, garment_type),
             },
         ).prepare()
+        if self.submission_observer is not None:
+            self.submission_observer("provider_submit_attempt")
         with self._request("POST", path, budget, body=request.body, headers=request.headers) as response:
             if response.status != 200:
                 self._raise_http_failure(response, budget)
             content_type = response.getheader("Content-Type", "").split(";", 1)[0].strip().lower()
             if content_type != "image/png":
                 raise ProviderFailure("PROVIDER_INVALID_RESULT", "本地试衣模型返回的不是PNG图片")
+            if self.submission_observer is not None:
+                self.submission_observer("provider_submit_accepted")
             result_bytes = self._read_bounded(
                 response, MAX_RESULT_BYTES, budget, overflow_code="PROVIDER_INVALID_RESULT"
             )

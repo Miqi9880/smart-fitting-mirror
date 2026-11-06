@@ -7,7 +7,7 @@
 | 人员／长期 Issue | 下周主要交付 | 提前完成后 |
 | --- | --- | --- |
 | Miqi9880／[#3](https://github.com/Miqi9880/smart-fitting-mirror/issues/3)、[#26](https://github.com/Miqi9880/smart-fitting-mirror/issues/26) | FLUX 回环服务已部署并通过获准样例联调，接着验 App 生成流程和镜子现场 | 二维贴合复审及素材支持 |
-| haiyangniu191-design／[#5](https://github.com/Miqi9880/smart-fitting-mirror/issues/5) | 复用 #55，显式接入生成任务并验证成功与失败路径；先用本机 stub | 实际联通后盘点授权视频目录 |
+| haiyangniu191-design／[#5](https://github.com/Miqi9880/smart-fitting-mirror/issues/5) | 本地提供方 CLI、生成任务接线、匿名统计分类及 stub 成功／失败／超时／会话清理验证已完成，待审分支见[接入验证报告](reports/local-model-integration-2026-11-06.md) | 实际端到端由负责人用获准样例联测后，盘点授权视频目录 |
 | lyf-bee／[#6](https://github.com/Miqi9880/smart-fitting-mirror/issues/6) | #60 由负责人复审；从合成输入确认并改善一款半裙的贴合，或交归因报告 | 按复审结果收尾，明确其他贴合问题所缺输入 |
 | yyyrrrxxx／[#7](https://github.com/Miqi9880/smart-fitting-mirror/issues/7) | 视频页读屏、焦点和大字号查漏；模拟器受阻时先交静态修复与待跑清单 | 用现有 MOCK 回归生成等待、失败、结果切换 |
 
