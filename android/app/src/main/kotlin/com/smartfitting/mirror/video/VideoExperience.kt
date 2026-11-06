@@ -51,7 +51,7 @@ class VideoExperience(
     private val back = object : OnBackPressedCallback(false) {
         override fun handleOnBackPressed() {
             interacted()
-            if (panel.isPlayerVisible()) panel.releasePlayer() else hide()
+            if (panel.isPlayerVisible()) panel.returnToList() else hide()
         }
     }
     init {
@@ -154,6 +154,10 @@ class VideoExperience(
     fun hide() {
         save(); memory.open = false; query?.cancel(); query = null; panel.clearContent()
         panel.visibility = View.GONE; fittingPage.visibility = View.VISIBLE; back.isEnabled = false
+        fittingPage.post {
+            val entry = fittingPage.findViewWithTag<View>("fitting.videos")
+            if (foreground && !memory.open && entry?.isShown == true && entry.isEnabled) entry.requestFocus()
+        }
         if (foreground && model.endReason == null) resumePreview()
     }
     fun clear() {
