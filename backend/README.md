@@ -4,7 +4,15 @@
 
 2026-10-29视频HTTP升级0.4.1，推荐JSON保持0.4.0兼容。`video_contracts.py`提供共享DTO；目录已有7条Pexels授权参考内容，按[安装说明](assets/videos/README.md)安装本地媒体后可播放。未装包不返回缺文件的候选。公共视频／封面支持GET、HEAD和字节Range，不携带游客凭证。按[正式视频接口](../docs/interfaces/video-recommendation.md)；实现边界与检查见[本地记录](../docs/reports/video-library-route-2026-10-29.md)。COS/Aidge仍按负责人当前决定暂停，不为视频接口启用付费服务。
 
-[`LocalModelProvider`](local_model_provider.py) 将通过校验的 PNG／JPEG 发送给私有回环模型服务，连接和推理共用任务时限。已通过 SSH 转发与真实 FLUX 工作者完成获准样例联调。公共 CLI 的显式接入由 #5 继续，默认 MOCK。服务启停和实测见 [FLUX 部署记录](../docs/reports/flux-worker-2026-11-06.md)。
+[`LocalModelProvider`](local_model_provider.py) 将通过校验的 PNG／JPEG 发送给私有回环模型服务，连接和推理共用任务时限。已通过 SSH 转发与真实 FLUX 工作者完成获准样例联调；公共 CLI 现在支持显式选择本地提供方，默认仍为 MOCK。服务启停和实测见 [FLUX 部署记录](../docs/reports/flux-worker-2026-11-06.md)。
+
+显式启动本地模型提供方（需在同一电脑运行模型服务，或先由负责人建立 SSH 本地转发）：
+
+```powershell
+.venv312\Scripts\python.exe -m backend --provider local-model --local-model-url http://127.0.0.1:8787
+```
+
+命令不读取 Aidge／COS 配置；只支持上衣。默认不带参数时仍使用 MOCK。私有模型调用在匿名统计中标记为 `provider=local-model`、`mode=real`；模型标识和费用仍记为未知。
 
 ## 启动
 

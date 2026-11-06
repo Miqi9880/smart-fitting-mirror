@@ -181,7 +181,7 @@ class Store:
         if self.metrics is None:
             return
         provider = "mock" if is_mock else getattr(self.provider, "name", "unknown")
-        if provider not in {"mock", "aidge-cos"}:
+        if provider not in {"mock", "aidge-cos", "local-model"}:
             provider = "unknown"
         model = "mock-static" if is_mock else "unknown"
         try:
