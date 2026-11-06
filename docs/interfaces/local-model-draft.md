@@ -1,10 +1,10 @@
 # 本地试衣模型内部协议草案V0.1
 
-2026-11-01为[11/2计划](../weekly-2026-11-02.md)协调负责人模型服务与后端适配组件。**这是未上线的内部草案**，不是已实现路由、不是Android公共合同，也不表示权重已部署。公共HTTP仍0.4.1，`TryOnProvider.generate(model_image, garment_image, cloth_type, budget)`及`ProviderResult(data,width,height)`不变。首期只做上衣`tops`。
+2026-11-06 已按此内部协议部署私有 FLUX 工作者并完成验证，见[部署记录](../reports/flux-worker-2026-11-06.md)。公共 HTTP 沿用 0.4.1，`TryOnProvider.generate(model_image, garment_image, cloth_type, budget)` 与 `ProviderResult(data,width,height)` 保持。首期支持单件上衣 `tops`。
 
 ## 连接边界
 
-模型服务由负责人建立独立环境，首期只绑定服务器loopback。后端通过显式配置的loopback地址或负责人SSH转发访问；配置示例`http://127.0.0.1:8787`只是计划端口，本轮没有启动。适配组件默认未配置、不自动注册到CLI／公共服务，实际接入另开PR。
+模型服务由负责人在独立环境启停，只绑定服务器 `127.0.0.1:8787`。后端通过同主机回环或负责人 SSH 转发访问。已用显式注入的适配组件通过联调；公共 CLI 接入由 #5 继续。
 
 不给前端任意指定内部地址，不发送游客Token、session_id、公开临时URL或文件系统路径。不为这条本地链路使用COS／Aidge，也不把远端服务暴露为无鉴权公网接口。只有负责人处理服务器凭证和真实数据授权；成员用本地stub即可。
 
