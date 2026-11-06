@@ -156,6 +156,11 @@ class TryOnActivity : ComponentActivity() {
         root.addView(outfitStatus)
         videoButton = button("查看当前搭配的相关视频", "fitting.videos") { videos.show() }
         root.addView(videoButton)
+        root.addView(button("3D 人台样件（实验，不开启摄像头）", "fitting.garment3d") {
+            pendingPermission = false; model.running = false; model.visionFailure = null; stopVision()
+            if (model.previewFullscreen) setPreviewFullscreen(false)
+            startActivity(Intent(this, com.smartfitting.mirror.garment3d.Garment3dActivity::class.java))
+        }.apply { if (guestRoute) visibility = View.GONE })
         root.addView(row(button("加入搭配","fitting.outfit.add") {
             model.state.value.selected?.let { model.outfit = OutfitSelection.add(model.outfit,it) }; renderOutfit()
         },button("移除本类","fitting.outfit.remove") {
@@ -204,10 +209,13 @@ class TryOnActivity : ComponentActivity() {
             text = "上衣避开头部（近似）"; tag = "fitting.head.protection"; isChecked = model.protectHead
             setOnCheckedChangeListener { _, value -> model.protectHead = value; preview.protectHead = value }
         })
-        fitControls = FitControls(this) { category, fit ->
+        fitControls = FitControls(this, { category, fit ->
             model.setFit(category, fit)
             preview.outfitFits = model.outfitFits
-        }
+        }, { category ->
+            model.fitTarget = category; model.fitTargetExplicit = true
+            renderFitControls()
+        })
         root.addView(Switch(this).apply {
             text = "记住本机贴合设置"; tag = "fitting.fit.remember"
             contentDescription = "开启后仅在本机按品类保存宽度、纵向和上下偏移数值，不保存人像、关键点或会话"
@@ -346,7 +354,8 @@ class TryOnActivity : ComponentActivity() {
         pendingPermission = false; model.running = false; model.visionFailure = null; stopVision()
         staticImage.clear(); comparison.clear(); model.resultComparisonMode = ResultComparisonMode.SIDE_BY_SIDE
         browser?.dismiss(); browser = null; cameraDialog?.dismiss(); cameraDialog = null
-        model.outfit = emptyMap(); model.lastOutfitSelection = null; model.catalogAssets = emptyList(); model.catalogQuery = ""
+        model.outfit = emptyMap(); model.fitTarget = null; model.fitTargetExplicit = false; model.lastOutfitSelection = null
+        model.catalogAssets = emptyList(); model.catalogQuery = ""
         if (model.controller?.state?.value?.phase != FittingPhase.CLOSED) model.controller?.end()
         if (guestRoute) returnToStandby()
     }
@@ -479,9 +488,10 @@ class TryOnActivity : ComponentActivity() {
             if (model.previewFullscreen) setPreviewFullscreen(false)
             model.running = false; model.visionFailure = null; stopVision(); comparison.clear()
             model.resultComparisonMode = ResultComparisonMode.SIDE_BY_SIDE
-            model.catalogAssets = emptyList(); model.catalogQuery = ""; model.outfit = emptyMap(); model.lastOutfitSelection = null
+            model.catalogAssets = emptyList(); model.catalogQuery = ""; model.outfit = emptyMap()
+            model.fitTarget = null; model.fitTargetExplicit = false; model.lastOutfitSelection = null
             outfitStatus.text = "当前搭配已清空"; browser?.dismiss(); browser = null
-            fitControls.render(null,OutfitFit())
+            fitControls.render(emptyList(),null,OutfitFit())
             assetStatus.text = "会话结束，服装与本地图像已清理"
         } else {
             val current = value.garments.associateBy { it.garmentId }
@@ -507,9 +517,18 @@ class TryOnActivity : ComponentActivity() {
     }
     private fun renderOutfit() {
         outfitStatus.text = "当前搭配：" + model.outfit.values.joinToString(" ＋ ") { "${it.category.label}：${it.name}" }.ifBlank { "无" }
-        val category = model.state.value.selected?.category
-        fitControls.render(category,category?.let { model.outfitFits[it] ?: OutfitFit.defaultFor(it) } ?: OutfitFit())
+        renderFitControls()
         loadOutfit()
+    }
+    private fun renderFitControls() {
+        val available = model.outfit.keys.toList()
+        val retained = model.fitTarget?.takeIf { it in available }
+        val category = retained?.takeIf { model.fitTargetExplicit }
+            ?: model.state.value.selected?.category?.takeIf { it in available }
+            ?: available.firstOrNull()
+        model.fitTarget = category
+        model.fitTargetExplicit = model.fitTargetExplicit && retained != null
+        fitControls.render(available,category,category?.let { model.outfitFits[it] ?: OutfitFit.defaultFor(it) } ?: OutfitFit())
     }
     private fun loadOutfit(force: Boolean = false) {
         val controller = model.controller ?: return

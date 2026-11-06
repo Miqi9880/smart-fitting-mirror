@@ -10,17 +10,20 @@ from __future__ import annotations
 import ipaddress
 import io
 import json
-import tempfile
+import socket
 import warnings
+from contextlib import closing, contextmanager, suppress
+from http.client import HTTPConnection, HTTPException, HTTPResponse
 from pathlib import Path
+from threading import Timer
 from typing import Callable
 from urllib.parse import urlsplit
 
 import requests
-from PIL import Image, ImageOps, UnidentifiedImageError
+from PIL import Image, UnidentifiedImageError
 
 from .provider_control import GenerationBudget, ProviderFailure
-from .provider_images import MAX_SOURCE_BYTES, prepare_input
+from .provider_images import MAX_SOURCE_BYTES, MAX_SOURCE_PIXELS
 from .tryon_provider import MAX_RESULT_BYTES, MAX_RESULT_PIXELS, ProviderResult
 
 MAX_CONTROL_RESPONSE_BYTES = 64 * 1024
@@ -34,7 +37,7 @@ def _validated_endpoint(value: str | None) -> str | None:
     if not isinstance(value, str) or not value or value != value.strip():
         raise ValueError("local model URL must be an explicit URL without surrounding whitespace")
     parsed = urlsplit(value)
-    if parsed.scheme != "http" or not parsed.hostname or parsed.username or parsed.password:
+    if parsed.scheme != "http" or not parsed.hostname or parsed.username is not None or parsed.password is not None:
         raise ValueError("local model URL must be plain HTTP on loopback")
     if parsed.path not in ("", "/") or parsed.query or parsed.fragment:
         raise ValueError("local model URL must contain only an origin")
@@ -55,6 +58,45 @@ def _validated_endpoint(value: str | None) -> str | None:
     return value.rstrip("/")
 
 
+def _validate_image(data: bytes, role: str, budget: GenerationBudget) -> str:
+    budget.check()
+    try:
+        if len(data) > MAX_SOURCE_BYTES:
+            raise ValueError("source too large")
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", Image.DecompressionBombWarning)
+            with Image.open(io.BytesIO(data)) as source:
+                if source.format not in {"JPEG", "PNG"} or source.width * source.height > MAX_SOURCE_PIXELS:
+                    raise ValueError("invalid source format or dimensions")
+                source.load()
+                media_type = Image.MIME[source.format]
+    except (UnidentifiedImageError, OSError, ValueError, SyntaxError, Image.DecompressionBombError, Image.DecompressionBombWarning) as error:
+        raise ProviderFailure("PROVIDER_INVALID_INPUT", f"{role}图片无效或过大") from error
+    budget.check()
+    return media_type
+
+
+def _json_object(data: bytes) -> dict:
+    try:
+        payload = json.loads(data)
+    except (UnicodeDecodeError, ValueError, RecursionError):
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def _error_fields(payload: dict) -> tuple[str | None, bool | None]:
+    error = payload.get("error")
+    if not isinstance(error, dict):
+        return None, None
+    code, retryable = error.get("code"), error.get("retryable")
+    return code if isinstance(code, str) else None, retryable if type(retryable) is bool else None
+
+
+def _shutdown_socket(transport: socket.socket) -> None:
+    with suppress(OSError):
+        transport.shutdown(socket.SHUT_RDWR)
+
+
 class LocalModelProvider:
     """Generate tops through an explicitly configured local HTTP service.
 
@@ -69,11 +111,11 @@ class LocalModelProvider:
         base_url: str | None = None,
         *,
         allow_mock_for_tests: bool = False,
-        session_factory: Callable[[], requests.Session] = requests.Session,
+        connection_factory: Callable[..., HTTPConnection] = HTTPConnection,
     ) -> None:
         self.base_url = _validated_endpoint(base_url)
         self.allow_mock_for_tests = allow_mock_for_tests
-        self.session_factory = session_factory
+        self.connection_factory = connection_factory
 
     def generate(
         self,
@@ -88,100 +130,100 @@ class LocalModelProvider:
         if cloth_type != "tops":
             raise ProviderFailure("PROVIDER_UNSUPPORTED_CLOTH_TYPE", "本地试衣模型目前仅支持上衣")
 
-        budget.check()
+        person_type = _validate_image(model_image, "人物", budget)
         try:
-            garment_bytes = garment_image.read_bytes()
+            with garment_image.open("rb") as source:
+                garment_bytes = source.read(MAX_SOURCE_BYTES + 1)
         except OSError as error:
             raise ProviderFailure("PROVIDER_INVALID_INPUT", "服装图片无法读取") from error
-        if len(model_image) > MAX_SOURCE_BYTES or len(garment_bytes) > MAX_SOURCE_BYTES:
-            raise ProviderFailure("PROVIDER_INVALID_INPUT", "输入图片过大，无法用于生成")
+        garment_type = _validate_image(garment_bytes, "服装", budget)
 
-        with tempfile.TemporaryDirectory(prefix="smartmirror-local-model-") as directory:
-            person_path = Path(directory) / "person.jpg"
-            garment_path = Path(directory) / "garment.jpg"
-            prepare_input(model_image, person_path, "人物", budget)
-            prepare_input(garment_bytes, garment_path, "服装", budget)
-            person_jpeg = person_path.read_bytes()
-            garment_jpeg = garment_path.read_bytes()
-            budget.check()
-
-            with self.session_factory() as session:
-                # Avoid ambient proxy variables and redirects that could send
-                # private image bytes outside the configured loopback service.
-                session.trust_env = False
-                session.max_redirects = 0
-                self._check_health(session, budget)
-                remaining_ms = min(MAX_BUDGET_MS, int(budget.remaining() * 1000))
-                if remaining_ms < 1:
-                    budget.check()
-                timeout = budget.socket_timeout()
-                try:
-                    response = session.post(
-                        self.base_url + "/internal/tryon",
-                        data={"cloth_type": "tops", "budget_ms": str(remaining_ms)},
-                        files={
-                            "person_image": ("person.jpg", person_jpeg, "image/jpeg"),
-                            "garment_image": ("garment.jpg", garment_jpeg, "image/jpeg"),
-                        },
-                        timeout=timeout,
-                        allow_redirects=False,
-                        stream=True,
-                    )
-                except requests.Timeout as error:
-                    budget.check()
-                    raise ProviderFailure("GENERATION_TIMEOUT", "本地试衣模型请求超时", retryable=True) from error
-                except requests.RequestException as error:
-                    budget.check()
-                    raise ProviderFailure("PROVIDER_UNAVAILABLE", "本地试衣模型暂不可用", retryable=True) from error
-
-                with response:
-                    budget.check()
-                    if response.status_code != 200:
-                        self._raise_http_failure(response, budget)
-                    content_type = response.headers.get("Content-Type", "").split(";", 1)[0].strip().lower()
-                    if content_type != "image/png":
-                        raise ProviderFailure("PROVIDER_INVALID_RESULT", "本地试衣模型返回的不是PNG图片")
-                    result_bytes = self._read_bounded(
-                        response, MAX_RESULT_BYTES, budget, overflow_code="PROVIDER_INVALID_RESULT"
-                    )
-                    budget.check()
-                    return self._decode_result(result_bytes, budget)
-
-    def _check_health(self, session: requests.Session, budget: GenerationBudget) -> None:
-        budget.check()
-        try:
-            response = session.get(
-                self.base_url + "/internal/health",
-                timeout=budget.socket_timeout(),
-                allow_redirects=False,
-                stream=True,
+        self._check_health(budget)
+        remaining_ms = min(MAX_BUDGET_MS, int(budget.remaining() * 1000))
+        if remaining_ms < 1:
+            raise ProviderFailure("GENERATION_TIMEOUT", "本地试衣模型已无足够等待时间", retryable=True)
+        path = "/internal/tryon"
+        # Requests prepares multipart bytes only. HTTPConnection performs the
+        # actual call without environment proxies or automatic redirects.
+        request = requests.Request(
+            "POST", self.base_url + path,
+            data={"cloth_type": "tops", "budget_ms": str(remaining_ms)},
+            files={
+                "person_image": ("person." + person_type.split("/", 1)[1], model_image, person_type),
+                "garment_image": ("garment." + garment_type.split("/", 1)[1], garment_bytes, garment_type),
+            },
+        ).prepare()
+        with self._request("POST", path, budget, body=request.body, headers=request.headers) as response:
+            if response.status != 200:
+                self._raise_http_failure(response, budget)
+            content_type = response.getheader("Content-Type", "").split(";", 1)[0].strip().lower()
+            if content_type != "image/png":
+                raise ProviderFailure("PROVIDER_INVALID_RESULT", "本地试衣模型返回的不是PNG图片")
+            result_bytes = self._read_bounded(
+                response, MAX_RESULT_BYTES, budget, overflow_code="PROVIDER_INVALID_RESULT"
             )
-        except requests.Timeout as error:
+        return self._decode_result(result_bytes, budget)
+
+    def _connect(self, budget: GenerationBudget) -> HTTPConnection:
+        origin = urlsplit(self.base_url)
+        # Resolve the supported localhost alias without depending on DNS or a
+        # hosts file override. Fallback only before sending any HTTP bytes.
+        hosts = ("127.0.0.1", "::1") if origin.hostname == "localhost" else (origin.hostname,)
+        for host in hosts:
+            connection = self.connection_factory(host, origin.port, timeout=budget.socket_timeout())
+            try:
+                connection.connect()
+                return connection
+            except OSError:
+                connection.close()
+                if host == hosts[-1]:
+                    raise
+
+    @contextmanager
+    def _request(self, method, path, budget, *, body=None, headers=None):
+        try:
+            with closing(self._connect(budget)) as connection:
+                transport = connection.sock
+                assert transport is not None
+                # The connect timeout is not the synchronous inference timeout.
+                # Shutdown also interrupts a peer that trickles headers or data.
+                transport.settimeout(budget.remaining())
+                timer = Timer(budget.remaining(), _shutdown_socket, args=(transport,))
+                timer.daemon = True
+                timer.start()
+                try:
+                    request_headers = dict(headers or {})
+                    request_headers["Host"] = urlsplit(self.base_url).netloc
+                    connection.request(method, path, body=body, headers=request_headers)
+                    with connection.getresponse() as response:
+                        budget.check()
+                        yield response
+                finally:
+                    timer.cancel()
+                    timer.join()
+        except TimeoutError as error:
             budget.check()
-            raise ProviderFailure("GENERATION_TIMEOUT", "本地试衣模型健康检查超时", retryable=True) from error
-        except requests.RequestException as error:
+            raise ProviderFailure("GENERATION_TIMEOUT", "本地试衣模型请求超时", retryable=True) from error
+        except (OSError, HTTPException) as error:
             budget.check()
             raise ProviderFailure("PROVIDER_UNAVAILABLE", "本地试衣模型暂不可用", retryable=True) from error
 
-        with response:
-            budget.check()
+    def _check_health(self, budget: GenerationBudget) -> None:
+        with self._request("GET", "/internal/health", budget) as response:
             body = self._read_bounded(
                 response, MAX_CONTROL_RESPONSE_BYTES, budget, overflow_code="PROVIDER_UNAVAILABLE"
             )
-            try:
-                payload = json.loads(body)
-            except (UnicodeDecodeError, json.JSONDecodeError) as error:
-                raise ProviderFailure("PROVIDER_UNAVAILABLE", "本地试衣模型健康状态无效", retryable=True) from error
-            if response.status_code == 503:
-                code = payload.get("error", {}).get("code") if isinstance(payload, dict) else None
-                message = "本地试衣模型暂不可用" if code == "MODEL_NOT_READY" else "本地试衣模型正忙，请稍后重试"
-                raise ProviderFailure("PROVIDER_UNAVAILABLE", message, retryable=True)
-            if response.status_code != 200 or not isinstance(payload, dict):
+            payload = _json_object(body)
+            if response.status == 503:
+                code, retryable = _error_fields(payload)
+                message = "本地试衣模型正忙，请稍后重试" if code == "MODEL_BUSY" else "本地试衣模型暂不可用"
+                raise ProviderFailure("PROVIDER_UNAVAILABLE", message, retryable=retryable is not False)
+            if response.status != 200:
                 raise ProviderFailure("PROVIDER_UNAVAILABLE", "本地试衣模型健康检查失败", retryable=True)
             ready = payload.get("ready")
             is_mock = payload.get("is_mock")
             model_id = payload.get("model_id")
-            if type(ready) is not bool or type(is_mock) is not bool or not (model_id is None or isinstance(model_id, str)):
+            if type(ready) is not bool or type(is_mock) is not bool or "model_id" not in payload or not (model_id is None or isinstance(model_id, str)):
                 raise ProviderFailure("PROVIDER_UNAVAILABLE", "本地试衣模型健康状态无效", retryable=True)
             if not ready:
                 raise ProviderFailure("PROVIDER_UNAVAILABLE", "本地试衣模型尚未就绪", retryable=True)
@@ -189,51 +231,46 @@ class LocalModelProvider:
                 raise ProviderFailure("PROVIDER_UNAVAILABLE", "本地试衣模型返回了测试模式，已拒绝", retryable=False)
 
     @staticmethod
-    def _read_bounded(response: requests.Response, maximum: int, budget: GenerationBudget, *, overflow_code: str) -> bytes:
-        declared = response.headers.get("Content-Length")
+    def _read_bounded(response: HTTPResponse, maximum: int, budget: GenerationBudget, *, overflow_code: str) -> bytes:
+        declared = response.getheader("Content-Length")
+        size = None
         if declared is not None:
             try:
-                if int(declared) > maximum:
-                    raise ProviderFailure(overflow_code, "本地试衣模型响应过大")
+                size = int(declared)
+                if size < 0:
+                    raise ValueError("negative content length")
             except ValueError:
                 raise ProviderFailure("PROVIDER_UNAVAILABLE", "本地试衣模型响应长度无效", retryable=True)
+            if size > maximum:
+                raise ProviderFailure(overflow_code, "本地试衣模型响应过大")
         output = bytearray()
-        try:
-            for chunk in response.iter_content(chunk_size=RESPONSE_CHUNK_BYTES):
-                budget.check()
-                if not chunk:
-                    continue
-                if len(output) + len(chunk) > maximum:
-                    raise ProviderFailure(overflow_code, "本地试衣模型响应过大")
-                output.extend(chunk)
+        while True:
             budget.check()
-        except ProviderFailure:
-            raise
-        except requests.RequestException as error:
+            chunk = response.read1(min(RESPONSE_CHUNK_BYTES, maximum + 1 - len(output)))
             budget.check()
-            raise ProviderFailure("PROVIDER_UNAVAILABLE", "读取本地试衣模型响应失败", retryable=True) from error
+            if not chunk:
+                break
+            output.extend(chunk)
+            if len(output) > maximum:
+                raise ProviderFailure(overflow_code, "本地试衣模型响应过大")
+        if size is not None and len(output) != size:
+            raise ProviderFailure("PROVIDER_UNAVAILABLE", "本地试衣模型响应不完整", retryable=True)
         return bytes(output)
 
     @staticmethod
-    def _raise_http_failure(response: requests.Response, budget: GenerationBudget) -> None:
+    def _raise_http_failure(response: HTTPResponse, budget: GenerationBudget) -> None:
         body = LocalModelProvider._read_bounded(
             response, MAX_CONTROL_RESPONSE_BYTES, budget, overflow_code="PROVIDER_UNAVAILABLE"
         )
-        try:
-            payload = json.loads(body)
-            detail = payload.get("error", {}) if isinstance(payload, dict) else {}
-            code = detail.get("code") if isinstance(detail, dict) else None
-            retryable = detail.get("retryable") is True
-        except (UnicodeDecodeError, json.JSONDecodeError):
-            code, retryable = None, response.status_code in {500, 502, 503, 504}
-        if response.status_code == 400 or code == "INVALID_INPUT":
-            raise ProviderFailure("PROVIDER_INVALID_INPUT", "本地试衣模型拒绝了输入图片")
-        if response.status_code == 422 or code == "UNSUPPORTED_CLOTH_TYPE":
-            raise ProviderFailure("PROVIDER_UNSUPPORTED_CLOTH_TYPE", "本地试衣模型目前仅支持上衣")
-        if response.status_code == 504 or code == "INFERENCE_TIMEOUT":
-            raise ProviderFailure("GENERATION_TIMEOUT", "本地试衣模型生成超时", retryable=True)
+        code, retryable = _error_fields(_json_object(body))
+        if response.status == 400 or code == "INVALID_INPUT":
+            raise ProviderFailure("PROVIDER_INVALID_INPUT", "本地试衣模型拒绝了输入图片", retryable=retryable is True)
+        if response.status == 422 or code == "UNSUPPORTED_CLOTH_TYPE":
+            raise ProviderFailure("PROVIDER_UNSUPPORTED_CLOTH_TYPE", "本地试衣模型目前仅支持上衣", retryable=retryable is True)
+        if response.status == 504 or code == "INFERENCE_TIMEOUT":
+            raise ProviderFailure("GENERATION_TIMEOUT", "本地试衣模型生成超时", retryable=retryable is not False)
         message = "本地试衣模型正忙，请稍后重试" if code == "MODEL_BUSY" else "本地试衣模型暂不可用"
-        raise ProviderFailure("PROVIDER_UNAVAILABLE", message, retryable=retryable or response.status_code >= 500)
+        raise ProviderFailure("PROVIDER_UNAVAILABLE", message, retryable=response.status >= 500 if retryable is None else retryable)
 
     @staticmethod
     def _decode_result(data: bytes, budget: GenerationBudget) -> ProviderResult:
@@ -248,6 +285,8 @@ class LocalModelProvider:
                         output = io.BytesIO()
                         normalized.save(output, "PNG")
                         budget.check()
+                        if output.tell() > MAX_RESULT_BYTES:
+                            raise ProviderFailure("PROVIDER_INVALID_RESULT", "本地试衣模型返回的图片过大")
                         return ProviderResult(output.getvalue(), normalized.width, normalized.height)
         except ProviderFailure:
             raise

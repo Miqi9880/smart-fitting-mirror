@@ -2,23 +2,21 @@
 
 2026-11-01，依据 GitHub `main` 的 #54 更新和[11月2日至8日计划](../weekly-2026-11-02.md)，完成 #5 本周后端小任务：独立适配组件，实现 `TryOnProvider` 接口，暂不注册到 `service.py`、CLI 或默认 MOCK/Aidge 流程。
 
-组件位于 `backend/local_model_provider.py`，复用运行依赖 `requests`、现有 `GenerationBudget`、`ProviderFailure`、`prepare_input` 与 `ProviderResult`。默认无服务地址；显式配置时只接受 HTTP loopback origin（包括本地 SSH 转发端口），不读取用户请求中的地址、不使用环境代理、不跟随重定向。当前仅支持 `tops`。健康检查必须 `ready=true`；生产默认拒绝 `is_mock=true`，仅构造时显式设置 `allow_mock_for_tests=True` 才能用于 fake 测试。
+组件位于 `backend/local_model_provider.py`，复用 `requests` 的 multipart 编码和现有 `GenerationBudget`、`ProviderFailure`、图片上限与 `ProviderResult`，使用标准库直接连接显式配置的 HTTP loopback 端点。健康检查必须 `ready=true`，测试用的 `is_mock=true` 需要显式开启 `allow_mock_for_tests`。当前支持 `tops`，适配器在独立集成 PR 中启用。
 
-POST `/internal/tryon` 只发送预处理后的人物／服装 JPEG 字节、`cloth_type=tops` 和同一预算的剩余毫秒数；不发送本机路径、游客令牌或凭证。健康检查、上传等待、结果读取、解码共享 `GenerationBudget`，POST不自动重试。以有界读取和PNG／像素校验构造 `ProviderResult`；将服务错误映射为现有 `ProviderFailure` 类别和安全短消息。超时只表示调用端停止等待，不表示上游GPU任务已取消。
+POST `/internal/tryon` 发送经过尺寸和解码校验的人物／服装 PNG 或 JPEG 原始字节、`cloth_type=tops` 及剩余预算毫秒数。模型服务负责缩放等预处理。连接超时与同步推理等待分开，健康检查、上传、响应头、响应体和解码共享 `GenerationBudget`。结果在读取和 RGB PNG 转码后均检查字节上限。服务错误映射为 `ProviderFailure`，保留显式的 `retryable` 布尔值。超时会关闭客户端连接，上游 GPU 任务的状态留待真实联调验证。
 
 ## 验证
 
-在 Python 3.12 项目虚拟环境运行：
+在 Python 3.12 项目虚拟环境运行。
 
 ```powershell
 .venv312\Scripts\python.exe -m pytest backend/tests/test_local_model_provider.py -q --basetemp=.pytest-tmp-local-model
-# 23 passed
 .venv312\Scripts\python.exe tools/check_contracts.py
-# PASS: OpenAPI 3.0.3, 2 JSON schemas, 21 fixtures, 19 rejection cases, local doc links.
 .venv312\Scripts\python.exe -m pytest backend/tests -q --basetemp=.pytest-tmp-local-model-full
-# 184 passed, 1 skipped
 git diff --check
-# passed
 ```
 
-测试以注入的本地 fake HTTP Adapter 和程序生成图片覆盖默认未配置、loopback限制、健康未就绪／is_mock限制、正常PNG、仅上衣、输入超限／无效、服务错误码、非PNG／超大／坏尺寸结果、超时、迟到结果及拒绝跳转。没有下载权重、连GPU／模型服务、访问云端、修改公共合同／CLI／`service.py` 或调用真实人像。真实模型推理、实际GPU取消与资源释放留给负责人部署后的独立联调验收。
+11 月 6 日补充回归。使用合成图像、本机 HTTP stub 和可控连接，验证同步推理等待、慢速响应头和响应体的总时限、窄幅输入原字节、异常错误体、重试标志、最终 PNG 大小及拒绝跳转。真实 FLUX 推理和 GPU 占用释放由后续联调验收。
+
+负责人本机全量后端回归通过 193 项，跳过 1 项，契约检查通过。额外使用本机 HTTP 服务复测，11 秒后返回的有效 PNG 可正常接收，慢速响应在总时限附近断开，公共上传接受的 180×640 图片可传给模型服务，RGB 转码后超过 16 MiB 的结果会被拒绝。

@@ -1,27 +1,27 @@
 # 四人当前任务与企业需求对应
 
-更新：2026-11-01，适用11月2日至8日。老师反馈当前试衣效果粗糙、与人体不够贴合，本周优先改进贴合，并由负责人启动预训练模型部署。逐人环境、步骤、文件边界、验收与检查点见[本周详细计划](weekly-2026-11-02.md)，企业原编号见[需求对应表](requirements-traceability.md)。
+更新：2026-11-04，适用11月2日至8日。老师反馈当前试衣效果粗糙、与人体不够贴合，本周优先改进贴合，并由负责人推进模型部署前置；11/4按本人要求先验证通用环境，模型与权重随后指定。逐人环境、步骤、文件边界、验收与检查点见[本周详细计划](weekly-2026-11-02.md)，企业原编号见[需求对应表](requirements-traceability.md)。
 
 ## 当前一个主要任务
 
 | 人员／长期Issue | 本周主要交付 | 当前完成后继续 |
 | --- | --- | --- |
-| lyf-bee／[#6](https://github.com/Miqi9880/smart-fitting-mirror/issues/6) | 固定输入的贴合问题归因与对照，优先修上衣／下装最明显的1—2处定位、比例或形变缺陷；伴随记录渲染耗时 | 根据负责人获准输入补实际新问题；可靠Depth／mask输入具备后再接遮挡 |
-| yyyrrrxxx／[#7](https://github.com/Miqi9880/smart-fitting-mirror/issues/7) | 在既有贴合控件中直接选择当前搭配的调整品类；不移除裤子也能调上衣，切换／重置／返回不串值 | 视频页实际TalkBack与键盘焦点查漏，已有报告可直接交接，不重复播放集成 |
-| haiyangniu191-design／[#5](https://github.com/Miqi9880/smart-fitting-mirror/issues/5) | 独立本地模型HTTP适配组件与fake测试已完成，待审分支见[验证报告](reports/local-model-provider-2026-11-01.md)；暂不接公共默认服务 | 模型就绪后另开真实集成PR；通用视频目录只读盘点排队，已有实现直接交 |
-| Miqi9880／[#3](https://github.com/Miqi9880/smart-fitting-mirror/issues/3)、[#26](https://github.com/Miqi9880/smart-fitting-mirror/issues/26) | 处理`/data_new`权限前置，建立独立模型环境并跑通现成权重推理／资源记录；提供获准贴合问题样例，处理视觉／素材归因 | 基线与数据具备后再小规模微调；模型就绪后协调后端实际接入，全部现场本人执行 |
+| lyf-bee／[#6](https://github.com/Miqi9880/smart-fitting-mirror/issues/6) | 长裤中缝连续性修复已提交[#60](https://github.com/Miqi9880/smart-fitting-mirror/pull/60)，最新修改待负责人复核；独立腿轴、像素回归和默认比例要求保持，不重新分配同一实现 | 根据负责人获准输入补实际新问题；可靠Depth／mask输入具备后再接遮挡 |
+| yyyrrrxxx／[#7](https://github.com/Miqi9880/smart-fitting-mirror/issues/7) | 调整目标已由#56整合#57完成软件复核，见[记录](reports/pr56-fit-target-2026-11-02.md)，不重复开发；接视频页读屏语义与键盘焦点查漏 | 模拟器暂不可用时先交代码审查／局部修复和未验清单，由负责人补跑；不重做视频HTTP或播放集成 |
+| haiyangniu191-design／[#5](https://github.com/Miqi9880/smart-fitting-mirror/issues/5) | 独立本地模型适配器由 haiyangniu191-design 实现，负责人在[#55](https://github.com/Miqi9880/smart-fitting-mirror/pull/55)补齐总时限、输入输出边界与错误处理，见[验证记录](reports/local-model-provider-2026-11-01.md) | 按[内部草案](interfaces/local-model-draft.md)另开 PR 联调真实 FLUX 服务并验证资源释放 |
+| Miqi9880／[#3](https://github.com/Miqi9880/smart-fitting-mirror/issues/3)、[#26](https://github.com/Miqi9880/smart-fitting-mirror/issues/26) | `/data_new`目录、独立通用环境和GPU六项小张量检查均已通过，见[11/4记录](reports/server-environment-2026-11-04.md)；模型／权重待本人指定。渔夫帽素材标定已由[#61](https://github.com/Miqi9880/smart-fitting-mirror/pull/61)合并，棕色已真人确认，其他两色仍待本人确认 | 模型指定后再核对依赖／许可、下载固定权重并做基线推理；模型就绪后协调后端实际接入，全部现场本人执行 |
 
 ## 已完成，不再重复布置
 
 - #42领口修复，#43原图／结果切换，#44待机／二维站位，#51视频接口，#52调用禁用／匿名统计与推荐规则，#53授权视频／播放器集成均已合并。
-- APK0.3.8-mock，公共HTTP0.4.1，视觉0.2.0，48件衣柜和7条授权参考视频保持；#45～#50由整合替代关闭，保留原作者贡献。
+- APK0.3.9-mock已增加独立调整目标，#56整合#57；公共HTTP0.4.1，视觉0.2.0，48件衣柜和7条授权参考视频保持；#45～#50由整合替代关闭，保留原作者贡献。
 - 宽长／位置滑杆、按类重置、主动保存开关已有。本周只补独立调整目标；不重新实现整套控件，不统一重调已认可默认比例。
 
 ## 数据与依赖
 
-模型、数据、权重、环境、大缓存、输出与检查点统一放`/data_new/smart-fitting-mirror/`。11/1核对`/data_new`不存在；按用户要求尝试创建时，普通账号无根目录写权限且没有sudo权限，尚未建立。需管理员一次性创建并授权项目子目录；负责人处理，成员软件工作不等待。不把大文件临时下载到home，不在GitHub／日志发布服务器登录信息。
+模型、数据、权重、环境、大缓存、输出与检查点统一放`/data_new/smart-fitting-mirror/`。11/2老师授权后已创建项目根及10个子目录，普通账号写入／读回／删除验证通过，权限阻塞解除。路径落系统盘，11/2快照约435GiB可用，详见[目录复核](reports/server-storage-2026-11-02.md)；11/4通用环境已验证，模型／权重等待本人指定，成员软件工作继续。不把大文件临时下载到home，不在GitHub／日志发布服务器登录信息。
 
-两张48GB Blackwell和CUDA驱动可用已核对，但可分配GPU窗口、权重下载与具体模型尚需确认；未部署、未训练成功。默认MOCK和暂停的Aidge/COS保持，不启用收费链路，也不提前给App增加双引擎按钮。
+两张48GB Blackwell和CUDA驱动可用已核对，独立环境已实测基础CUDA运算；后续可分配GPU窗口、权重下载与具体模型仍需确认。模型未部署、未训练成功。默认MOCK和暂停的Aidge/COS保持，不启用收费链路，也不提前给App增加双引擎按钮。
 
 周一确认输入与边界，周三11/4回填首个对照／阻塞，周五11/6争取小PR，周末由负责人按条件联调；完成可提前推进。以上是进展检查点，不恢复第18周限制或另定企业交付日。
 

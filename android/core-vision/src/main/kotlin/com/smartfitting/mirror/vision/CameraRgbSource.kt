@@ -36,6 +36,7 @@ class CameraRgbSource(
     private val frontFacing: Boolean = true,
     private val targetRotation: () -> Int = { Surface.ROTATION_0 },
     private val cameraId: () -> String? = { null },
+    private val onImagePose: ((ImagePoseHints) -> Unit)? = null,
 ) : VisionSource<BitmapPixels> {
     override val capabilities = VisionCapabilities(source = VisionSourceKind.RGB_CAMERA,
         rgb = true, pose = true, personMask = false, alignedDepth = false)
@@ -157,6 +158,14 @@ class CameraRgbSource(
                         timestampMs, bitmap.width, bitmap.height)
                     val state = keypoints.state()
                     val frameId = ++current.frameCounter
+                    // Optional, frame-matched image-relative hints for the 3D experiment.
+                    // This does not populate metric/aligned depth in VisionFrame.
+                    onImagePose?.invoke(ImagePoseHints(current.sessionId, frameId, landmarkTypes.mapNotNull { (name,type) ->
+                        task.result.getPoseLandmark(type)?.let { landmark ->
+                            val p = landmark.position3D
+                            ImagePoseMapper.point(p.x,p.y,p.z,landmark.inFrameLikelihood,bitmap.width,bitmap.height)?.let { name to it }
+                        }
+                    }.toMap()))
                     val metadata = VisionFrame(sessionId = current.sessionId, frameId = frameId,
                         timestampMs = timestampMs,
                         image = ImageMetadata("rgb_${current.ticket}_$frameId", bitmap.width, bitmap.height),

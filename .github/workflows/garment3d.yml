@@ -1,0 +1,31 @@
+name: Garment 3D template checks
+on:
+  pull_request:
+    paths: ['tools/garment3d/**', '.github/workflows/garment3d.yml']
+  push:
+    branches: [main]
+    paths: ['tools/garment3d/**', '.github/workflows/garment3d.yml']
+permissions:
+  contents: read
+jobs:
+  template:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: tools/garment3d/package-lock.json
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+        working-directory: tools/garment3d
+      - run: npm test
+        working-directory: tools/garment3d
+      - name: Verify all synthetic motion frames without private images
+        run: npm run test:motion
+        working-directory: tools/garment3d
+      - run: python -m unittest discover -s tools/garment3d/test -p "test_*.py"
