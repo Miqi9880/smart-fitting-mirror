@@ -6,6 +6,7 @@ import android.graphics.Color
 import android.graphics.Rect
 import android.os.SystemClock
 import android.view.MotionEvent
+import android.view.KeyEvent
 import android.view.View
 import android.widget.Button
 import android.widget.SeekBar
@@ -56,14 +57,36 @@ class LicensedVideoFlowTest {
         assertNotNull(tag,target); assertTrue(tag,target!!.performClick())
     }
     private fun panel(s: ActivityScenario<TryOnActivity>) = view<VideoPanel>(s,"fitting.video.panel")!!
+    private fun awaitFocus(s: ActivityScenario<TryOnActivity>, tag: String) {
+        await {
+            var focusedAndVisible=false
+            s.onActivity {
+                val target=it.window.decorView.findViewWithTag<View>(tag)
+                val bounds=Rect()
+                focusedAndVisible=target.isFocused && target.getGlobalVisibleRect(bounds) && bounds.width()>0 && bounds.height()>0
+            }
+            focusedAndVisible
+        }
+    }
+    private fun focus(s: ActivityScenario<TryOnActivity>, tag: String) {
+        instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_TAB)
+        s.onActivity {
+            val target=it.window.decorView.findViewWithTag<View>(tag)
+            assertNotNull(tag,target); assertTrue(tag,target!!.requestFocus())
+        }
+        awaitFocus(s,tag)
+    }
     private fun launch(address: String): ActivityScenario<TryOnActivity> {
         val s=ActivityScenario.launch(TryOnActivity::class.java)
         s.onActivity { model(it).connect(address) }
         await { var ready=false; s.onActivity { ready=model(it).state.value.canSelect }; ready }
         return s
     }
-    private fun open(s: ActivityScenario<TryOnActivity>) {
-        click(s,"fitting.videos")
+    private fun open(s: ActivityScenario<TryOnActivity>, keyboard: Boolean=false) {
+        if (keyboard) {
+            focus(s,"fitting.videos")
+            instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_DPAD_CENTER)
+        } else click(s,"fitting.videos")
         try { await { view<View>(s,"video.card.0")!=null } }
         catch (failure: AssertionError) {
             evidence(s,"failed-open")
@@ -71,8 +94,11 @@ class LicensedVideoFlowTest {
         }
         await { view<ImageView>(s,"video.cover.0")?.drawable!=null }
     }
-    private fun play(s: ActivityScenario<TryOnActivity>, index: Int=0) {
-        click(s,"video.card.$index")
+    private fun play(s: ActivityScenario<TryOnActivity>, index: Int=0, keyboard: Boolean=false) {
+        if (keyboard) {
+            if (index==0) awaitFocus(s,"video.card.0") else focus(s,"video.card.$index")
+            instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_DPAD_CENTER)
+        } else click(s,"video.card.$index")
         await { text(s,"video.status").contains("播放中") && panel(s).hasRenderedFrame() }
     }
     private fun evidence(s: ActivityScenario<TryOnActivity>, name: String) {
@@ -86,6 +112,13 @@ class LicensedVideoFlowTest {
     @Test fun fiveUpperReferencesAndTwoDressReferencesReallyRenderFromHttp() {
         launch(host()).use { s ->
             open(s)
+            assertEquals(View.IMPORTANT_FOR_ACCESSIBILITY_NO,view<ImageView>(s,"video.cover.0")!!.importantForAccessibility)
+            s.onActivity {
+                val item=model(it).videoExperience.result.let { result -> (result as VideoResult.Items).videos.first() }
+                val description=it.window.decorView.findViewWithTag<View>("video.card.0").contentDescription.toString()
+                assertTrue(description.contains(item.matchesText))
+                assertTrue(description.contains(item.sourceText.substringBefore('\n')))
+            }
             var ids=emptySet<String>()
             s.onActivity {
                 val result=model(it).videoExperience.result as VideoResult.Items
@@ -144,7 +177,9 @@ class LicensedVideoFlowTest {
             s.onActivity { assertTrue(model(it).fitTargetExplicit) }
             var original=byteArrayOf(); var result=byteArrayOf(); var job=""; var garmentIds=emptySet<String>()
             s.onActivity { val m=model(it); original=m.state.value.original!!.copyOf(); result=m.state.value.result!!.copyOf(); job=m.state.value.job!!.jobId; garmentIds=m.outfit.values.map { v->v.garmentId }.toSet() }
-            open(s); play(s)
+            open(s,keyboard=true); play(s,keyboard=true)
+            awaitFocus(s,"video.toggle")
+            s.onActivity { assertNull(it.window.decorView.findViewWithTag<View>("fitting.scroll").findFocus()) }
             click(s,"video.toggle"); assertEquals("已暂停",text(s,"video.status"))
             s.onActivity {
                 val seek=it.window.decorView.findViewWithTag<SeekBar>("video.volume")
@@ -155,10 +190,15 @@ class LicensedVideoFlowTest {
             val chosen=panel(s).volume(); assertTrue(chosen in .15f.. .55f)
             s.recreate()
             await { text(s,"video.status")=="已暂停" }
+            awaitFocus(s,"video.toggle")
             assertEquals(chosen,panel(s).volume(),.02f)
             s.moveToState(Lifecycle.State.CREATED); assertFalse(panel(s).isPlaying())
             s.moveToState(Lifecycle.State.RESUMED); await { text(s,"video.status")=="已暂停" }
-            click(s,"video.back"); click(s,"video.exit")
+            awaitFocus(s,"video.toggle")
+            s.onActivity { it.onBackPressedDispatcher.onBackPressed() }
+            awaitFocus(s,"video.card.0")
+            click(s,"video.exit"); awaitFocus(s,"fitting.videos")
+            assertNull(panel(s).findFocus())
             s.onActivity {
                 val m=model(it); assertEquals(job,m.state.value.job!!.jobId)
                 assertArrayEquals(original,m.state.value.original); assertArrayEquals(result,m.state.value.result)
@@ -258,7 +298,7 @@ class LicensedVideoFlowTest {
             for (scale in listOf("1.3","1.5")) {
                 shell("settings put system font_scale $scale")
                 launch(host()).use { s ->
-                    open(s); play(s)
+                    open(s,keyboard=true); play(s,keyboard=true)
                     for (orientation in listOf(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE,ActivityInfo.SCREEN_ORIENTATION_PORTRAIT)) {
                         s.onActivity { it.requestedOrientation=orientation }
                         await {
@@ -272,6 +312,11 @@ class LicensedVideoFlowTest {
                                 assertTrue(button.height>=48*it.resources.displayMetrics.density)
                                 assertTrue(button.height>=button.layout.height+button.compoundPaddingTop+button.compoundPaddingBottom)
                             }
+                        }
+                        awaitFocus(s,"video.toggle")
+                        for (tag in listOf("video.next","video.end.player","video.volume")) {
+                            instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_TAB)
+                            awaitFocus(s,tag)
                         }
                         evidence(s,"font-$scale-$orientation")
                     }
