@@ -4,7 +4,7 @@
 
 2026-10-29视频HTTP升级0.4.1，推荐JSON保持0.4.0兼容。`video_contracts.py`提供共享DTO；目录已有7条Pexels授权参考内容，按[安装说明](assets/videos/README.md)安装本地媒体后可播放。未装包不返回缺文件的候选。公共视频／封面支持GET、HEAD和字节Range，不携带游客凭证。按[正式视频接口](../docs/interfaces/video-recommendation.md)；实现边界与检查见[本地记录](../docs/reports/video-library-route-2026-10-29.md)。COS/Aidge仍按负责人当前决定暂停，不为视频接口启用付费服务。
 
-[`LocalModelProvider`](local_model_provider.py) 是尚未注册的本地模型适配器，仅接受显式配置的 loopback 端点。它把通过校验的 PNG／JPEG 字节交给模型服务，连接和推理共用任务时限。单测和本机 HTTP 测试已覆盖适配器，真实 FLUX 服务联调是下一阶段。见[实现与验证记录](../docs/reports/local-model-provider-2026-11-01.md)。
+[`LocalModelProvider`](local_model_provider.py) 将通过校验的 PNG／JPEG 发送给私有回环模型服务，连接和推理共用任务时限。已通过 SSH 转发与真实 FLUX 工作者完成获准样例联调。公共 CLI 的显式接入由 #5 继续，默认 MOCK。服务启停和实测见 [FLUX 部署记录](../docs/reports/flux-worker-2026-11-06.md)。
 
 ## 启动
 
