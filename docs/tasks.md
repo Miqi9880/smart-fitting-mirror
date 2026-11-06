@@ -8,7 +8,7 @@
 | --- | --- | --- |
 | lyf-bee／[#6](https://github.com/Miqi9880/smart-fitting-mirror/issues/6) | 长裤中缝连续性修复已提交[#60](https://github.com/Miqi9880/smart-fitting-mirror/pull/60)，最新修改待负责人复核；独立腿轴、像素回归和默认比例要求保持，不重新分配同一实现 | 根据负责人获准输入补实际新问题；可靠Depth／mask输入具备后再接遮挡 |
 | yyyrrrxxx／[#7](https://github.com/Miqi9880/smart-fitting-mirror/issues/7) | 调整目标已由#56整合#57完成软件复核，见[记录](reports/pr56-fit-target-2026-11-02.md)，不重复开发；接视频页读屏语义与键盘焦点查漏 | 模拟器暂不可用时先交代码审查／局部修复和未验清单，由负责人补跑；不重做视频HTTP或播放集成 |
-| haiyangniu191-design／[#5](https://github.com/Miqi9880/smart-fitting-mirror/issues/5) | 独立本地模型适配组件已提交[#55](https://github.com/Miqi9880/smart-fitting-mirror/pull/55)待审，按[内部草案](interfaces/local-model-draft.md)复核fake测试和预算／图片边界；暂不接公共默认服务，不重新布置整项实现 | 模型就绪后另开真实集成PR；通用视频目录只读盘点排队，已有实现直接交 |
+| haiyangniu191-design／[#5](https://github.com/Miqi9880/smart-fitting-mirror/issues/5) | 独立本地模型适配器由 haiyangniu191-design 实现，负责人在[#55](https://github.com/Miqi9880/smart-fitting-mirror/pull/55)补齐总时限、输入输出边界与错误处理，见[验证记录](reports/local-model-provider-2026-11-01.md) | 按[内部草案](interfaces/local-model-draft.md)另开 PR 联调真实 FLUX 服务并验证资源释放 |
 | Miqi9880／[#3](https://github.com/Miqi9880/smart-fitting-mirror/issues/3)、[#26](https://github.com/Miqi9880/smart-fitting-mirror/issues/26) | `/data_new`目录、独立通用环境和GPU六项小张量检查均已通过，见[11/4记录](reports/server-environment-2026-11-04.md)；模型／权重待本人指定。渔夫帽素材标定已由[#61](https://github.com/Miqi9880/smart-fitting-mirror/pull/61)合并，棕色已真人确认，其他两色仍待本人确认 | 模型指定后再核对依赖／许可、下载固定权重并做基线推理；模型就绪后协调后端实际接入，全部现场本人执行 |
 
 ## 已完成，不再重复布置
