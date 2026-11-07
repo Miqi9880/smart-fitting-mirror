@@ -43,7 +43,7 @@ class DrapedPlacementTest {
                 Anchor(.3f,.12f),Anchor(.68f,y),Anchor(.32f,y)) else null,controls,ratio),null)
     }
     @Test fun dressesAndSkirtsStayContinuousAndFollowTheCurrentFrame() {
-        for ((category,count) in listOf(GarmentCategory.DRESS to 4,GarmentCategory.SKIRT to 3,GarmentCategory.SHORTS to 12)) {
+        for ((category,count) in listOf(GarmentCategory.DRESS to 7,GarmentCategory.SKIRT to 6,GarmentCategory.SHORTS to 12)) {
             val garment=item(category,if (category==GarmentCategory.SHORTS) .8f else 1.7f)
             val before=OutfitPlacement.patches(frame(),garment)
             assertEquals(count,before.size)
@@ -68,6 +68,38 @@ class DrapedPlacementTest {
         assertTrue(OutfitPlacement.patches(frame(Keypoints()),item(GarmentCategory.SKIRT)).isEmpty())
         assertFalse(OutfitPlacement.patches(frame(),item(GarmentCategory.DRESS)).isEmpty())
     }
+    @Test fun skirtStripsOverlapAlongTheirSharedEdgesAtEverySliderSetting() {
+        // A hairline gap between neighbouring strips is what shows up as the
+        // dense vertical seams reported for a skirt pushed down. Every interior
+        // strip boundary must therefore be painted twice, not zero times.
+        val garment=item(GarmentCategory.SKIRT)
+        for (fit in listOf(OutfitFit(),OutfitFit(2.4f,1.06f,-.21f),OutfitFit(.6f,1.06f,-.21f),
+                           OutfitFit(1.45f,1.06f,.75f),OutfitFit(1.45f,1.06f,-.75f))) {
+            val strips=OutfitPlacement.patches(frame(),garment,fit)
+            assertTrue("$fit must place the skirt",strips.isNotEmpty())
+            var checked=0
+            for ((upper,lower) in strips.zipWithNext()) {
+                // Quad order is topLeft, topRight, bottomRight, bottomLeft; x is
+                // on the even slots. Compare like sides, not left against right.
+                val upperBottomLeftY=upper.destination[7]
+                val upperBottomRightY=upper.destination[5]
+                val lowerTopLeftY=lower.destination[1]
+                val lowerTopRightY=lower.destination[3]
+                // The lower strip must start strictly above where the upper
+                // strip ends, so the shared hairline is painted twice and no
+                // background can show through. Equality means the strips only
+                // touch, which is exactly the state that produced the seams.
+                assertTrue("Shared edge must overlap on the left (fit=$fit, " +
+                    "upper=${upperBottomLeftY} lower=${lowerTopLeftY})",
+                    lowerTopLeftY<upperBottomLeftY-0.5f)
+                assertTrue("Shared edge must overlap on the right (fit=$fit, " +
+                    "upper=${upperBottomRightY} lower=${lowerTopRightY})",
+                    lowerTopRightY<upperBottomRightY-0.5f)
+                checked++
+            }
+            assertTrue("Expected interior strip boundaries to check",checked>=4)
+        }
+    }
     @Test fun skirtWidthDoesNotSplitOrStretchWithLegSeparation() {
         val garment=item(GarmentCategory.SKIRT)
         val wide=pose.copy(rightKnee=pose.rightKnee!!.copy(x=.1f),leftKnee=pose.leftKnee!!.copy(x=.9f),
@@ -77,6 +109,24 @@ class DrapedPlacementTest {
         assertEquals(before.size,after.size)
         // Symmetric leg movement does not alter any continuous skirt panel.
         for ((a,b) in before.zip(after)) assertArrayEquals(a.destination,b.destination,.002f)
+    }
+    @Test fun skirtDrapeRowsFollowTheKneeLineWhileHipAndHemRowsStayPut() {
+        val garment=item(GarmentCategory.SKIRT)
+        val sway=pose.copy(rightKnee=pose.rightKnee!!.copy(x=.18f))
+        val before=OutfitPlacement.patches(frame(),garment)
+        val after=OutfitPlacement.patches(frame(sway),garment)
+        assertEquals(before.size,after.size)
+        assertFalse(before.isEmpty())
+        val hipY=.5f+(garment.previewImage.attachmentAnchors.getValue("right_hip").y+
+            garment.previewImage.attachmentAnchors.getValue("left_hip").y)*.5f*1399
+        var moved=0f
+        for ((a,b) in before.zip(after)) for (i in a.source.indices step 2) {
+            if (kotlin.math.abs(a.source[i+1]-hipY)<1f) {
+                assertEquals("Hip row is anchored, only the drape below it bends",
+                    a.destination[i],b.destination[i],.002f)
+            } else moved= maxOf(moved,kotlin.math.abs(b.destination[i]-a.destination[i]))
+        }
+        assertTrue("Intermediate drape rows must follow the knee ($moved)",moved>2f)
     }
     @Test fun lowerGarmentsHaveEaseAndUserTuningDoesNotMutateRawPlacement() {
         for (category in listOf(GarmentCategory.DRESS,GarmentCategory.SKIRT,GarmentCategory.SHORTS)) {
