@@ -128,7 +128,7 @@ def main():
         vision_semantics(frame)
 
     fixture_schemas = {'garments.json': 'GarmentList', 'session.json': 'Session', 'upload.json': 'Upload',
-                       'create-job.json': 'CreateJob', 'error.json': 'ErrorResponse',
+                       'create-job.json': 'CreateJob', 'create-outfit-job.json': 'CreateJob', 'error.json': 'ErrorResponse',
                        'garment-details.json': 'Garment', 'garment-write.json': 'GarmentWrite',
                        'outfit-garments.json': 'GarmentList', 'extended-garments.json': 'GarmentList',
                        'video-request.json': 'VideoRecommendationRequest', 'video-matched.json': 'VideoRecommendationList',

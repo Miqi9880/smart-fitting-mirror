@@ -7,6 +7,8 @@ import com.smartfitting.mirror.network.*
 import com.smartfitting.mirror.vision.*
 import com.smartfitting.mirror.contracts.Garment
 import com.smartfitting.mirror.contracts.GarmentCategory
+import com.smartfitting.mirror.contracts.AccessoryCategory
+import com.smartfitting.mirror.contracts.OutfitAccessory
 import com.smartfitting.mirror.tryon.OutfitFit
 import com.smartfitting.mirror.tryon.PreviewViewport
 import kotlinx.coroutines.Job
@@ -43,6 +45,8 @@ class TryOnModel(application: Application) : AndroidViewModel(application) {
     var catalogQuery = ""
     var catalogAssets = emptyList<com.smartfitting.mirror.contracts.Garment>()
     var outfit = emptyMap<GarmentCategory,Garment>()
+    internal var generateOutfit = false
+    internal var outfitAccessories = emptyMap<AccessoryCategory, OutfitAccessory>()
     var fitTarget: GarmentCategory? = null
     internal var fitTargetExplicit = false
     var lastOutfitSelection: Garment? = null
@@ -86,6 +90,7 @@ class TryOnModel(application: Application) : AndroidViewModel(application) {
         bridge?.cancel()
         controller?.close()
         outfit = emptyMap(); fitTarget = null; fitTargetExplicit = false; lastOutfitSelection = null
+        generateOutfit = false; outfitAccessories = emptyMap()
         resultComparisonMode = ResultComparisonMode.SIDE_BY_SIDE
         baseUrl = url.trim()
         val next = FittingSession(api, viewModelScope)

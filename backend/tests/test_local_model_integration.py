@@ -30,7 +30,7 @@ def png(size=(320, 480), color="#456789"):
 
 
 @contextmanager
-def local_model_stub(mode="success"):
+def local_model_stub(mode="success", *, outfit_supported=False):
     result = png((64, 96), "#b35a27")
 
     class Server(ThreadingHTTPServer):
@@ -43,6 +43,7 @@ def local_model_stub(mode="success"):
             self.release = threading.Event()
             self.posts = 0
             self.body = b""
+            self.path = ""
 
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, *_args):
@@ -60,12 +61,14 @@ def local_model_stub(mode="success"):
 
         def do_GET(self):
             self.send(200, json.dumps({
-                "ready": True, "is_mock": True, "model_id": "local-integration-stub"
+                "ready": True, "is_mock": True, "model_id": "local-integration-stub",
+                "outfit_supported": outfit_supported,
             }).encode(), "application/json")
 
         def do_POST(self):
             length = int(self.headers.get("Content-Length", "0"))
             self.server.body = self.rfile.read(length)
+            self.server.path = self.path
             self.server.posts += 1
             self.server.started.set()
             if mode == "block":
@@ -129,6 +132,70 @@ def wait_terminal(client, headers, job_id, timeout=4):
             return response
         time.sleep(0.01)
     raise AssertionError("local model job did not become terminal")
+
+
+def test_outfit_thumbnails_selection_and_replay_on_local_model(tmp_path, monkeypatch):
+    make_test_catalog(tmp_path, monkeypatch)
+    with local_model_stub(outfit_supported=True) as (url, worker), TestClient(create_app(
+        provider=LocalModelProvider(url, allow_mock_for_tests=True), catalog_path=tmp_path / "catalog.sqlite3", catalog_profile="regression",
+    )) as client:
+        auth, _ = open_session(client)
+        catalog = client.get("/api/v1/garments", headers=auth).json()
+        assert catalog["outfit_available"] is True
+        assert {item["category"] for item in catalog["accessories"]} == {"belt", "earrings"}
+        path = "/api/v1/outfit-accessories/silver_studs.png"
+        assert client.get(path).status_code == 401
+        thumb = client.get(path, headers=auth)
+        with Image.open(io.BytesIO(thumb.content)) as image:
+            assert image.format == "PNG" and image.mode == "RGBA"
+        outfit = {"garment_ids": ["upper_blue"], "accessory_ids": ["silver_studs"]}
+        body = {"upload_id": upload_person(client, auth), "outfit": outfit}
+        headers = {**auth, "Idempotency-Key": str(uuid.uuid4())}
+        path = "/api/v1/tryon-jobs"
+        created = client.post(path, headers=headers, json=body)
+        assert created.status_code == 202, created.json()
+        job = wait_terminal(client, auth, created.json()["job_id"]).json()
+        assert job["status"] == "succeeded" and job["outfit"] == outfit
+        assert job["garment_id"] == "upper_blue" and not job["is_mock"]
+        assert client.post(path, headers=headers, json=body).json()["job_id"] == job["job_id"]
+        changed = {**outfit, "accessory_ids": ["gold_hoops"]}
+        assert client.post(path, headers=headers, json={**body, "outfit": changed}).status_code == 409
+        assert worker.path == "/internal/outfit"
+        assert worker.body.count(b'name="garment_image"') == 2
+        assert b"upper_body,earrings" in worker.body
+        assert worker.posts == 1
+
+
+def test_outfit_is_rejected_before_sending_photo_to_legacy_worker(tmp_path, monkeypatch):
+    make_test_catalog(tmp_path, monkeypatch)
+    with local_model_stub() as (url, worker), TestClient(create_app(
+        provider=LocalModelProvider(url, allow_mock_for_tests=True), catalog_path=tmp_path / "catalog.sqlite3", catalog_profile="regression",
+    )) as client:
+        auth, _ = open_session(client)
+        created = client.post("/api/v1/tryon-jobs", headers={**auth, "Idempotency-Key": str(uuid.uuid4())}, json={
+            "upload_id": upload_person(client, auth), "outfit": {"garment_ids": ["upper_blue"]},
+        })
+        assert created.status_code == 202
+        job = wait_terminal(client, auth, created.json()["job_id"]).json()
+        assert job["status"] == "failed" and job["error"]["code"] == "PROVIDER_UNAVAILABLE"
+        assert worker.posts == 0
+
+
+@pytest.mark.parametrize(("garments", "accessories", "code"), [
+    (["studio_straight_jeans_67", "studio_cotton_t_dress_09"], [], "INVALID_OUTFIT"),
+    (["studio_straight_jeans_67", "studio_straight_jeans_07"], [], "INVALID_OUTFIT"),
+    ([], ["silver_studs", "gold_hoops"], "INVALID_OUTFIT"),
+    ([], ["missing"], "RESOURCE_NOT_FOUND"),
+])
+def test_outfit_rejects_conflicting_or_unknown_references(tmp_path, garments, accessories, code):
+    with TestClient(create_app(catalog_path=tmp_path / "catalog.sqlite3")) as client:
+        auth, _ = open_session(client)
+        response = client.post("/api/v1/tryon-jobs", headers={**auth, "Idempotency-Key": str(uuid.uuid4())}, json={
+            "upload_id": upload_person(client, auth),
+            "outfit": {"garment_ids": garments, "accessory_ids": accessories},
+        })
+        assert response.status_code == (404 if code == "RESOURCE_NOT_FOUND" else 422)
+        assert response.json()["error"]["code"] == code
 
 
 def test_explicit_cli_local_provider_configuration_keeps_default_mock(monkeypatch, tmp_path):

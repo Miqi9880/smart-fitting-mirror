@@ -56,7 +56,7 @@ python -m backend --port 8000 --catalog-db data/catalog.sqlite3
 
 长度字段 hem_ratio、各类别源控制点与互斥规则见 [HTTP接口](interfaces/backend.md)。这些是初始二维标定，不是量体、三维布料或精细遮挡。OBJ实验只替换上衣层；整套搭配不套躯干近似深度面。上衣仍每次一件；当前不支持两件上衣内外叠穿。
 
-生成只接受单件 garment_id，默认仍为MOCK，可选Aidge真实上衣生成已在镜子跑通，见[验证记录](reports/mirror-real-generation-2026-10-23.md)；连衣裙／裤子／半裙／短裤／帽子暂只实时预览。外部模型的支持品类由后端成员实测后接，不随新图片自动宣布完成。
+在试衣页按品类选择当前搭配，打开「生成当前搭配」，拍摄或导入一张照片即可提交。服装库按上衣、长裤、短裤、半裙、连衣裙、帽子分类，保留搜索和标签筛选。「浏览配饰素材」提供腰带和耳饰，每类可选一件。腰带和耳饰目前用于照片生成。默认 MOCK 只验证操作流程，真实搭配效果使用本地 FLUX 服务。[配饰素材与来源](../backend/assets/accessories/README.md) · [后端启动](../backend/README.md)
 
 ## 当前交接
 

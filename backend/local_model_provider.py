@@ -1,8 +1,7 @@
 """Opt-in adapter for the private, loopback-only local try-on service.
 
-This component is deliberately not registered by the public service or CLI.
-It only calls an explicitly configured local HTTP endpoint and implements the
-existing TryOnProvider contract.
+The CLI enables this adapter only when explicitly configured with a loopback
+endpoint. It supports the legacy single-garment and outfit worker protocols.
 """
 
 from __future__ import annotations
@@ -22,6 +21,7 @@ from urllib.parse import urlsplit
 import requests
 from PIL import Image, UnidentifiedImageError
 
+from .outfit import MAX_OUTFIT_REFERENCE_BYTES, valid_kinds
 from .provider_control import GenerationBudget, ProviderFailure
 from .provider_images import MAX_SOURCE_BYTES, MAX_SOURCE_PIXELS
 from .tryon_provider import MAX_RESULT_BYTES, MAX_RESULT_PIXELS, ProviderResult
@@ -130,33 +130,45 @@ class LocalModelProvider:
         *,
         budget: GenerationBudget,
     ) -> ProviderResult:
-        if self.base_url is None:
-            raise ProviderFailure("PROVIDER_UNAVAILABLE", "本地试衣模型尚未配置", retryable=True)
         if cloth_type != "tops":
             raise ProviderFailure("PROVIDER_UNSUPPORTED_CLOTH_TYPE", "本地试衣模型目前仅支持上衣")
+        return self._generate(model_image, (garment_image,), "/internal/tryon", {"cloth_type": "tops"}, budget)
 
+    def generate_outfit(self, model_image: bytes, references: tuple[tuple[str, Path], ...],
+                        *, budget: GenerationBudget) -> ProviderResult:
+        kinds = [kind for kind, _ in references]
+        if not valid_kinds(kinds):
+            raise ProviderFailure("PROVIDER_INVALID_INPUT", "搭配品类不符合要求")
+        return self._generate(model_image, tuple(path for _, path in references), "/internal/outfit",
+                              {"kinds": ",".join(kinds)}, budget)
+
+    def _generate(self, model_image, garment_images, path, fields, budget):
+        if self.base_url is None:
+            raise ProviderFailure("PROVIDER_UNAVAILABLE", "本地试衣模型尚未配置", retryable=True)
         person_type = _validate_image(model_image, "人物", budget)
-        try:
-            with garment_image.open("rb") as source:
-                garment_bytes = source.read(MAX_SOURCE_BYTES + 1)
-        except OSError as error:
-            raise ProviderFailure("PROVIDER_INVALID_INPUT", "服装图片无法读取") from error
-        garment_type = _validate_image(garment_bytes, "服装", budget)
+        files = [("person_image", ("person." + person_type.split("/", 1)[1], model_image, person_type))]
+        maximum = MAX_OUTFIT_REFERENCE_BYTES if "kinds" in fields else MAX_SOURCE_BYTES
+        for garment_image in garment_images:
+            try:
+                with garment_image.open("rb") as source:
+                    garment_bytes = source.read(maximum + 1)
+            except OSError as error:
+                raise ProviderFailure("PROVIDER_INVALID_INPUT", "搭配参考图片无法读取") from error
+            if len(garment_bytes) > maximum:
+                raise ProviderFailure("PROVIDER_INVALID_INPUT", "搭配参考图片过大")
+            garment_type = _validate_image(garment_bytes, "服装或配饰", budget)
+            files.append(("garment_image", ("garment." + garment_type.split("/", 1)[1], garment_bytes, garment_type)))
 
-        self._check_health(budget)
+        self._check_health(budget, outfit="kinds" in fields)
         remaining_ms = min(MAX_BUDGET_MS, int(budget.remaining() * 1000))
         if remaining_ms < 1:
             raise ProviderFailure("GENERATION_TIMEOUT", "本地试衣模型已无足够等待时间", retryable=True)
-        path = "/internal/tryon"
         # Requests prepares multipart bytes only. HTTPConnection performs the
         # actual call without environment proxies or automatic redirects.
         request = requests.Request(
             "POST", self.base_url + path,
-            data={"cloth_type": "tops", "budget_ms": str(remaining_ms)},
-            files={
-                "person_image": ("person." + person_type.split("/", 1)[1], model_image, person_type),
-                "garment_image": ("garment." + garment_type.split("/", 1)[1], garment_bytes, garment_type),
-            },
+            data={**fields, "budget_ms": str(remaining_ms)},
+            files=files,
         ).prepare()
         if self.submission_observer is not None:
             self.submission_observer("provider_submit_attempt")
@@ -217,7 +229,7 @@ class LocalModelProvider:
             budget.check()
             raise ProviderFailure("PROVIDER_UNAVAILABLE", "本地试衣模型暂不可用", retryable=True) from error
 
-    def _check_health(self, budget: GenerationBudget) -> None:
+    def _check_health(self, budget: GenerationBudget, *, outfit: bool = False) -> None:
         with self._request("GET", "/internal/health", budget) as response:
             body = self._read_bounded(
                 response, MAX_CONTROL_RESPONSE_BYTES, budget, overflow_code="PROVIDER_UNAVAILABLE"
@@ -238,6 +250,8 @@ class LocalModelProvider:
                 raise ProviderFailure("PROVIDER_UNAVAILABLE", "本地试衣模型尚未就绪", retryable=True)
             if is_mock and not self.allow_mock_for_tests:
                 raise ProviderFailure("PROVIDER_UNAVAILABLE", "本地试衣模型返回了测试模式，已拒绝", retryable=False)
+            if outfit and payload.get("outfit_supported") is not True:
+                raise ProviderFailure("PROVIDER_UNAVAILABLE", "本地模型服务需升级后才能生成整套搭配")
 
     @staticmethod
     def _read_bounded(response: HTTPResponse, maximum: int, budget: GenerationBudget, *, overflow_code: str) -> bytes:

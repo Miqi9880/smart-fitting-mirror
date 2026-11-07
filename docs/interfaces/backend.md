@@ -1,5 +1,7 @@
 # 后端与服装接口
 
+HTTP V0.5.0 增加整套照片生成和配饰分类。旧版单件请求与结果格式继续兼容。
+
 2026-10-29：HTTP合同[视频增量V0.4.1](video-recommendation.md)保留0.4.0推荐JSON，增加公共授权媒体／封面GET、HEAD与Range。PR #52的目录／规则／路由现接7条授权参考短片和同一App播放器，见[记录](../reports/video-playback-2026-10-29.md)；媒体包需另装，缺文件返回空库。
 
 [OpenAPI 合同](../../contracts/openapi.json) 定义字段和响应，本文定义行为。采用 [OpenAPI 3.0.3](https://spec.openapis.org/oas/v3.0.3)，合同不表示已有可运行服务。
@@ -17,14 +19,15 @@ POST /sessions 创建游客会话，返回本项目的 session_token；其余会
 | 方法与路径（省略前缀） | 用途 | 成功 |
 | --- | --- | --- |
 | POST /sessions | 创建游客会话 | 201 Session |
-| GET /garments | 上衣、裤子及帽子目录，不分页 | 200 GarmentList |
+| GET /garments | 六类服装目录，搭配能力与配饰目录为可选字段 | 200 GarmentList |
 | GET /garments?q=...&tag=... | 名称/品牌/材质/标签搜索及标签筛选 | 200 GarmentList |
 | GET /garments/{garment_id} | 当前会话服装详情 | 200 Garment |
 | POST /garments | 在当前临时衣柜新增，使用 GarmentWrite | 201 Garment |
 | PUT /garments/{garment_id} | 编辑当前临时衣柜条目，路径/正文 ID 一致 | 200 Garment |
 | DELETE /garments/{garment_id} | 从当前临时衣柜移除 | 204，无正文 |
 | POST /uploads | multipart 上传原始照片，字段 file | 201 Upload |
-| POST /tryon-jobs | upload_id、garment_id 创建任务 | 202 Job；幂等重放 200 Job |
+| GET /outfit-accessories/{accessory_id}.png | 游客鉴权的配饰参考 PNG | 200 PNG |
+| POST /tryon-jobs | upload_id 加 garment_id 或 outfit | 202 Job；幂等重放 200 Job |
 | GET /tryon-jobs/{job_id} | 轮询状态 | 200 Job |
 | POST /tryon-jobs/{job_id}/cancel | 请求取消 | 200 当前 Job |
 | DELETE /sessions/current | 撤销与清理 | 204，无正文 |
@@ -45,7 +48,7 @@ Garment 包含编号、名称、category、标签、缩略图、preview_image �
 
 `dress`、`skirt`、`shorts` 另外要求 `preview_image.hem_ratio`：0.1–1 在髋→膝之间插值，1–2 在膝→踝之间插值；短裤只能 ≤1。它是单件素材的初始长度标定，不是人体测量。hem 是服装裙摆／裤脚控制点，不伪装成真实膝踝。短裙／短裤不依赖踝点，长裙／连衣裙需要完整可靠腿部；连衣裙还需双肩。裙摆连续绘制，短裤按两条大腿绘制，不能互套长裤几何。
 
-搭配中长裤／半裙／短裤互斥；连衣裙与上衣及所有下装互斥，帽子保留。上衣仍每次一件，尚无多上衣叠穿或整套生成。
+搭配中长裤／半裙／短裤互斥。连衣裙替代上衣及下装，仍可搭配帽子。各部位最多一件。
 
 所有点均为素材图片中的归一化坐标，解剖学左右不变。不把帽子或裤子的点塞进肩点字段。写入品类必须与 asset_id 对应的素材定位方式一致，否则 422 INVALID_ASSET。示例见 [组合目录](../../contracts/examples/outfit-garments.json)。运行中的默认目录与本地素材包见 [复现说明](../studio-outfits.md)；文件未安装时素材接口返回 503 ASSET_NOT_INSTALLED，提示安装命令，不回退到假衣服。
 
@@ -57,11 +60,18 @@ CLI 运行后端默认使用 SQLite 保存内置基础目录，管理方式见 [
 
 预览素材为正面、未镜像、透明背景 PNG。锚点左右指假设穿着者的解剖学左右，髋锚点是身体对齐位置，不强制位于下摆。尺寸和锚点必须对照真实素材校验。云端参考图可与预览素材不同。
 
-generation_reference_url 为空时，该服装创建生成任务返回 422 GARMENT_NOT_GENERATABLE。服务端按 garment_id 查素材，不接受客户端任意远程 URL。样例 .invalid URL 不可下载；模拟服务任务需准备原创或授权可用素材。
+旧版单件请求要求 `generation_reference_url` 对应的素材可生成，否则返回 422 GARMENT_NOT_GENERATABLE。整套请求由服务端根据当前衣柜的 ID 查找素材，支持下装、连衣裙及帽子。
 
 上传 JPEG/PNG，初始限制 10 MiB、1600 万像素，服务端检查实际类型和解码尺寸。原图不含衣服/UI，不保留不必要 EXIF。限制是开发初值，选定供应商后复核。
 
 上传返回 upload_id、宽高和 expires_at。输入最多保存 30 分钟且不超过会话有效期，可在用完后提前清理；不跨会话复用。
+
+## 整套照片生成
+
+- `/garments` 通过 `outfit_available: true` 声明后端支持搭配请求，`accessories` 列出独立的配饰类型和参考图。每项有 `accessory_id`、`name`、`category`（`belt`／`earrings`）、`thumbnail_url` 和 `source`。
+- 请求提交一次 `upload_id` 与 [outfit 选择](../../contracts/examples/create-outfit-job.json)。`garment_ids` 最多三件，`accessory_ids` 最多两件，两列表合计至少一件。只允许当前游客衣柜的服装和已登记的配饰。品类冲突返回 422 INVALID_OUTFIT，未知 ID 返回 404。
+- 任务保留 `outfit` 及完整 ID 快照，`garment_id` 是兼容字段。相同幂等键绑定相同人像上传与整套选择。结果、取消、超时与资源回收沿用单件规则。
+- 真实整套任务使用支持 `outfit_supported` 的私有 FLUX 工作者。MOCK 返回带标识的原图以检查交互。Aidge 沿用原单件接口。
 
 ## 幂等与任务状态
 

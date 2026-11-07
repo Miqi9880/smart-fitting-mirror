@@ -30,6 +30,14 @@ internal class GarmentBrowser(private val context: Context, private val controll
     private val summary = text("")
     private val search = EditText(context).apply { hint = "搜索名称、品牌、材质或标签"; tag = "catalog.search"; setSingleLine(); setText(query) }
     private val filters = Spinner(context).apply { tag = "catalog.filter"; contentDescription = "按服装标签筛选" }
+    private val categories = listOf(null, GarmentCategory.UPPER_BODY, GarmentCategory.LOWER_BODY,
+        GarmentCategory.SHORTS, GarmentCategory.SKIRT, GarmentCategory.DRESS, GarmentCategory.HEADWEAR)
+    private val categoryPicker = Spinner(context).apply {
+        tag = "catalog.category"; contentDescription = "按服装品类筛选"
+        adapter = ArrayAdapter(context, android.R.layout.simple_spinner_dropdown_item,
+            categories.map { it?.label ?: "全部品类" })
+    }
+    private var selectedCategory: GarmentCategory? = null
     private var tags = listOf("全部")
     private var selectedTag = "全部"
     private var state = controller.state.value
@@ -43,7 +51,7 @@ internal class GarmentBrowser(private val context: Context, private val controll
         root.setPadding(dp(16), dp(12), dp(16), dp(12))
         root.setBackgroundColor(Color.rgb(242,246,249))
         root.addView(text("我的临时衣柜", 22f)); root.addView(text("结束会话后恢复初始目录。图片取自现有素材库。"))
-        root.addView(search); root.addView(filters); root.addView(summary)
+        root.addView(search); root.addView(categoryPicker); root.addView(filters); root.addView(summary)
         root.addView(ScrollView(context).apply { addView(cards) }, LinearLayout.LayoutParams(-1, 0, 1f))
         val actions = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
         val refresh = Button(context).apply { text = "刷新衣柜"; setOnClickListener { controller.refreshCatalog() } }
@@ -58,6 +66,13 @@ internal class GarmentBrowser(private val context: Context, private val controll
         filters.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
             override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
                 selectedTag = tags.getOrElse(position) { "全部" }; renderCards()
+            }
+            override fun onNothingSelected(parent: AdapterView<*>?) = Unit
+        }
+        categoryPicker.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
+                selectedCategory = categories[position]
+                renderCards()
             }
             override fun onNothingSelected(parent: AdapterView<*>?) = Unit
         }
@@ -83,12 +98,24 @@ internal class GarmentBrowser(private val context: Context, private val controll
     private fun renderCards() {
         thumbnails.forEach { it.close() }; thumbnails.clear(); cards.removeAllViews()
         // Upstream fuzzyMatch's searchable product fields, adapted to our optional metadata.
-        val items = state.garments.filter { GarmentSearch.matches(it,search.text.toString(),selectedTag.takeIf { it != "全部" }) }
+        val items = state.garments.filter { (selectedCategory == null || it.category == selectedCategory) &&
+            GarmentSearch.matches(it,search.text.toString(),selectedTag.takeIf { it != "全部" }) }
             .sortedByDescending { "photo" in it.tags }
         if (items.isEmpty()) {
             cards.addView(text(if (state.garments.isEmpty()) "衣柜暂无服装，可从现有素材新增。" else "没有匹配的服装，请修改搜索或筛选。"))
-            cards.addView(Button(context).apply { text = "清除筛选"; setOnClickListener { search.setText(""); selectedTag = "全部"; this@GarmentBrowser.filters.setSelection(0); renderCards() } })
+            cards.addView(Button(context).apply { text = "清除筛选"; setOnClickListener {
+                selectedCategory = null; categoryPicker.setSelection(0)
+                search.setText(""); selectedTag = "全部"; this@GarmentBrowser.filters.setSelection(0); renderCards()
+            } })
         }
+        for (category in categories.filterNotNull()) {
+            val group = items.filter { it.category == category }
+            if (group.isEmpty()) continue
+            cards.addView(text(category.label, 18f))
+            addCards(group)
+        }
+    }
+    private fun addCards(items: List<Garment>) {
         for (pair in items.chunked(2)) {
             val row = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
             for (item in pair) {
@@ -124,7 +151,11 @@ internal class GarmentBrowser(private val context: Context, private val controll
             d.priceCents?.let { add("参考价格：¥${it / 100}.${(it % 100).toString().padStart(2,'0')}") }
             if (d.description.isNotBlank()) add(d.description)
             if (d.careInstructions.isNotBlank()) add("护理：${d.careInstructions}")
-            add(if (item.generationReferenceUrl == null) "仅实时预览" else "支持生成请求；实际结果类型由服务标明")
+            add(when {
+                item.generationReferenceUrl != null -> "可单件生成，也可加入搭配"
+                state.outfitAvailable -> "可通过当前搭配生成"
+                else -> "实时预览素材"
+            })
         }
         content.addView(text(info.joinToString("\n")))
         content.addView(Button(context).apply { text = "编辑资料"; setOnClickListener { details?.dismiss(); edit(item) } })
