@@ -2,8 +2,8 @@
   "openapi": "3.0.3",
   "info": {
     "title": "Smart Fitting Mirror Course API",
-    "version": "0.4.1",
-    "description": "服饰游客会话、目录、生成与视频推荐合同。0.4.1增加公共授权视频／封面GET及HEAD；推荐JSON仍兼容0.4.0，视觉合同仍0.2.0。实现和安装步骤见docs/interfaces/video-recommendation.md。"
+    "version": "0.5.0",
+    "description": "服饰游客会话、目录、单件与整套照片生成、视频推荐合同。保留旧版单件请求及视频接口。"
   },
   "servers": [
     {
@@ -1534,6 +1534,57 @@
           }
         }
       }
+    },
+    "/outfit-accessories/{accessory_id}.png": {
+      "get": {
+        "operationId": "getOutfitAccessoryImage",
+        "summary": "读取当前会话可用的配饰参考 PNG",
+        "parameters": [
+          {
+            "name": "accessory_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "配饰参考 PNG",
+            "content": {
+              "image/png": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "游客会话无效",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "配饰不存在或参考图不可用",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -1825,6 +1876,15 @@
               "$ref": "#/components/schemas/Garment"
             },
             "maxItems": 100
+          },
+          "outfit_available": {
+            "type": "boolean"
+          },
+          "accessories": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OutfitAccessory"
+            }
           }
         },
         "required": [
@@ -1873,11 +1933,25 @@
             "type": "string",
             "minLength": 1,
             "maxLength": 128
+          },
+          "outfit": {
+            "$ref": "#/components/schemas/OutfitSelection"
           }
         },
         "required": [
-          "upload_id",
-          "garment_id"
+          "upload_id"
+        ],
+        "oneOf": [
+          {
+            "required": [
+              "garment_id"
+            ]
+          },
+          {
+            "required": [
+              "outfit"
+            ]
+          }
         ]
       },
       "Result": {
@@ -1930,7 +2004,8 @@
           "garment_id": {
             "type": "string",
             "minLength": 1,
-            "maxLength": 128
+            "maxLength": 128,
+            "description": "单件 ID。整套任务中为第一个服装 ID，仅选配饰时为第一个配饰 ID，完整选择以 outfit 为准。"
           },
           "status": {
             "type": "string",
@@ -2010,6 +2085,9 @@
               "request_id"
             ],
             "nullable": true
+          },
+          "outfit": {
+            "$ref": "#/components/schemas/OutfitSelection"
           }
         },
         "required": [
@@ -2403,6 +2481,94 @@
           "available_count"
         ],
         "description": "Unique video ids; len(items)=min(requested_limit,available_count). available_count counts eligible unique relevant candidates before truncation. Empty context yields zero; never pad with unrelated/repeated videos."
+      },
+      "OutfitSelection": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "garment_ids": {
+            "type": "array",
+            "maxItems": 3,
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            }
+          },
+          "accessory_ids": {
+            "type": "array",
+            "maxItems": 2,
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            }
+          }
+        },
+        "anyOf": [
+          {
+            "required": [
+              "garment_ids"
+            ],
+            "properties": {
+              "garment_ids": {
+                "minItems": 1
+              }
+            }
+          },
+          {
+            "required": [
+              "accessory_ids"
+            ],
+            "properties": {
+              "accessory_ids": {
+                "minItems": 1
+              }
+            }
+          }
+        ],
+        "description": "至少一个素材。上衣、下装、帽子、腰带和耳饰各最多一件。连衣裙替代上衣及下装。"
+      },
+      "OutfitAccessory": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "accessory_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "category": {
+            "type": "string",
+            "enum": [
+              "belt",
+              "earrings"
+            ]
+          },
+          "thumbnail_url": {
+            "type": "string",
+            "format": "uri"
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "ai_generated"
+            ]
+          }
+        },
+        "required": [
+          "accessory_id",
+          "name",
+          "category",
+          "thumbnail_url",
+          "source"
+        ]
       }
     }
   }

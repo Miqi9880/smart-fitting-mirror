@@ -56,6 +56,10 @@ class TryOnActivity : ComponentActivity() {
     private lateinit var address: EditText
     private lateinit var connect: Button
     private lateinit var generate: Button
+    private lateinit var outfitMode: Switch
+    private lateinit var accessoryPicker: Button
+    private lateinit var generationSummary: TextView
+    private var accessoryDialog: AlertDialog? = null
     private lateinit var staticImage: StaticImagePanel
     private lateinit var retry: Button
     private lateinit var cancel: Button
@@ -165,7 +169,9 @@ class TryOnActivity : ComponentActivity() {
             model.state.value.selected?.let { model.outfit = OutfitSelection.add(model.outfit,it) }; renderOutfit()
         },button("移除本类","fitting.outfit.remove") {
             model.state.value.selected?.let { model.outfit = model.outfit - it.category }; renderOutfit()
-        },button("清空搭配","fitting.outfit.clear") { model.outfit = emptyMap(); renderOutfit() }))
+        },button("清空搭配","fitting.outfit.clear") {
+            model.outfit = emptyMap(); model.outfitAccessories = emptyMap(); renderOutfit()
+        }))
         root.addView(row(button("合成样例", "fitting.mock") {
             requestPreview(false)
         }, button("RGB 摄像头", "fitting.rgb") {
@@ -242,6 +248,15 @@ class TryOnActivity : ComponentActivity() {
         tail.addView(controls)
         controls.render(!model.rgb,model.running)
         tail.addView(label("点击下方按钮会将未镜像的原始照片上传到上面的服务；实时预览不会逐帧上传。", 12f))
+        outfitMode = Switch(this).apply {
+            text = "生成当前搭配"; tag = "fitting.generation.outfit"; isChecked = model.generateOutfit
+            setOnCheckedChangeListener { _, checked -> model.generateOutfit = checked; updateCaptureActions() }
+        }
+        accessoryPicker = button("浏览配饰素材", "fitting.generation.accessories") { showAccessories() }
+        generationSummary = label("", 12f).apply { tag = "fitting.generation.summary" }
+        tail.addView(outfitMode)
+        tail.addView(accessoryPicker)
+        tail.addView(generationSummary)
         generate = button("拍摄并上传生成", "fitting.generate") { capture() }
         cancel = button("取消生成", "fitting.cancel") { model.controller?.cancel() }
         retry = button("重试请求", "fitting.retry") { model.controller?.retry() }
@@ -250,8 +265,9 @@ class TryOnActivity : ComponentActivity() {
             imagePicker.launch(arrayOf("image/jpeg", "image/png"))
         }, { photo ->
             val controller = model.controller
-            if (!visible || captureBusy || controller?.state?.value?.canCapture != true) false
-            else { controller.generate(photo); updateCaptureActions(); true }
+            val outfit = generationRequest()
+            if (!visible || captureBusy || controller?.state?.value?.canGenerate(outfit) != true) false
+            else { controller.generate(photo, outfit); updateCaptureActions(); true }
         }) { updateCaptureActions() }
         tail.addView(staticImage)
         mockLabel = label("尚无生成结果", 13f).apply { tag = "fitting.result.kind" }
@@ -335,6 +351,7 @@ class TryOnActivity : ComponentActivity() {
         videos.onStop()
         cameraDialog?.dismiss(); cameraDialog = null
         browser?.dismiss(); browser = null
+        accessoryDialog?.dismiss(); accessoryDialog = null
         visible = false; model.playing = mock.playing; model.synthetic = mock.settings
         staticImage.clear()
         model.controller?.setVisible(false); stopVision(); comparison.clear(); super.onStop()
@@ -343,7 +360,7 @@ class TryOnActivity : ComponentActivity() {
         outState.putBoolean("pending_permission", pendingPermission)
         super.onSaveInstanceState(outState)
     }
-    override fun onDestroy() { videos.dispose(); rgb.close(); mock.close(); super.onDestroy() }
+    override fun onDestroy() { accessoryDialog?.dismiss(); videos.dispose(); rgb.close(); mock.close(); super.onDestroy() }
     override fun onUserInteraction() { super.onUserInteraction(); model.interact() }
 
     private fun endExperience(reason: GuestEndReason) {
@@ -354,6 +371,7 @@ class TryOnActivity : ComponentActivity() {
         pendingPermission = false; model.running = false; model.visionFailure = null; stopVision()
         staticImage.clear(); comparison.clear(); model.resultComparisonMode = ResultComparisonMode.SIDE_BY_SIDE
         browser?.dismiss(); browser = null; cameraDialog?.dismiss(); cameraDialog = null
+        accessoryDialog?.dismiss(); accessoryDialog = null; model.outfitAccessories = emptyMap(); model.generateOutfit = false
         model.outfit = emptyMap(); model.fitTarget = null; model.fitTargetExplicit = false; model.lastOutfitSelection = null
         model.catalogAssets = emptyList(); model.catalogQuery = ""
         if (model.controller?.state?.value?.phase != FittingPhase.CLOSED) model.controller?.end()
@@ -444,7 +462,8 @@ class TryOnActivity : ComponentActivity() {
     private fun capture() {
         val controller = model.controller ?: return
         val id = activeVision ?: return
-        if (!controller.state.value.canCapture || captureBusy || staticImage.busy) return
+        val outfit = generationRequest()
+        if (!controller.state.value.canGenerate(outfit) || captureBusy || staticImage.busy) return
         captureBusy = true; updateCaptureActions()
         source.captureOriginal { outcome ->
             val photo = outcome.getOrNull()
@@ -452,7 +471,7 @@ class TryOnActivity : ComponentActivity() {
                 photo?.close(); return@captureOriginal
             }
             captureBusy = false
-            if (photo != null) controller.generate(photo)
+            if (photo != null) controller.generate(photo, outfit)
             else status.text = outcome.exceptionOrNull()?.message ?: "拍摄失败，请重试"
             updateCaptureActions()
         }
@@ -468,7 +487,7 @@ class TryOnActivity : ComponentActivity() {
         if (listed != value.garments) {
             listed = value.garments
             garments.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item,
-                listed.map { it.name + if (it.generationReferenceUrl == null) "（仅预览）" else "" })
+                listed.map { "${it.category.label} · ${it.name}" })
         }
         val position = listed.indexOfFirst { it.garmentId == value.selectedId }
         if (position >= 0 && garments.selectedItemPosition != position) garments.setSelection(position)
@@ -479,7 +498,7 @@ class TryOnActivity : ComponentActivity() {
         browser?.render(value)
         mockLabel.text = when (value.job?.isMock) {
             true -> "MOCK · 模拟结果，非真实 AI 换装"
-            false -> "真实生成任务"
+            false -> if (value.job?.outfit != null) "真实搭配生成任务" else "真实单件生成任务"
             null -> "尚无生成结果"
         }
         comparison.render(value.original, value.result, model.resultComparisonMode)
@@ -489,12 +508,15 @@ class TryOnActivity : ComponentActivity() {
             model.running = false; model.visionFailure = null; stopVision(); comparison.clear()
             model.resultComparisonMode = ResultComparisonMode.SIDE_BY_SIDE
             model.catalogAssets = emptyList(); model.catalogQuery = ""; model.outfit = emptyMap()
+            model.outfitAccessories = emptyMap(); model.generateOutfit = false
+            accessoryDialog?.dismiss(); accessoryDialog = null
             model.fitTarget = null; model.fitTargetExplicit = false; model.lastOutfitSelection = null
             outfitStatus.text = "当前搭配已清空"; browser?.dismiss(); browser = null
             fitControls.render(emptyList(),null,OutfitFit())
             assetStatus.text = "会话结束，服装与本地图像已清理"
         } else {
             val current = value.garments.associateBy { it.garmentId }
+            model.outfitAccessories = model.outfitAccessories.filterValues { it in value.accessories }
             model.outfit = model.outfit.values.mapNotNull { current[it.garmentId] }
                 .fold(emptyMap()) { selection, item -> OutfitSelection.add(selection,item) }
             if (value.selected != model.lastOutfitSelection) {
@@ -505,10 +527,38 @@ class TryOnActivity : ComponentActivity() {
         }
         videos.onSessionChanged()
     }
+    private fun generationRequest(): OutfitRequest? = if (model.generateOutfit) {
+        OutfitRequest(model.outfit.values.map { it.garmentId }, model.outfitAccessories.values.map { it.accessoryId })
+    } else null
+
+    private fun showAccessories() {
+        val controller = model.controller ?: return
+        val available = controller.state.value.accessories
+        if (available.isEmpty()) return
+        accessoryDialog?.dismiss()
+        accessoryDialog = accessoryLibraryDialog(this, lifecycleScope, controller, available, model.outfitAccessories) { category, item ->
+            model.outfitAccessories = if (item == null) model.outfitAccessories - category else model.outfitAccessories + (category to item)
+            model.generateOutfit = true
+            updateCaptureActions()
+        }.also { it.show() }
+    }
+
     private fun updateCaptureActions() {
         val value = model.controller?.state?.value ?: model.state.value
-        val allow = visible && value.canCapture && !captureBusy
+        val allow = visible && value.canGenerate(generationRequest()) && !captureBusy
         val importing = ::staticImage.isInitialized && staticImage.busy
+        if (::generationSummary.isInitialized) {
+            outfitMode.visibility = if (value.outfitAvailable) View.VISIBLE else View.GONE
+            outfitMode.isEnabled = value.canSelect && !captureBusy && !importing
+            if (outfitMode.isChecked != model.generateOutfit) outfitMode.isChecked = model.generateOutfit
+            accessoryPicker.visibility = if (value.outfitAvailable && value.accessories.isNotEmpty()) View.VISIBLE else View.GONE
+            accessoryPicker.isEnabled = outfitMode.isEnabled
+            generationSummary.text = if (model.generateOutfit) {
+                val names = model.outfit.values.map { it.name } + model.outfitAccessories.values.map { it.name }
+                if (names.isEmpty()) "先选择服装或配饰" else "将生成：${names.joinToString(" ＋ ")}。拍摄时请让衣摆和腰部清楚入镜。"
+            } else "单件生成：${value.selected?.name ?: "未选服装"}"
+        }
+        generate.text = if (generationRequest() == null) "拍摄并上传生成" else "拍摄并生成当前搭配"
         generate.isEnabled = allow && hasFrame && !importing
         if (::staticImage.isInitialized) staticImage.render(allow)
         garments.isEnabled = value.canSelect && !captureBusy && !importing
@@ -519,6 +569,7 @@ class TryOnActivity : ComponentActivity() {
         outfitStatus.text = "当前搭配：" + model.outfit.values.joinToString(" ＋ ") { "${it.category.label}：${it.name}" }.ifBlank { "无" }
         renderFitControls()
         loadOutfit()
+        updateCaptureActions()
     }
     private fun renderFitControls() {
         val available = model.outfit.keys.toList()

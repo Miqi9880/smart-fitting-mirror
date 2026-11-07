@@ -11,6 +11,7 @@ from pathlib import Path
 from threading import Lock
 import time
 import warnings
+from contextlib import ExitStack
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, Response
@@ -21,9 +22,11 @@ from starlette.exceptions import HTTPException
 from starlette.requests import ClientDisconnect
 
 from .provider_images import MAX_SOURCE_BYTES, MAX_SOURCE_PIXELS
+from .outfit import LOWER_KINDS, MAX_MATERIALS, MAX_OUTFIT_REFERENCE_BYTES, valid_kinds
 
 MODEL_ID = "flux2-klein-4b-e7b7dc2"
 MAX_REQUEST_BYTES = 2 * MAX_SOURCE_BYTES + 64 * 1024
+MAX_OUTFIT_REQUEST_BYTES = MAX_SOURCE_BYTES + MAX_MATERIALS * MAX_OUTFIT_REFERENCE_BYTES + 64 * 1024
 MAX_RESULT_BYTES = 16 * 1024 * 1024
 MAX_BUDGET_MS = 120_000
 LOGGER = logging.getLogger(__name__)
@@ -93,22 +96,28 @@ def inference_timeout() -> JSONResponse:
     return error(504, "INFERENCE_TIMEOUT", "本地模型生成超时", retryable=True)
 
 
-def create_app(infer) -> FastAPI:
+def create_app(infer, infer_outfit=None) -> FastAPI:
     app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
     slot = Lock()
 
     @app.get("/internal/health")
     async def health():
-        return {"ready": True, "is_mock": False, "model_id": MODEL_ID}
+        payload = {"ready": True, "is_mock": False, "model_id": MODEL_ID}
+        if infer_outfit is not None:
+            payload["outfit_supported"] = True
+        return payload
 
-    def run_job(person_bytes: bytes, garment_bytes: bytes, deadline: float) -> Response:
+    def run_job(person_bytes: bytes, garment_bytes: list[bytes], kinds: list[str] | None, deadline: float) -> Response:
         started = time.monotonic()
         outcome = "failed"
         try:
             check_deadline(deadline)
-            with decode_image(person_bytes) as person, decode_image(garment_bytes) as garment:
+            with ExitStack() as images:
+                person = images.enter_context(decode_image(person_bytes))
+                garments = [images.enter_context(decode_image(data)) for data in garment_bytes]
                 check_deadline(deadline)
-                with infer(person, garment, deadline) as image:
+                result = infer(person, garments[0], deadline) if kinds is None else infer_outfit(person, list(zip(kinds, garments)), deadline)
+                with result as image:
                     check_deadline(deadline)
                     encoded = io.BytesIO()
                     image.save(encoded, "PNG")
@@ -130,7 +139,11 @@ def create_app(infer) -> FastAPI:
             slot.release()
 
     @app.post("/internal/tryon")
+    @app.post("/internal/outfit")
     async def tryon(request: Request):
+        outfit = request.url.path.endswith("/outfit")
+        if outfit and infer_outfit is None:
+            return error(503, "MODEL_NOT_READY", "搭配生成服务尚未启用")
         received_at = time.monotonic()
         if not slot.acquire(blocking=False):
             return error(503, "MODEL_BUSY", "本地模型正忙", retryable=True)
@@ -141,25 +154,33 @@ def create_app(infer) -> FastAPI:
             length = request.headers.get("content-length", "")
             if request.headers.get("transfer-encoding") or not length.isascii() or not length.isdecimal() or len(length) > 10:
                 return error(400, "INVALID_INPUT", "需要固定长度的 multipart 请求")
-            if not 0 < int(length) <= MAX_REQUEST_BYTES:
+            if not 0 < int(length) <= (MAX_OUTFIT_REQUEST_BYTES if outfit else MAX_REQUEST_BYTES):
                 return error(400, "INVALID_INPUT", "请求图片过大")
 
-            async with request.form(max_files=2, max_fields=2, max_part_size=64) as form:
-                if len(form.multi_items()) != 4 or set(form) != {"person_image", "garment_image", "cloth_type", "budget_ms"}:
+            async with request.form(max_files=1 + (MAX_MATERIALS if outfit else 1), max_fields=2, max_part_size=96) as form:
+                kind_field = "kinds" if outfit else "cloth_type"
+                garments = form.getlist("garment_image")
+                if len(form.multi_items()) != 3 + len(garments) or set(form) != {"person_image", "garment_image", kind_field, "budget_ms"}:
                     return error(400, "INVALID_INPUT", "试衣请求字段不完整")
-                person, garment = form["person_image"], form["garment_image"]
-                cloth_type, budget = form["cloth_type"], form["budget_ms"]
-                if not all(isinstance(item, UploadFile) and 0 < (item.size or 0) <= MAX_SOURCE_BYTES for item in (person, garment)):
+                person = form["person_image"]
+                material_limit = MAX_OUTFIT_REFERENCE_BYTES if outfit else MAX_SOURCE_BYTES
+                if (not isinstance(person, UploadFile) or not 0 < (person.size or 0) <= MAX_SOURCE_BYTES
+                        or not all(isinstance(item, UploadFile) and 0 < (item.size or 0) <= material_limit for item in garments)):
                     return error(400, "INVALID_INPUT", "试衣图片缺失或过大")
-                if not isinstance(cloth_type, str) or not isinstance(budget, str) or not budget.isascii() or not budget.isdecimal():
+                kind_value, budget = form[kind_field], form["budget_ms"]
+                if not isinstance(kind_value, str) or not isinstance(budget, str) or not budget.isascii() or not budget.isdecimal():
                     return error(400, "INVALID_INPUT", "试衣参数无效")
-                if cloth_type != "tops":
+                kinds = kind_value.split(",") if outfit else None
+                if kinds is not None and (len(kinds) != len(garments) or not valid_kinds(kinds)):
+                    return error(400, "INVALID_INPUT", "搭配参考图片和品类不匹配")
+                if not outfit and kind_value != "tops":
                     return error(422, "UNSUPPORTED_CLOTH_TYPE", "本地模型目前仅支持上衣")
                 if not 1 <= int(budget) <= MAX_BUDGET_MS:
                     return error(400, "INVALID_INPUT", "等待时限无效")
                 deadline = received_at + int(budget) / 1000
-                person_bytes, garment_bytes = await person.read(), await garment.read()
-            job = asyncio.create_task(asyncio.to_thread(run_job, person_bytes, garment_bytes, deadline))
+                person_bytes = await person.read()
+                garment_bytes = [await garment.read() for garment in garments]
+            job = asyncio.create_task(asyncio.to_thread(run_job, person_bytes, garment_bytes, kinds, deadline))
             # asyncio.wait does not cancel inference on a deadline or caller
             # disconnect. Only run_job releases the slot after GPU work ends.
             finished, _ = await asyncio.wait({job}, timeout=max(0, deadline - time.monotonic()))
@@ -171,6 +192,42 @@ def create_app(infer) -> FastAPI:
                 slot.release()
 
     return app
+
+
+OUTFIT_EDITS = {
+    "lower_body": "Replace the visible lower garment with the exact long trousers in reference {index}.",
+    "skirt": "Replace the visible lower garment with the exact skirt in reference {index}, keeping its length and drape.",
+    "shorts": "Replace the visible lower garment with the exact shorts in reference {index}, keeping their length.",
+    "upper_body": "Replace only the upper garment with the exact top in reference {index}, including its collar, closures and cuffs.",
+    "dress": "Replace the upper and lower garments with the single dress in reference {index}, keeping its neckline, cut and hem length.",
+    "headwear": "Place the exact hat in reference {index} on the head, keeping the eyes visible.",
+    "belt": "Place the belt in reference {index} around the waist, on the outer clothing layer, copying the buckle and color.",
+    "earrings": "Copy the exact matching pair in reference {index}, including its shape and finish. Place them at natural scale on visible earlobes behind any overlapping hair.",
+}
+
+
+def outfit_stages(references):
+    # Resolve the lower garment against the original hem before changing the
+    # upper garment, so the waistband reference does not pull the top upwards.
+    groups = (LOWER_KINDS, {"upper_body", "dress", "headwear"}, {"belt"}, {"earrings"})
+    return [stage for group in groups if (stage := [(kind, image) for kind, image in references if kind in group])]
+
+
+def outfit_prompt(stage):
+    edits = " ".join(OUTFIT_EDITS[kind].format(index=index) for index, (kind, _) in enumerate(stage, 2))
+    waist = ""
+    if any(kind in LOWER_KINDS | {"upper_body"} for kind, _ in stage):
+        waist = (
+            "Keep the visible waist overlap. An outside hem remains a continuous outer layer over the waistband. "
+            "A tucked hem stays behind the visible waistband. "
+        )
+    return (
+        "Edit photo 1 using the numbered product references. " + edits +
+        " Keep the original person's face, pose, hands, body proportions, shoes, framing and background. "
+        "Leave every unselected area, item and occlusion in photo 1 unchanged. " + waist +
+        "Copy only the referenced item's visible design, color and construction. "
+        "Add only the selected items."
+    )
 
 
 def load_flux(weights: Path):
@@ -186,16 +243,17 @@ def load_flux(weights: Path):
     torch.cuda.synchronize(device)
     LOGGER.info("model=%s load_seconds=%.3f", MODEL_ID, time.monotonic() - started)
 
-    def infer(person: Image.Image, garment: Image.Image, deadline: float) -> Image.Image:
+    def infer_photos(photos, prompt, size, deadline):
         def check_step(_pipe, _index, _timestep, values):
             check_deadline(deadline)
             return values
 
-        width, height = output_size(person)
+        check_deadline(deadline)
+        width, height = size
         torch.cuda.reset_peak_memory_stats(device)
         try:
             return pipe(
-                image=[person, garment], prompt=PROMPT, width=width, height=height,
+                image=photos, prompt=prompt, width=width, height=height,
                 num_inference_steps=4, guidance_scale=1.0,
                 generator=torch.Generator(device=device).manual_seed(42),
                 callback_on_step_end=check_step, callback_on_step_end_tensor_inputs=[],
@@ -204,7 +262,25 @@ def load_flux(weights: Path):
             torch.cuda.synchronize(device)
             LOGGER.info("peak_allocated_mib=%.1f", torch.cuda.max_memory_allocated(device) / 2**20)
 
-    return infer
+    def infer(person: Image.Image, garment: Image.Image, deadline: float) -> Image.Image:
+        return infer_photos([person, garment], PROMPT, output_size(person), deadline)
+
+    def infer_outfit(person, references, deadline):
+        size = output_size(person)
+        current = person
+        try:
+            for stage in outfit_stages(references):
+                updated = infer_photos([current] + [image for _, image in stage], outfit_prompt(stage), size, deadline)
+                if current is not person:
+                    current.close()
+                current = updated
+            return current
+        except BaseException:
+            if current is not person:
+                current.close()
+            raise
+
+    return infer, infer_outfit
 
 
 def main():
@@ -220,7 +296,7 @@ def main():
     os.environ["TRANSFORMERS_OFFLINE"] = "1"
     logging.basicConfig(level=logging.INFO)
     uvicorn.run(
-        create_app(load_flux(args.weights)), host="127.0.0.1", port=args.port,
+        create_app(*load_flux(args.weights)), host="127.0.0.1", port=args.port,
         workers=1, access_log=False, proxy_headers=False, http="h11", server_header=False,
     )
 

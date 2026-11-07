@@ -5,7 +5,7 @@ from threading import Event
 from fastapi.testclient import TestClient
 from PIL import Image
 
-from backend.flux_worker import MAX_REQUEST_BYTES, create_app, decode_image, output_size
+from backend.flux_worker import MAX_REQUEST_BYTES, create_app, decode_image, outfit_stages, output_size
 
 
 def png(size=(180, 640), color=(60, 70, 80)):
@@ -80,3 +80,36 @@ def test_very_narrow_input_is_bounded_before_padding():
     with decode_image(png((8192, 1))) as image:
         assert image.size == (4096, 256)
         assert output_size(image) == (864, 48)
+
+
+def test_outfit_route_keeps_references_paired_and_shares_the_single_job_slot():
+    started, finish = Event(), Event()
+
+    def infer_outfit(person, references, _deadline):
+        assert [(kind, image.size) for kind, image in references] == [
+            ("earrings", (96, 32)), ("upper_body", (180, 640)), ("skirt", (180, 640)),
+        ]
+        assert [[kind for kind, _ in stage] for stage in outfit_stages(references)] == [
+            ["skirt"], ["upper_body"], ["earrings"],
+        ]
+        started.set()
+        assert finish.wait(4)
+        return person.copy()
+
+    files = [
+        ("person_image", ("person.png", png(), "image/png")),
+        ("garment_image", ("studs.png", png((96, 32)), "image/png")),
+        ("garment_image", ("shirt.png", png(), "image/png")),
+        ("garment_image", ("skirt.png", png(), "image/png")),
+    ]
+    with TestClient(create_app(lambda person, *_: person.copy(), infer_outfit)) as client, ThreadPoolExecutor() as pool:
+        assert client.get("/internal/health").json()["outfit_supported"] is True
+        path = "/internal/outfit"
+        assert client.post(path, files=files, data={"budget_ms": "3000", "kinds": "earrings,dress,skirt"}).status_code == 400
+        job = pool.submit(client.post, path, files=files, data={"budget_ms": "3000", "kinds": "earrings,upper_body,skirt"})
+        try:
+            assert started.wait(2)
+            assert submit(client).json()["error"]["code"] == "MODEL_BUSY"
+        finally:
+            finish.set()
+        assert job.result(timeout=2).status_code == 200

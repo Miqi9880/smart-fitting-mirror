@@ -1,3 +1,4 @@
+@file:OptIn(kotlinx.serialization.ExperimentalSerializationApi::class)
 package com.smartfitting.mirror.contracts
 
 import kotlinx.serialization.SerialName
@@ -46,10 +47,30 @@ import kotlinx.serialization.Serializable
     @OptIn(kotlinx.serialization.ExperimentalSerializationApi::class)
     @kotlinx.serialization.EncodeDefault(kotlinx.serialization.EncodeDefault.Mode.NEVER)
     val details: GarmentDetails = GarmentDetails())
-@Serializable data class GarmentList(val items: List<Garment>)
+@Serializable enum class AccessoryCategory(val label: String) {
+    @SerialName("belt") BELT("腰带"),
+    @SerialName("earrings") EARRINGS("耳饰")
+}
+@Serializable data class OutfitAccessory(
+    @SerialName("accessory_id") val accessoryId: String, val name: String, val category: AccessoryCategory,
+    @SerialName("thumbnail_url") val thumbnailUrl: String, val source: String)
+@Serializable data class GarmentList(
+    val items: List<Garment>,
+    @kotlinx.serialization.EncodeDefault(kotlinx.serialization.EncodeDefault.Mode.NEVER)
+    @SerialName("outfit_available") val outfitAvailable: Boolean = false,
+    @kotlinx.serialization.EncodeDefault(kotlinx.serialization.EncodeDefault.Mode.NEVER)
+    val accessories: List<OutfitAccessory> = emptyList())
 @Serializable data class Upload(@SerialName("upload_id") val uploadId: String, val width: Int, val height: Int,
     @SerialName("expires_at") val expiresAt: String)
-@Serializable data class CreateJob(@SerialName("upload_id") val uploadId: String, @SerialName("garment_id") val garmentId: String)
+@Serializable data class OutfitRequest(
+    @SerialName("garment_ids") val garmentIds: List<String>,
+    @SerialName("accessory_ids") val accessoryIds: List<String>)
+@Serializable data class CreateJob(
+    @SerialName("upload_id") val uploadId: String,
+    @kotlinx.serialization.EncodeDefault(kotlinx.serialization.EncodeDefault.Mode.NEVER)
+    @SerialName("garment_id") val garmentId: String? = null,
+    @kotlinx.serialization.EncodeDefault(kotlinx.serialization.EncodeDefault.Mode.NEVER)
+    val outfit: OutfitRequest? = null)
 @Serializable data class ErrorDetail(val code: String, val message: String, val retryable: Boolean,
     @SerialName("request_id") val requestId: String)
 @Serializable data class ErrorResponse(val error: ErrorDetail)
@@ -64,7 +85,9 @@ import kotlinx.serialization.Serializable
     @SerialName("upload_id") val uploadId: String, @SerialName("garment_id") val garmentId: String,
     val status: JobStatus, @SerialName("is_mock") val isMock: Boolean,
     @SerialName("created_at") val createdAt: String, @SerialName("updated_at") val updatedAt: String,
-    val result: JobResult?, val error: ErrorDetail?) {
+    val result: JobResult?, val error: ErrorDetail?,
+    @kotlinx.serialization.EncodeDefault(kotlinx.serialization.EncodeDefault.Mode.NEVER)
+    val outfit: OutfitRequest? = null) {
     init { require((result != null) == (status == JobStatus.SUCCEEDED)); require((error != null) == (status == JobStatus.FAILED)) }
 }
 
