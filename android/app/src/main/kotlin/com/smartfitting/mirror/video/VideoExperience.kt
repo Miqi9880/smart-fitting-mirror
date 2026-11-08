@@ -154,6 +154,7 @@ class VideoExperience(
     fun hide() {
         save(); memory.open = false; query?.cancel(); query = null; panel.clearContent()
         panel.visibility = View.GONE; fittingPage.visibility = View.VISIBLE; back.isEnabled = false
+        fittingPage.findViewWithTag<View>("fitting.videos")?.requestFocus()
         if (foreground && model.endReason == null) resumePreview()
     }
     fun clear() {

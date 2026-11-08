@@ -139,6 +139,7 @@ class VideoPanel(context: Context) : FrameLayout(context) {
                 attachController()
                 buildCards()
                 showPane(listScroll)
+                listPane.findViewWithTag<View>("video.card.0")?.requestFocus()
             }
             is VideoResult.Empty -> showState(result.message, retryable = false)
             is VideoResult.Failure -> showState(result.message, retryable = result.retryable)
@@ -175,10 +176,14 @@ class VideoPanel(context: Context) : FrameLayout(context) {
 
     /** Stops playback, cancels pending clip generation and releases the MediaPlayer. */
     fun releasePlayer() {
+        val selectedIndex = currentIndex()
         loadToken++
         releaseMediaPlayer()
         controller?.release()
-        if (playerPane.visibility == View.VISIBLE) showPane(listScroll)
+        if (playerPane.visibility == View.VISIBLE) {
+            showPane(listScroll)
+            listPane.findViewWithTag<View>("video.card.$selectedIndex")?.requestFocus()
+        }
     }
 
     /** Full teardown for host onDestroy. */
@@ -244,7 +249,10 @@ class VideoPanel(context: Context) : FrameLayout(context) {
             isClickable = true
             isFocusable = true
             minimumHeight = dp(56)
-            contentDescription = "播放视频：${item.title}，$meta，$tags"
+            contentDescription = buildString {
+                append("播放视频：${item.title}，$meta，$tags")
+                if (item.matchesText.isNotBlank()) append("，相关依据：${item.matchesText}")
+            }
             layoutParams = LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(8) }
             setOnClickListener { onInteraction?.invoke(); openClip(index, 0, autoplay = true) }
         }
@@ -276,9 +284,11 @@ class VideoPanel(context: Context) : FrameLayout(context) {
         val controller = controller ?: return
         if (index !in items.indices) return
         val item = items[index]
+        val enteringPlayer = !isPlayerVisible()
         controller.select(index)
         renderPlayerChrome(item)
         showPane(playerPane)
+        if (enteringPlayer) playerPane.findViewWithTag<View>("video.back")?.requestFocus()
         val token = ++loadToken
         releaseMediaPlayer()
         pendingAutoplay = autoplay
@@ -436,6 +446,7 @@ class VideoPanel(context: Context) : FrameLayout(context) {
         stateMessage.text = message
         retryButton.visibility = if (retryable) View.VISIBLE else View.GONE
         showPane(statePane)
+        (if (retryable) retryButton else statePane.findViewWithTag<View>("video.state.back"))?.requestFocus()
     }
 
     private fun showPane(visible: View) {
@@ -547,6 +558,7 @@ class VideoPanel(context: Context) : FrameLayout(context) {
 
     private fun cardText(text: String, size: Float, bold: Boolean = false) = TextView(context).apply {
         this.text = text
+        importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
         textSize = size
         setTextColor(Color.rgb(26, 43, 55))
         if (bold) setTypeface(typeface, android.graphics.Typeface.BOLD)
