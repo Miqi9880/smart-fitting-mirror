@@ -83,6 +83,23 @@ class LicensedVideoFlowTest {
         path.parentFile!!.mkdirs(); path.outputStream().use { image.compress(Bitmap.CompressFormat.PNG,100,it) }; image.recycle()
     }
 
+    @Test fun returnFromVideoRestoresEntryFocusWithoutEnteringHiddenFittingPage() {
+        ActivityScenario.launch(TryOnActivity::class.java).use { s ->
+            click(s,"fitting.videos")
+            await { text(s,"video.message").contains("请先连接服务") }
+            s.onActivity {
+                assertEquals("video.retry",it.currentFocus?.tag)
+                assertEquals(View.GONE,it.window.decorView.findViewWithTag<View>("fitting.scroll").visibility)
+            }
+            click(s,"video.state.back")
+            await { var restored=false; s.onActivity { restored=it.currentFocus?.tag=="fitting.videos" }; restored }
+            s.onActivity {
+                assertEquals(View.VISIBLE,it.window.decorView.findViewWithTag<View>("fitting.scroll").visibility)
+                assertEquals(View.GONE,it.window.decorView.findViewWithTag<View>("fitting.video.panel").visibility)
+            }
+        }
+    }
+
     @Test fun fiveUpperReferencesAndTwoDressReferencesReallyRenderFromHttp() {
         launch(host()).use { s ->
             open(s)
@@ -271,6 +288,21 @@ class LicensedVideoFlowTest {
                                 val button=it.window.decorView.findViewWithTag<Button>(tag)
                                 assertTrue(button.height>=48*it.resources.displayMetrics.density)
                                 assertTrue(button.height>=button.layout.height+button.compoundPaddingTop+button.compoundPaddingBottom)
+                            }
+                        }
+                        for (tag in listOf("video.back","video.toggle","video.next","video.end.player","video.volume")) {
+                            s.onActivity {
+                                val control=it.window.decorView.findViewWithTag<View>(tag)
+                                control.requestRectangleOnScreen(Rect(0,0,control.width,control.height),true)
+                                control.requestFocus()
+                            }
+                            instrumentation.waitForIdleSync()
+                            s.onActivity {
+                                val control=it.window.decorView.findViewWithTag<View>(tag)
+                                val visible=Rect()
+                                assertTrue("Control must be visible: $tag",control.getGlobalVisibleRect(visible))
+                                assertTrue("Control width must be reachable: $tag",visible.width()>=control.width-2)
+                                assertTrue("Control height must be reachable: $tag",visible.height()>=control.height-2)
                             }
                         }
                         evidence(s,"font-$scale-$orientation")
