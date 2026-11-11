@@ -57,7 +57,7 @@ class MainActivity : ComponentActivity() {
         shouldRun = savedInstanceState?.getBoolean("running", true) ?: true
         pendingCameraPermission = savedInstanceState?.getBoolean("pending_permission", false) ?: false
         mock.configure(SyntheticSettings(
-            SyntheticScenario.entries.firstOrNull { it.name == savedInstanceState?.getString("scenario") } ?: SyntheticScenario.DEMO,
+            SyntheticScenario.entries.firstOrNull { it.name == savedInstanceState?.getString("scenario") } ?: SyntheticScenario.STILL,
             SyntheticViewport.entries.firstOrNull { it.name == savedInstanceState?.getString("viewport") } ?: SyntheticViewport.PORTRAIT))
         mock.setPlaying(savedInstanceState?.getBoolean("playing", true) ?: true)
         val root = LinearLayout(this).apply {

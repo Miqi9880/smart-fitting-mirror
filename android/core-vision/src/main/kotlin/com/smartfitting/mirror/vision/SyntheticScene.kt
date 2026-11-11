@@ -5,10 +5,10 @@ import com.smartfitting.mirror.contracts.Landmark
 import kotlin.math.PI
 import kotlin.math.sin
 
-enum class SyntheticScenario { DEMO, STILL, TRANSLATE, SCALE, PARTIAL, LOST, RECOVERY }
+enum class SyntheticScenario { STILL, TRANSLATE, SCALE, PARTIAL, LOST, RECOVERY }
 enum class SyntheticViewport(val width: Int, val height: Int) { PORTRAIT(480, 640), LANDSCAPE(640, 480) }
 data class SyntheticSettings(
-    val scenario: SyntheticScenario = SyntheticScenario.DEMO,
+    val scenario: SyntheticScenario = SyntheticScenario.STILL,
     val viewport: SyntheticViewport = SyntheticViewport.PORTRAIT,
 )
 
@@ -22,9 +22,8 @@ object SyntheticScene {
         require(step >= 0)
         val phase = step % CYCLE_STEPS
         if (scenario == SyntheticScenario.LOST ||
-            (scenario == SyntheticScenario.DEMO && phase in 60L..69L) ||
             (scenario == SyntheticScenario.RECOVERY && phase in 40L..59L)) return Keypoints()
-        val shift = if (scenario == SyntheticScenario.TRANSLATE || scenario == SyntheticScenario.DEMO)
+        val shift = if (scenario == SyntheticScenario.TRANSLATE)
             (.10 * sin(2 * PI * phase / CYCLE_STEPS)).toFloat() else 0f
         // Vary apparent body size only; this is not a depth or distance measurement.
         val scale = if (scenario == SyntheticScenario.SCALE)

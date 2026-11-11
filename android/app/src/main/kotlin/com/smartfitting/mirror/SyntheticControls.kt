@@ -78,9 +78,8 @@ class SyntheticControls(context: Context, private val source: SyntheticVisionSou
         override fun onNothingSelected(parent: AdapterView<*>?) = Unit
     }
     private companion object {
-        val scenarioLabels = listOf("综合演示", "静止人体", "左右移动", "人物大小变化", "缺少左肩", "人物丢失", "丢失与恢复")
+        val scenarioLabels = listOf("静止人体", "左右移动", "人物大小变化", "缺少左肩", "人物丢失", "丢失与恢复")
         val expectations = mapOf(
-            SyntheticScenario.DEMO to "预期：移动；每 80 样本短暂丢失。",
             SyntheticScenario.STILL to "预期：TRACKING，四个躯干锚点稳定。",
             SyntheticScenario.TRANSLATE to "预期：整体平移，人体大小不变。",
             SyntheticScenario.SCALE to "预期：围绕中心缩放；不是距离测量。",
