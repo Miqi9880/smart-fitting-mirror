@@ -39,12 +39,6 @@ class TryOnView(context: Context) : View(context), TryOnRenderer<BitmapPixels> {
     }
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
     private val warp = Matrix()
-    private val sleeveColumns = 28
-    private val sleeveRows = 36
-    private val sleeveSource = FloatArray((sleeveColumns + 1) * (sleeveRows + 1) * 2)
-    private val sleeveVertices = FloatArray(sleeveSource.size)
-    private var sleeveImageWidth = 0
-    private var sleeveImageHeight = 0
     private val meshDriver = context.assets.open("reference/tshirt.obj").bufferedReader().use {
         GarmentMeshDriver(GarmentMesh.readObj(it.lineSequence()))
     }
@@ -191,10 +185,8 @@ class TryOnView(context: Context) : View(context), TryOnRenderer<BitmapPixels> {
         try {
             if (protectHead && item.category == GarmentCategory.UPPER_BODY) clipHead(canvas,frame)
             val torsoLayer = item.category == GarmentCategory.UPPER_BODY || item.category == GarmentCategory.DRESS
-            val sleeves = if (item.category == GarmentCategory.UPPER_BODY) SleeveWarp.profile(item) else null
-            val handsOnly = sleeves?.longSleeves == true
-            val mask = if (torsoLayer && !handsOnly) prepareDepthMask(lease) else null
-            if (torsoLayer && mask == null) clipArms(canvas, lease, handsOnly)
+            val mask = if (torsoLayer) prepareDepthMask(lease) else null
+            if (torsoLayer && mask == null) clipArms(canvas, lease)
             if (mask != null) canvas.saveLayer(0f,0f,frame.image.width.toFloat(),frame.image.height.toFloat(),null)
             for (patch in OutfitPlacement.patches(frame,item,outfitFits[item.category] ?: OutfitFit.defaultFor(item.category))) {
                 val count = patch.source.size/2
@@ -207,29 +199,11 @@ class TryOnView(context: Context) : View(context), TryOnRenderer<BitmapPixels> {
                         patchPath.close()
                         canvas.clipPath(patchPath)
                     }
-                    if (sleeves == null || !drawSleeves(canvas, frame, item, bitmap, sleeves)) {
-                        canvas.drawBitmap(bitmap,warp,paint)
-                    }
+                    canvas.drawBitmap(bitmap,warp,paint)
                 } finally { canvas.restore() }
             }
             if (mask != null) canvas.drawBitmap(mask,0f,0f,maskPaint)
         } finally { canvas.restoreToCount(saved) }
-    }
-    private fun drawSleeves(canvas: Canvas, frame: VisionFrame, item: Garment, bitmap: Bitmap,
-                            profile: SleeveWarp.Profile): Boolean {
-        if (sleeveImageWidth != bitmap.width || sleeveImageHeight != bitmap.height) {
-            sleeveImageWidth = bitmap.width
-            sleeveImageHeight = bitmap.height
-            var index = 0
-            for (row in 0..sleeveRows) for (column in 0..sleeveColumns) {
-                sleeveSource[index++] = bitmap.width * column.toFloat() / sleeveColumns
-                sleeveSource[index++] = bitmap.height * row.toFloat() / sleeveRows
-            }
-        }
-        warp.mapPoints(sleeveVertices, sleeveSource)
-        if (!SleeveWarp.bend(sleeveSource, sleeveVertices, frame, item, profile) { warp.mapPoints(it) }) return false
-        canvas.drawBitmapMesh(bitmap, sleeveColumns, sleeveRows, sleeveVertices, 0, null, 0, paint)
-        return true
     }
     private fun clipHead(canvas: Canvas, frame: VisionFrame) {
         HeadProtection.region(frame)?.let { head ->
@@ -243,8 +217,8 @@ class TryOnView(context: Context) : View(context), TryOnRenderer<BitmapPixels> {
             if (allowedHeadPath.op(headPath,Path.Op.DIFFERENCE)) canvas.clipPath(allowedHeadPath)
         }
     }
-    private fun clipArms(canvas: Canvas, frame: FrameLease<BitmapPixels>, handsOnly: Boolean) {
-        val segments = ForegroundArms.segments(frame.metadata, frame.pixels.imagePose, handsOnly)
+    private fun clipArms(canvas: Canvas, frame: FrameLease<BitmapPixels>) {
+        val segments = ForegroundArms.segments(frame.metadata, frame.pixels.imagePose)
         if (segments.isEmpty()) return
         armPath.reset()
         for (span in segments) {

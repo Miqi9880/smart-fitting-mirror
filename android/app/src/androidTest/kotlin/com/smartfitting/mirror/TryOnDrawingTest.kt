@@ -130,42 +130,6 @@ class TryOnDrawingTest {
         }
     }
 
-    @Test fun catalogSleeveLiftsWhileTheTorsoStaysInPlace() {
-        InstrumentationRegistry.getInstrumentation().runOnMainSync {
-            val view = TryOnView(InstrumentationRegistry.getInstrumentation().targetContext)
-            view.layout(0, 0, 480, 640)
-            view.mirrored = false
-            val url = "http://localhost/studio_blue_tee.png"
-            val anchors = GarmentAnchors(Anchor(.75f, .15f), Anchor(.25f, .15f), Anchor(.7f, .85f), Anchor(.3f, .85f))
-            val top = Garment("top", "Top", GarmentCategory.UPPER_BODY, emptyList(), url, PreviewImage(url, 100, 100, anchors), null)
-            val texture = Bitmap.createBitmap(100, 100, Bitmap.Config.ARGB_8888)
-            val paint = Paint().apply { color = Color.RED }
-            Canvas(texture).apply {
-                drawRect(25f, 15f, 75f, 90f, paint)
-                drawRect(8f, 25f, 28f, 49f, paint)
-                drawRect(72f, 25f, 92f, 49f, paint)
-            }
-            view.setAsset(top, texture)
-            val output = Bitmap.createBitmap(480, 640, Bitmap.Config.ARGB_8888)
-            fun sleeveTop(step: Long): Int {
-                val points = SyntheticScene.sample(SyntheticScenario.ARM_RAISE, step)
-                val bitmap = Bitmap.createBitmap(480, 640, Bitmap.Config.ARGB_8888).apply { eraseColor(Color.BLACK) }
-                val frame = FrameLease(VisionFrame(sessionId = "lift", frameId = step, timestampMs = step,
-                    image = ImageMetadata("lift-$step", 480, 640), trackingState = points.state(), keypoints = points),
-                    BitmapPixels(bitmap)) { it.bitmap.recycle() }
-                view.submit(frame, top)
-                frame.release()
-                view.draw(Canvas(output))
-                assertEquals(Color.RED, output.getPixel(240, 230))
-                return (0 until output.height).first { y -> (0..139).any { x -> output.getPixel(x, y) == Color.RED } }
-            }
-            val relaxed = sleeveTop(0)
-            val raised = sleeveTop(40)
-            assertTrue("Expected the sleeve to rise: relaxed=$relaxed raised=$raised", raised + 35 < relaxed)
-            view.clear()
-            output.recycle()
-        }
-    }
     @Test fun drawsGarmentMirrorsWholeFrameHidesLostAndClearsLeases() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         instrumentation.runOnMainSync {

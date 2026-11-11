@@ -61,6 +61,6 @@ Canvas 绘制使用像素中心：归一化点映射为 0.5 + x*(width-1)，随�
 
 RGB 输出在当前帧模型点通过有效性检查后，使用 `PoseStabilizer` 做相邻帧坐标平滑（当前测量权重 0.6）；confidence、点是否存在和 tracking_state 仍依据当前测量。缺点立即 null，停止/会话切换、画幅变化或长间隔不混合旧历史；合成点不经此滤波。它不补造丢失点或距离，也不将其他帧的异步推理当作当前结果。来源及适配范围见 [参考迁移记录](../reference-reuse.md)。
 
-实时叠加可以使用当前帧的 ML Kit 相对 Z，按前臂与躯干的前后关系露出前景手臂。长袖已适配款保留虚拟袖子，姿态遮挡只露出手部。关键点置信度不足或帧号不符时跳过遮挡。已适配的短袖 T 恤、Polo、牛津纺衬衫和圆领卫衣用肩、肘及长袖的手腕驱动袖部，躯干继续使用原有锚点。合成模式的「手臂挡胸」与「抬臂跟随」可以在无摄像头时回归这两种动作。相对 Z 不用于毫米距离或站位提示。参见 [ML Kit 姿态检测](https://developers.google.com/ml-kit/vision/pose-detection)。
+实时叠加可以使用当前帧的 ML Kit 相对 Z，按前臂与躯干的前后关系露出前景手臂。关键点置信度不足或帧号不符时跳过遮挡。合成模式的「手臂挡胸」可以在无摄像头时回归。相对 Z 不用于毫米距离或站位提示。参见 [ML Kit 姿态检测](https://developers.google.com/ml-kit/vision/pose-detection)。
 
-本地 BitmapPixels 可附 AlignedDepthPixels，其 metadata 必须匹配同一个 VisionFrame.depth，使用相同画幅下的 uint16 小端毫米。提供者负责 RGB 与深度的同步和配准。上衣和连衣裙可用 `distance_m` 或同帧有效躯干样本的中位数估计衣服平面，再用场景深度遮挡较近物体。深度 0 表示未知。已适配的长袖款目前继续使用姿态手部遮挡。此路径已用合成毫米深度做绘制回归。Gemini 2 的 Android 深度取流与配准仍需接入和真机验证。
+本地 BitmapPixels 可附 AlignedDepthPixels，其 metadata 必须匹配同一个 VisionFrame.depth，使用相同画幅下的 uint16 小端毫米。提供者负责 RGB 与深度的同步和配准。上衣和连衣裙可用 `distance_m` 或同帧有效躯干样本的中位数估计衣服平面，再用场景深度遮挡较近物体。深度 0 表示未知。此路径已用合成毫米深度做绘制回归。Gemini 2 的 Android 深度取流与配准仍需接入和真机验证。

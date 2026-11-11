@@ -100,8 +100,8 @@ class SyntheticVisionSource : VisionSource<BitmapPixels> {
         paint.color = Color.rgb(110, 160, 180)
         canvas.drawCircle(70f, 70f, 22f, paint)
         val frameId = ++current.frameId
-        val imagePose = if (settings.scenario == SyntheticScenario.ARM_CROSS ||
-            settings.scenario == SyntheticScenario.ARM_RAISE) drawArmSample(canvas, current.sessionId, frameId, points) else null
+        val imagePose = if (settings.scenario == SyntheticScenario.ARM_CROSS)
+            drawArmSample(canvas, current.sessionId, frameId, points) else null
         val metadata = VisionFrame(sessionId = current.sessionId, frameId = frameId,
             timestampMs = SystemClock.elapsedRealtime(), image = ImageMetadata("synthetic_${current.ticket}_$frameId", width, height),
             trackingState = points.state(), keypoints = points)
@@ -127,8 +127,7 @@ class SyntheticVisionSource : VisionSource<BitmapPixels> {
             (wrist.x + dx * .15f) * canvas.width, (wrist.y + dy * .15f) * canvas.height, arm)
         val hints = points.asMap().mapNotNull { (name, point) ->
             point?.let {
-                val front = settings.scenario == SyntheticScenario.ARM_CROSS &&
-                    name in listOf(KeypointName.RIGHT_ELBOW, KeypointName.RIGHT_WRIST)
+                val front = name == KeypointName.RIGHT_ELBOW || name == KeypointName.RIGHT_WRIST
                 name to ImagePosePoint(it.x, it.y, if (front) -.16f else 0f, it.confidence)
             }
         }.toMap()

@@ -10,7 +10,7 @@ import kotlin.math.hypot
 internal object ForegroundArms {
     data class Segment(val x1: Float, val y1: Float, val x2: Float, val y2: Float, val radius: Float)
 
-    fun segments(frame: VisionFrame, hints: ImagePoseHints?, handsOnly: Boolean): List<Segment> {
+    fun segments(frame: VisionFrame, hints: ImagePoseHints?): List<Segment> {
         if (frame.trackingState != TrackingState.TRACKING || hints == null ||
             hints.sessionId != frame.sessionId || hints.frameId != frame.frameId) return emptyList()
         fun reliable(name: KeypointName) = hints.points[name]?.takeIf { it.confidence >= .65f && it.z.isFinite() }
@@ -47,12 +47,10 @@ internal object ForegroundArms {
                     elbow.x * width + dx * from, elbow.y * height + dy * from,
                     elbow.x * width + dx * to, elbow.y * height + dy * to, radius * shoulderSpan,
                 ))
-                if (!handsOnly) {
-                    for (part in 0..3) {
-                        val from = part * .25f
-                        val to = from + .25f
-                        if (inFront((from + to) / 2)) addSpan(from, to, .105f)
-                    }
+                for (part in 0..3) {
+                    val from = part * .25f
+                    val to = from + .25f
+                    if (inFront((from + to) / 2)) addSpan(from, to, .105f)
                 }
                 if (inFront(1f)) addSpan(1f, 1.19f, .093f)
             }

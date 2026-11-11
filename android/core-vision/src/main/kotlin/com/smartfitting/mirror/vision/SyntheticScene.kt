@@ -3,10 +3,9 @@ package com.smartfitting.mirror.vision
 import com.smartfitting.mirror.contracts.Keypoints
 import com.smartfitting.mirror.contracts.Landmark
 import kotlin.math.PI
-import kotlin.math.cos
 import kotlin.math.sin
 
-enum class SyntheticScenario { STILL, TRANSLATE, SCALE, PARTIAL, LOST, RECOVERY, ARM_CROSS, ARM_RAISE }
+enum class SyntheticScenario { STILL, TRANSLATE, SCALE, PARTIAL, LOST, RECOVERY, ARM_CROSS }
 enum class SyntheticViewport(val width: Int, val height: Int) { PORTRAIT(480, 640), LANDSCAPE(640, 480) }
 data class SyntheticSettings(
     val scenario: SyntheticScenario = SyntheticScenario.STILL,
@@ -43,13 +42,6 @@ object SyntheticScene {
             scenario == SyntheticScenario.ARM_CROSS -> points.copy(
                 rightElbow = point(.31f, .42f), rightWrist = point(.58f, .34f),
             )
-            scenario == SyntheticScenario.ARM_RAISE -> {
-                val lift = ((1 - cos(2 * PI * phase / CYCLE_STEPS)) / 2).toFloat()
-                points.copy(
-                    rightElbow = point(.30f - .08f * lift, .36f - .23f * lift),
-                    rightWrist = point(.28f - .06f * lift, .50f - .45f * lift),
-                )
-            }
             else -> points
         }
         // Fit the same pixel-space body into each canvas before normalizing. V07:

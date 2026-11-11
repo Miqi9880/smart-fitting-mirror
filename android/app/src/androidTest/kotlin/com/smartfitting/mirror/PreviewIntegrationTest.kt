@@ -24,7 +24,7 @@ import java.io.File
 /** Opt-in local MOCK catalog only. Never opens a camera or uploads a photo. */
 @RunWith(AndroidJUnit4::class)
 class PreviewIntegrationTest {
-    @Test fun renderArmSamplesWithTheCatalogTee() {
+    @Test fun renderChestOcclusionWithTheCatalogTee() {
         val args = InstrumentationRegistry.getArguments()
         assumeTrue(args.getString("arm_evidence") == "true")
         val host = args.getString("studio_test_host")
@@ -69,19 +69,6 @@ class PreviewIntegrationTest {
                     root.findViewWithTag<TextView>("fitting.vision").text.contains("姿态辅助遮挡")
             }
             evidence("arm-cross")
-            scenario.onActivity {
-                it.window.decorView.findViewWithTag<Spinner>("synthetic.scenario").setSelection(SyntheticScenario.ARM_RAISE.ordinal)
-            }
-            await {
-                it.window.decorView.findViewWithTag<TextView>("fitting.asset").text.contains("已加载 1/1") &&
-                    it.window.decorView.findViewWithTag<TextView>("fitting.vision").text.contains("姿态辅助遮挡")
-            }
-            evidence("arm-relaxed")
-            scenario.onActivity {
-                val step = it.window.decorView.findViewWithTag<Button>("synthetic.step")
-                repeat(40) { step.performClick() }
-            }
-            evidence("arm-raised")
         }
     }
 

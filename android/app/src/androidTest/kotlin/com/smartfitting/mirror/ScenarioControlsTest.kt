@@ -37,7 +37,7 @@ class ScenarioControlsTest {
                 val scenes = it.window.decorView.findViewWithTag<Spinner>("synthetic.scenario")
                 assertEquals(
                     listOf("静止人体", "左右移动", "人物大小变化", "缺少左肩", "人物丢失", "丢失与恢复",
-                        "手臂挡胸", "抬臂跟随"),
+                        "手臂挡胸"),
                     (0 until scenes.count).map { index -> scenes.getItemAtPosition(index).toString() },
                 )
                 assertEquals("静止人体", scenes.selectedItem.toString())

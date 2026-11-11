@@ -79,7 +79,7 @@ class SyntheticControls(context: Context, private val source: SyntheticVisionSou
     }
     private companion object {
         val scenarioLabels = listOf("静止人体", "左右移动", "人物大小变化", "缺少左肩", "人物丢失", "丢失与恢复",
-            "手臂挡胸", "抬臂跟随")
+            "手臂挡胸")
         val expectations = mapOf(
             SyntheticScenario.STILL to "预期：TRACKING，四个躯干锚点稳定。",
             SyntheticScenario.TRANSLATE to "预期：整体平移，人体大小不变。",
@@ -88,7 +88,6 @@ class SyntheticControls(context: Context, private val source: SyntheticVisionSou
             SyntheticScenario.LOST to "预期：LOST；全部关键点为空。",
             SyntheticScenario.RECOVERY to "每 20 样本：TRACKING → PARTIAL → LOST → TRACKING。",
             SyntheticScenario.ARM_CROSS to "用短袖查看前臂是否显示在上衣前方。",
-            SyntheticScenario.ARM_RAISE to "用衣柜里的 T 恤或卫衣查看袖口随抬臂移动。",
         )
     }
 }
