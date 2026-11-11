@@ -59,6 +59,6 @@ class MigratedControlsTest {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val candidates = context.packageManager.queryIntentActivities(Intent(Intent.ACTION_MAIN)
             .addCategory(Intent.CATEGORY_HOME).setPackage(context.packageName),0)
-        assertTrue(candidates.any { it.activityInfo.name.endsWith(".TryOnActivity") })
+        assertTrue(candidates.any { it.activityInfo.name == StandbyActivity::class.java.name })
     }
 }
