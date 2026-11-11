@@ -57,9 +57,7 @@ class TryOnActivity : ComponentActivity() {
     private lateinit var connect: Button
     private lateinit var generate: Button
     private lateinit var outfitMode: Switch
-    private lateinit var accessoryPicker: Button
     private lateinit var generationSummary: TextView
-    private var accessoryDialog: AlertDialog? = null
     private lateinit var staticImage: StaticImagePanel
     private lateinit var retry: Button
     private lateinit var cancel: Button
@@ -149,10 +147,20 @@ class TryOnActivity : ComponentActivity() {
             override fun onNothingSelected(parent: AdapterView<*>?) = Unit
         }
         root.addView(garments)
-        catalog = button("浏览衣柜与服装详情", "fitting.catalog") {
+        catalog = button("浏览衣柜", "fitting.catalog") {
             val controller = model.controller ?: return@button
             browser?.dismiss()
-            browser = GarmentBrowser(this,controller,lifecycleScope,model.catalogAssets,model.catalogQuery) { model.catalogQuery = it }
+            browser = GarmentBrowser(
+                this, controller, lifecycleScope, model.catalogAssets, model.catalogQuery,
+                rememberQuery = { model.catalogQuery = it },
+                selectedAccessories = { model.outfitAccessories },
+                selectAccessory = { category, item ->
+                    model.outfitAccessories = if (item == null) model.outfitAccessories - category
+                    else model.outfitAccessories + (category to item)
+                    model.generateOutfit = true
+                    renderOutfit()
+                },
+            )
             browser!!.show()
         }
         root.addView(catalog)
@@ -252,10 +260,8 @@ class TryOnActivity : ComponentActivity() {
             text = "生成当前搭配"; tag = "fitting.generation.outfit"; isChecked = model.generateOutfit
             setOnCheckedChangeListener { _, checked -> model.generateOutfit = checked; updateCaptureActions() }
         }
-        accessoryPicker = button("浏览配饰素材", "fitting.generation.accessories") { showAccessories() }
         generationSummary = label("", 12f).apply { tag = "fitting.generation.summary" }
         tail.addView(outfitMode)
-        tail.addView(accessoryPicker)
         tail.addView(generationSummary)
         generate = button("拍摄并上传生成", "fitting.generate") { capture() }
         cancel = button("取消生成", "fitting.cancel") { model.controller?.cancel() }
@@ -351,7 +357,6 @@ class TryOnActivity : ComponentActivity() {
         videos.onStop()
         cameraDialog?.dismiss(); cameraDialog = null
         browser?.dismiss(); browser = null
-        accessoryDialog?.dismiss(); accessoryDialog = null
         visible = false; model.playing = mock.playing; model.synthetic = mock.settings
         staticImage.clear()
         model.controller?.setVisible(false); stopVision(); comparison.clear(); super.onStop()
@@ -360,7 +365,7 @@ class TryOnActivity : ComponentActivity() {
         outState.putBoolean("pending_permission", pendingPermission)
         super.onSaveInstanceState(outState)
     }
-    override fun onDestroy() { accessoryDialog?.dismiss(); videos.dispose(); rgb.close(); mock.close(); super.onDestroy() }
+    override fun onDestroy() { videos.dispose(); rgb.close(); mock.close(); super.onDestroy() }
     override fun onUserInteraction() { super.onUserInteraction(); model.interact() }
 
     private fun endExperience(reason: GuestEndReason) {
@@ -371,7 +376,7 @@ class TryOnActivity : ComponentActivity() {
         pendingPermission = false; model.running = false; model.visionFailure = null; stopVision()
         staticImage.clear(); comparison.clear(); model.resultComparisonMode = ResultComparisonMode.SIDE_BY_SIDE
         browser?.dismiss(); browser = null; cameraDialog?.dismiss(); cameraDialog = null
-        accessoryDialog?.dismiss(); accessoryDialog = null; model.outfitAccessories = emptyMap(); model.generateOutfit = false
+        model.outfitAccessories = emptyMap(); model.generateOutfit = false
         model.outfit = emptyMap(); model.fitTarget = null; model.fitTargetExplicit = false; model.lastOutfitSelection = null
         model.catalogAssets = emptyList(); model.catalogQuery = ""
         if (model.controller?.state?.value?.phase != FittingPhase.CLOSED) model.controller?.end()
@@ -509,7 +514,6 @@ class TryOnActivity : ComponentActivity() {
             model.resultComparisonMode = ResultComparisonMode.SIDE_BY_SIDE
             model.catalogAssets = emptyList(); model.catalogQuery = ""; model.outfit = emptyMap()
             model.outfitAccessories = emptyMap(); model.generateOutfit = false
-            accessoryDialog?.dismiss(); accessoryDialog = null
             model.fitTarget = null; model.fitTargetExplicit = false; model.lastOutfitSelection = null
             outfitStatus.text = "当前搭配已清空"; browser?.dismiss(); browser = null
             fitControls.render(emptyList(),null,OutfitFit())
@@ -531,18 +535,6 @@ class TryOnActivity : ComponentActivity() {
         OutfitRequest(model.outfit.values.map { it.garmentId }, model.outfitAccessories.values.map { it.accessoryId })
     } else null
 
-    private fun showAccessories() {
-        val controller = model.controller ?: return
-        val available = controller.state.value.accessories
-        if (available.isEmpty()) return
-        accessoryDialog?.dismiss()
-        accessoryDialog = accessoryLibraryDialog(this, lifecycleScope, controller, available, model.outfitAccessories) { category, item ->
-            model.outfitAccessories = if (item == null) model.outfitAccessories - category else model.outfitAccessories + (category to item)
-            model.generateOutfit = true
-            updateCaptureActions()
-        }.also { it.show() }
-    }
-
     private fun updateCaptureActions() {
         val value = model.controller?.state?.value ?: model.state.value
         val allow = visible && value.canGenerate(generationRequest()) && !captureBusy
@@ -551,8 +543,6 @@ class TryOnActivity : ComponentActivity() {
             outfitMode.visibility = if (value.outfitAvailable) View.VISIBLE else View.GONE
             outfitMode.isEnabled = value.canSelect && !captureBusy && !importing
             if (outfitMode.isChecked != model.generateOutfit) outfitMode.isChecked = model.generateOutfit
-            accessoryPicker.visibility = if (value.outfitAvailable && value.accessories.isNotEmpty()) View.VISIBLE else View.GONE
-            accessoryPicker.isEnabled = outfitMode.isEnabled
             generationSummary.text = if (model.generateOutfit) {
                 val names = model.outfit.values.map { it.name } + model.outfitAccessories.values.map { it.name }
                 if (names.isEmpty()) "先选择服装或配饰" else "将生成：${names.joinToString(" ＋ ")}。拍摄时请让衣摆和腰部清楚入镜。"
@@ -566,7 +556,9 @@ class TryOnActivity : ComponentActivity() {
         videoButton.isEnabled = value.canSelect && !captureBusy && !importing
     }
     private fun renderOutfit() {
-        outfitStatus.text = "当前搭配：" + model.outfit.values.joinToString(" ＋ ") { "${it.category.label}：${it.name}" }.ifBlank { "无" }
+        val labels = model.outfit.values.map { "${it.category.label}：${it.name}" } +
+            model.outfitAccessories.values.map { it.name }
+        outfitStatus.text = "当前搭配：" + labels.joinToString(" ＋ ").ifBlank { "无" }
         renderFitControls()
         loadOutfit()
         updateCaptureActions()

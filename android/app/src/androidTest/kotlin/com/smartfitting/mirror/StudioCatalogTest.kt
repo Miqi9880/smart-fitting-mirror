@@ -68,8 +68,19 @@ class StudioCatalogTest {
                     .setSelection(garments.indexOfFirst { it.garmentId == jeans })
             }
             await("Top and jeans selected") { model(it).outfit.values.map { item -> item.garmentId }.containsAll(listOf(top, jeans)) }
+            fun button(tag: String) = windows().filterIsInstance<Button>().single { it.tag == tag }
             scenario.onActivity {
-                it.window.decorView.findViewWithTag<Button>("fitting.generation.accessories").performClick()
+                val catalog = it.window.decorView.findViewWithTag<Button>("fitting.catalog")
+                assertEquals("浏览衣柜", catalog.text.toString())
+                assertNull(it.window.decorView.findViewWithTag<View>("fitting.generation.accessories"))
+                catalog.performClick()
+                button("catalog.tab.bottoms").performClick()
+                val labels = windows().filterIsInstance<TextView>().map { view -> view.text.toString() }
+                assertTrue(labels.containsAll(listOf("长裤", "短裤", "半裙")))
+                assertEquals(24, images().size)
+                button("catalog.tab.accessories").performClick()
+                assertTrue(button("catalog.tab.accessories").isSelected)
+                assertTrue(images().isEmpty())
             }
             await("Belt and earrings groups and their four thumbnails visible") {
                 val views = windows()
@@ -78,7 +89,15 @@ class StudioCatalogTest {
                     view -> view.drawable is BitmapDrawable && view.scaleType == ImageView.ScaleType.FIT_CENTER
                 } >= 4
             }
-            scenario.onActivity { windows().filterIsInstance<Button>().single { it.tag == "fitting.accessory.silver_studs" }.performClick() }
+            scenario.onActivity {
+                val studs = button("fitting.accessory.silver_studs")
+                studs.performClick()
+                assertTrue(studs.isSelected)
+                studs.performClick()
+                assertFalse(studs.isSelected)
+                studs.performClick()
+                button("catalog.back").performClick()
+            }
             scenario.onActivity {
                 val summary = it.window.decorView.findViewWithTag<TextView>("fitting.generation.summary").text.toString()
                 assertTrue(summary.contains("牛仔") && summary.contains("耳钉"))

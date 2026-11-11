@@ -3,6 +3,7 @@ package com.smartfitting.mirror
 import android.app.AlertDialog
 import android.app.Dialog
 import android.content.Context
+import android.content.res.ColorStateList
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Color
@@ -11,6 +12,7 @@ import android.text.Editable
 import android.text.TextWatcher
 import android.view.View
 import android.view.ViewGroup
+import android.view.WindowManager
 import android.widget.*
 import com.smartfitting.mirror.contracts.*
 import com.smartfitting.mirror.network.*
@@ -23,21 +25,44 @@ import kotlinx.coroutines.sync.withPermit
  */
 internal class GarmentBrowser(private val context: Context, private val controller: FittingSession,
     private val scope: CoroutineScope, private val assets: List<Garment>,
-    query: String, private val rememberQuery: (String) -> Unit) {
+    query: String, private val rememberQuery: (String) -> Unit,
+    private val selectedAccessories: () -> Map<AccessoryCategory, OutfitAccessory>,
+    private val selectAccessory: (AccessoryCategory, OutfitAccessory?) -> Unit) {
+    private enum class Tab(val label: String, val garments: Set<GarmentCategory>) {
+        ALL("全部", GarmentCategory.entries.toSet()),
+        TOPS("上衣", setOf(GarmentCategory.UPPER_BODY)),
+        BOTTOMS("下装", setOf(GarmentCategory.LOWER_BODY, GarmentCategory.SHORTS, GarmentCategory.SKIRT)),
+        DRESSES("连衣裙", setOf(GarmentCategory.DRESS)),
+        HATS("帽子", setOf(GarmentCategory.HEADWEAR)),
+        ACCESSORIES("配饰", emptySet()),
+    }
+
     private val dialog = Dialog(context)
     private val root = column()
     private val cards = column()
+    private val cardScroll = ScrollView(context).apply { addView(cards) }
     private val summary = text("")
-    private val search = EditText(context).apply { hint = "搜索名称、品牌、材质或标签"; tag = "catalog.search"; setSingleLine(); setText(query) }
+    private val search = EditText(context).apply { hint = "搜索衣柜"; tag = "catalog.search"; setSingleLine(); setText(query) }
     private val filters = Spinner(context).apply { tag = "catalog.filter"; contentDescription = "按服装标签筛选" }
-    private val categories = listOf(null, GarmentCategory.UPPER_BODY, GarmentCategory.LOWER_BODY,
+    private val categories = listOf(GarmentCategory.UPPER_BODY, GarmentCategory.LOWER_BODY,
         GarmentCategory.SHORTS, GarmentCategory.SKIRT, GarmentCategory.DRESS, GarmentCategory.HEADWEAR)
-    private val categoryPicker = Spinner(context).apply {
-        tag = "catalog.category"; contentDescription = "按服装品类筛选"
-        adapter = ArrayAdapter(context, android.R.layout.simple_spinner_dropdown_item,
-            categories.map { it?.label ?: "全部品类" })
+    private var selectedTab = Tab.ALL
+    private val tabButtons = Tab.entries.associateWith { tab ->
+        Button(context).apply {
+            text = tab.label
+            tag = "catalog.tab.${tab.name.lowercase()}"
+            minimumWidth = dp(76)
+            minimumHeight = dp(48)
+            setOnClickListener {
+                if (selectedTab != tab) {
+                    selectedTab = tab
+                    renderTabs()
+                    renderCards()
+                    cardScroll.scrollTo(0, 0)
+                }
+            }
+        }
     }
-    private var selectedCategory: GarmentCategory? = null
     private var tags = listOf("全部")
     private var selectedTag = "全部"
     private var state = controller.state.value
@@ -50,12 +75,19 @@ internal class GarmentBrowser(private val context: Context, private val controll
     init {
         root.setPadding(dp(16), dp(12), dp(16), dp(12))
         root.setBackgroundColor(Color.rgb(242,246,249))
-        root.addView(text("我的临时衣柜", 22f)); root.addView(text("结束会话后恢复初始目录。图片取自现有素材库。"))
-        root.addView(search); root.addView(categoryPicker); root.addView(filters); root.addView(summary)
-        root.addView(ScrollView(context).apply { addView(cards) }, LinearLayout.LayoutParams(-1, 0, 1f))
+        root.addView(text("浏览衣柜", 22f))
+        root.addView(HorizontalScrollView(context).apply {
+            isHorizontalScrollBarEnabled = false
+            addView(LinearLayout(context).apply {
+                orientation = LinearLayout.HORIZONTAL
+                tabButtons.values.forEach { addView(it, LinearLayout.LayoutParams(-2, -2)) }
+            })
+        })
+        root.addView(search); root.addView(filters); root.addView(summary)
+        root.addView(cardScroll, LinearLayout.LayoutParams(-1, 0, 1f))
         val actions = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
         val refresh = Button(context).apply { text = "刷新衣柜"; setOnClickListener { controller.refreshCatalog() } }
-        val back = Button(context).apply { text = "返回试衣"; setOnClickListener { dismiss() } }
+        val back = Button(context).apply { text = "返回试衣"; tag = "catalog.back"; setOnClickListener { dismiss() } }
         for (action in listOf(add,refresh,back)) actions.addView(action,LinearLayout.LayoutParams(0,-2,1f))
         root.addView(actions)
         search.addTextChangedListener(object : TextWatcher {
@@ -69,67 +101,144 @@ internal class GarmentBrowser(private val context: Context, private val controll
             }
             override fun onNothingSelected(parent: AdapterView<*>?) = Unit
         }
-        categoryPicker.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
-            override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
-                selectedCategory = categories[position]
-                renderCards()
-            }
-            override fun onNothingSelected(parent: AdapterView<*>?) = Unit
-        }
         dialog.setContentView(root)
         dialog.setOnDismissListener { thumbnails.forEach { it.close() }; thumbnails.clear(); details?.dismiss(); editor?.dismiss() }
     }
-    fun show() { dialog.show(); dialog.window?.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT); render(state) }
+    fun show() {
+        dialog.window?.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN)
+        dialog.show()
+        dialog.window?.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+        render(state)
+    }
     fun dismiss() { dialog.dismiss() }
     fun render(value: FittingState) {
-        val changed = state.garments != value.garments
+        val changed = state.garments != value.garments || state.accessories != value.accessories ||
+            state.outfitAvailable != value.outfitAvailable || state.selectedId != value.selectedId ||
+            state.canSelect != value.canSelect
         state = value
-        add.isEnabled = value.canSelect && assets.isNotEmpty()
+        if (!dialog.isShowing) return
         if (!value.connected) { dismiss(); return }
+        if (!value.outfitAvailable && selectedTab == Tab.ACCESSORIES) selectedTab = Tab.ALL
+        renderTabs()
         val nextTags = listOf("全部") + value.garments.flatMap { it.tags }.distinct().sorted()
         if (tags != nextTags || filters.adapter == null) {
             tags = nextTags
+            if (selectedTag !in tags) selectedTag = "全部"
             filters.adapter = ArrayAdapter(context, android.R.layout.simple_spinner_dropdown_item, tags)
-            filters.setSelection(tags.indexOf(selectedTag).coerceAtLeast(0))
+            filters.setSelection(tags.indexOf(selectedTag))
         }
         if (changed || cards.childCount == 0) renderCards()
-        summary.text = if (!value.canSelect) value.message else "${value.garments.size} 件 · 点击查看详情"
+        if (!value.canSelect) summary.text = value.message
     }
+
+    private fun renderTabs() {
+        for ((tab, button) in tabButtons) {
+            button.visibility = if (tab != Tab.ACCESSORIES || state.outfitAvailable) View.VISIBLE else View.GONE
+            button.isSelected = tab == selectedTab
+            button.backgroundTintList = ColorStateList.valueOf(
+                if (button.isSelected) Color.rgb(28, 81, 125) else Color.rgb(225, 233, 240)
+            )
+            button.setTextColor(if (button.isSelected) Color.WHITE else Color.rgb(26, 43, 55))
+        }
+        filters.visibility = if (selectedTab == Tab.ACCESSORIES) View.GONE else View.VISIBLE
+        add.visibility = filters.visibility
+        add.isEnabled = state.canSelect && assets.isNotEmpty()
+    }
+
     private fun renderCards() {
         thumbnails.forEach { it.close() }; thumbnails.clear(); cards.removeAllViews()
+        val query = search.text.toString().trim()
         // Upstream fuzzyMatch's searchable product fields, adapted to our optional metadata.
-        val items = state.garments.filter { (selectedCategory == null || it.category == selectedCategory) &&
-            GarmentSearch.matches(it,search.text.toString(),selectedTag.takeIf { it != "全部" }) }
+        val garments = state.garments.filter { it.category in selectedTab.garments &&
+            GarmentSearch.matches(it, query, selectedTag.takeIf { tag -> tag != "全部" }) }
             .sortedByDescending { "photo" in it.tags }
-        if (items.isEmpty()) {
-            cards.addView(text(if (state.garments.isEmpty()) "衣柜暂无服装，可从现有素材新增。" else "没有匹配的服装，请修改搜索或筛选。"))
-            cards.addView(Button(context).apply { text = "清除筛选"; setOnClickListener {
-                selectedCategory = null; categoryPicker.setSelection(0)
-                search.setText(""); selectedTag = "全部"; this@GarmentBrowser.filters.setSelection(0); renderCards()
-            } })
+        val showAccessories = state.outfitAvailable &&
+            (selectedTab == Tab.ACCESSORIES || (selectedTab == Tab.ALL && selectedTag == "全部"))
+        val accessories = if (showAccessories) state.accessories.filter {
+            "${it.name} ${it.category.label}".contains(query, ignoreCase = true)
+        } else emptyList()
+        summary.text = if (state.canSelect) "${garments.size + accessories.size} 件" else state.message
+        if (garments.isEmpty() && accessories.isEmpty()) {
+            cards.addView(text("当前分类没有匹配的素材。"))
+            if (query.isNotEmpty() || (selectedTab != Tab.ACCESSORIES && selectedTag != "全部")) {
+                cards.addView(Button(context).apply {
+                    text = "清除筛选"
+                    setOnClickListener {
+                        if (selectedTab != Tab.ACCESSORIES) {
+                            selectedTag = "全部"
+                            this@GarmentBrowser.filters.setSelection(0)
+                        }
+                        if (search.text.isNotEmpty()) search.setText("") else renderCards()
+                    }
+                })
+            }
         }
-        for (category in categories.filterNotNull()) {
-            val group = items.filter { it.category == category }
+        for (category in categories) {
+            val group = garments.filter { it.category == category }
             if (group.isEmpty()) continue
             cards.addView(text(category.label, 18f))
             addCards(group)
         }
+        if (accessories.isNotEmpty()) addAccessories(accessories)
     }
-    private fun addCards(items: List<Garment>) {
+    private fun addCards(items: List<Garment>) = addRows(items) { item ->
+        column().apply {
+            setPadding(dp(8), dp(8), dp(8), dp(8))
+            setBackgroundColor(Color.WHITE)
+            isClickable = true; isFocusable = true; contentDescription = "查看${item.name}详情"
+            setOnClickListener { if (state.canSelect) detail(item) }
+            addView(thumbnail(item.name) { controller.thumbnail(item) }, LinearLayout.LayoutParams(-1, dp(120)))
+            addView(text(item.name, 16f))
+            addView(text(item.tags.joinToString(" · ")))
+            if (state.selectedId == item.garmentId) addView(text("正在试穿"))
+        }
+    }
+
+    private fun addAccessories(items: List<OutfitAccessory>) {
+        cards.addView(text("配饰用于照片搭配生成，每类可选一件。图片为 AI 设计参考。"))
+        for (category in AccessoryCategory.entries) {
+            val group = items.filter { it.category == category }
+            if (group.isEmpty()) continue
+            cards.addView(text(category.label, 18f))
+            val buttons = mutableListOf<Pair<OutfitAccessory, Button>>()
+            fun updateSelection() {
+                val selected = selectedAccessories()[category]?.accessoryId
+                for ((item, button) in buttons) {
+                    button.isSelected = item.accessoryId == selected
+                    button.text = if (button.isSelected) "${item.name}（已选，点按移除）" else item.name
+                }
+            }
+            addRows(group) { item ->
+                column().apply {
+                    setPadding(dp(8), dp(8), dp(8), dp(8))
+                    setBackgroundColor(Color.WHITE)
+                    addView(thumbnail(item.name) { controller.accessoryThumbnail(item) },
+                        LinearLayout.LayoutParams(-1, dp(72)))
+                    val pick = Button(context).apply {
+                        tag = "fitting.accessory.${item.accessoryId}"
+                        isEnabled = state.canSelect
+                        setOnClickListener {
+                            if (state.canSelect) {
+                                selectAccessory(category, item.takeUnless { isSelected })
+                                updateSelection()
+                            }
+                        }
+                    }
+                    buttons += item to pick
+                    addView(pick)
+                }
+            }
+            updateSelection()
+        }
+    }
+
+    private fun <T> addRows(items: List<T>, card: (T) -> View) {
         for (pair in items.chunked(2)) {
             val row = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
             for (item in pair) {
-                val card = column().apply {
-                    setPadding(dp(8),dp(8),dp(8),dp(8)); setBackgroundColor(Color.WHITE)
-                    isClickable = true; isFocusable = true; contentDescription = "查看${item.name}详情"
-                    setOnClickListener { if (state.canSelect) detail(item) }
-                }
-                val image = ImageView(context).apply { scaleType = ImageView.ScaleType.FIT_CENTER; contentDescription = item.name }
-                card.addView(image, LinearLayout.LayoutParams(-1,dp(120)))
-                thumbnails += Thumbnail(image, item)
-                card.addView(text(item.name,16f)); card.addView(text(item.tags.joinToString(" · ")))
-                if (state.selectedId == item.garmentId) card.addView(text("正在试穿"))
-                row.addView(card,LinearLayout.LayoutParams(0,-2,1f).apply { setMargins(dp(3),dp(3),dp(3),dp(3)) })
+                row.addView(card(item), LinearLayout.LayoutParams(0, -2, 1f).apply {
+                    setMargins(dp(3), dp(3), dp(3), dp(3))
+                })
             }
             if (pair.size == 1) row.addView(View(context),LinearLayout.LayoutParams(0,1,1f))
             cards.addView(row)
@@ -140,7 +249,7 @@ internal class GarmentBrowser(private val context: Context, private val controll
         val content = column().apply { setPadding(dp(16),dp(8),dp(16),dp(8)) }
         val image = ImageView(context).apply { scaleType = ImageView.ScaleType.FIT_CENTER }
         content.addView(image,LinearLayout.LayoutParams(-1,dp(220)))
-        detailImage = Thumbnail(image,item)
+        detailImage = Thumbnail(image, item.name) { controller.thumbnail(item) }
         val d = item.details
         val info = buildList {
             add(item.tags.joinToString(" · ")); if (d.brand.isNotBlank()) add("品牌：${d.brand}")
@@ -204,12 +313,18 @@ internal class GarmentBrowser(private val context: Context, private val controll
         }
         editor!!.show()
     }
-    private inner class Thumbnail(private val view: ImageView, item: Garment) : AutoCloseable {
+    private fun thumbnail(name: String, load: suspend () -> ByteArray) = ImageView(context).apply {
+        scaleType = ImageView.ScaleType.FIT_CENTER
+        contentDescription = name
+        thumbnails += Thumbnail(this, name, load)
+    }
+
+    private inner class Thumbnail(private val view: ImageView, name: String, load: suspend () -> ByteArray) : AutoCloseable {
         private var bitmap: Bitmap? = null
         private val work = scope.launch { thumbnailSlots.withPermit {
             var bytes: ByteArray? = null; var decoded: Bitmap? = null
             try {
-                bytes = controller.thumbnail(item)
+                bytes = load()
                 withContext(Dispatchers.Default) {
                     val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
                     BitmapFactory.decodeByteArray(bytes!!,0,bytes!!.size,bounds)
@@ -220,7 +335,7 @@ internal class GarmentBrowser(private val context: Context, private val controll
                 ensureActive(); bitmap = decoded; view.setImageBitmap(bitmap); decoded = null
             } catch (failure: Exception) {
                 if (failure is CancellationException) throw failure
-                view.contentDescription = "${item.name}：图片加载失败"
+                view.contentDescription = "${name}：图片加载失败"
             } finally { bytes?.fill(0); decoded?.recycle() }
         } }
         override fun close() { work.cancel(); view.setImageDrawable(null); bitmap?.recycle(); bitmap = null }
