@@ -3,9 +3,10 @@ package com.smartfitting.mirror.vision
 import com.smartfitting.mirror.contracts.Keypoints
 import com.smartfitting.mirror.contracts.Landmark
 import kotlin.math.PI
+import kotlin.math.cos
 import kotlin.math.sin
 
-enum class SyntheticScenario { STILL, TRANSLATE, SCALE, PARTIAL, LOST, RECOVERY }
+enum class SyntheticScenario { STILL, TRANSLATE, SCALE, PARTIAL, LOST, RECOVERY, ARM_CROSS, ARM_RAISE }
 enum class SyntheticViewport(val width: Int, val height: Int) { PORTRAIT(480, 640), LANDSCAPE(640, 480) }
 data class SyntheticSettings(
     val scenario: SyntheticScenario = SyntheticScenario.STILL,
@@ -36,9 +37,21 @@ object SyntheticScene {
             point(.6f, .5f), point(.4f, .5f),
             point(.6f, .7f), point(.4f, .7f), point(.6f, .87f), point(.4f, .87f),
             point(.57f, .14f), point(.43f, .14f))
-        val current = if (scenario == SyntheticScenario.PARTIAL ||
-            (scenario == SyntheticScenario.RECOVERY && phase in 20L..39L)) points.copy(leftShoulder = null)
-        else points
+        val current = when {
+            scenario == SyntheticScenario.PARTIAL ||
+                (scenario == SyntheticScenario.RECOVERY && phase in 20L..39L) -> points.copy(leftShoulder = null)
+            scenario == SyntheticScenario.ARM_CROSS -> points.copy(
+                rightElbow = point(.31f, .42f), rightWrist = point(.58f, .34f),
+            )
+            scenario == SyntheticScenario.ARM_RAISE -> {
+                val lift = ((1 - cos(2 * PI * phase / CYCLE_STEPS)) / 2).toFloat()
+                points.copy(
+                    rightElbow = point(.30f - .08f * lift, .36f - .23f * lift),
+                    rightWrist = point(.28f - .06f * lift, .50f - .45f * lift),
+                )
+            }
+            else -> points
+        }
         // Fit the same pixel-space body into each canvas before normalizing. V07:
         // equal normalized x/y on different aspect ratios would stretch the person.
         val scaleToFit = minOf((viewport.width - 1) / 479f, (viewport.height - 1) / 639f)

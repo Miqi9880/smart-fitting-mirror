@@ -318,7 +318,7 @@ class TryOnActivity : ComponentActivity() {
             try { startActivity(Intent(Settings.ACTION_HOME_SETTINGS)) }
             catch (_: android.content.ActivityNotFoundException) { visionStatus.text = "设备未开放主屏幕设置，请联系管理员配置开机入口。" }
         }.apply { if (guestRoute) visibility = View.GONE })
-        tail.addView(label("上衣头部保护仅在双耳可靠时近似生效，侧脸或缺点时不启用；无人体分割、深度测距或精细遮挡。放大只改变显示，不增加相机细节。合成样例非真人。", 11f))
+        tail.addView(label("RGB 预览用人体姿态估计手臂前后。毫米深度依赖已配准的相机帧。", 11f))
         tail.addView(Switch(this).apply {
             text = "OBJ 网格实验（二维关键点驱动，无真实体深度）"; tag = "fitting.mesh"; isChecked = model.meshMode
             setOnCheckedChangeListener { _, value ->
@@ -486,7 +486,12 @@ class TryOnActivity : ComponentActivity() {
                 source.capabilities.alignedDepth && frame.metadata.depth != null && frame.pixels.alignedDepth?.metadata == frame.metadata.depth))
             preview.submit(frame, model.state.value.selected)
             controls.render(!model.rgb, true, frame.metadata.trackingState)
-            visionStatus.text = "${if (model.rgb) "RGB 摄像头（通道 ${rgb.activeCameraId ?: "未知"}）" else "合成输入（非真人）"} · ${frame.metadata.trackingState} · 无深度/精细遮挡"
+            val occlusion = when {
+                frame.pixels.alignedDepth != null -> "对齐深度"
+                frame.pixels.imagePose != null -> "姿态辅助遮挡"
+                else -> "基础预览"
+            }
+            visionStatus.text = "${if (model.rgb) "RGB 摄像头（通道 ${rgb.activeCameraId ?: "未知"}）" else "合成输入（非真人）"} · ${frame.metadata.trackingState} · $occlusion"
             refreshPreviewSummary()
             updateCaptureActions()
         }, { update ->
@@ -691,7 +696,7 @@ class TryOnActivity : ComponentActivity() {
     }
     private fun renderAssetStatus() {
         refreshPreviewSummary()
-        assetStatus.text = "已加载 ${loadedAssets.size}/${model.outfit.size} 件 · 长裤／长裙需完整腿部，短款需髋膝，帽子需双耳 · 上衣可用近似头部保护，无精细遮挡" +
+        assetStatus.text = "已加载 ${loadedAssets.size}/${model.outfit.size} 件 · 长裤／长裙需完整腿部，短款需髋膝，帽子需双耳" +
             if (assetErrors.isEmpty()) "" else "\n未加载：${assetErrors.values.joinToString("；")}；可点击重载"
     }
     private fun refreshPreviewSummary() {
