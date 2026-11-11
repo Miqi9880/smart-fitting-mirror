@@ -99,9 +99,9 @@ internal class PreviewPanel(context: Context, private val header: View, val prev
         minus.isEnabled = zoom > 1f; plus.isEnabled = zoom < 3f
     }
 
-    fun renderInput(running: Boolean, failed: Boolean, rgb: Boolean) {
+    fun renderInput(running: Boolean, failed: Boolean, source: String) {
         input.text = when { running -> "停止预览"; failed -> "重试预览"; else -> "开始预览" }
-        input.contentDescription = "${input.text}：${if (rgb) "RGB 摄像头，保持已选相机通道" else "合成样例，非真人"}"
+        input.contentDescription = "${input.text}：$source"
     }
 
     fun renderCountdown(seconds: Int?) {

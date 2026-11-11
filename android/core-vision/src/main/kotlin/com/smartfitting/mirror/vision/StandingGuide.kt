@@ -27,6 +27,11 @@ object StandingGuide {
         val distance = frame.distanceM.takeIf { alignedDepthAvailable && frame.depth != null }
         fun result(cue: StandingCue) = StandingAssessment(presence, cue, distance)
         if (presence == BodyPresence.ABSENT) return result(StandingCue.NO_PERSON)
+        val torsoCenter = torso.filterNotNull().map { it.x }.average()
+        if (torso.all(::reliable) && torsoCenter in .35.. .65 && distance != null && calibratedRange != null) {
+            if (distance < calibratedRange.nearM) return result(StandingCue.TOO_NEAR)
+            if (distance > calibratedRange.farM) return result(StandingCue.TOO_FAR)
+        }
         if (frame.standingHint == StandingHint.OUT_OF_FRAME) return result(StandingCue.OUTSIDE)
         if (presence == BodyPresence.UNCERTAIN) return result(StandingCue.UNCERTAIN)
         if (!torso.all(::reliable)) return result(StandingCue.TORSO)
@@ -44,12 +49,7 @@ object StandingGuide {
         val ankleY = y(points.leftAnkle, points.rightAnkle)
         if (!(headY + .01 < shoulderY && shoulderY + .03 < hipY && hipY + .03 < kneeY && kneeY + .03 < ankleY))
             return result(StandingCue.UNCERTAIN)
-        val center = torso.filterNotNull().map { it.x }.average()
-        if (center !in .35.. .65) return result(StandingCue.CENTER)
-        if (distance != null && calibratedRange != null) {
-            if (distance < calibratedRange.nearM) return result(StandingCue.TOO_NEAR)
-            if (distance > calibratedRange.farM) return result(StandingCue.TOO_FAR)
-        }
+        if (torsoCenter !in .35.. .65) return result(StandingCue.CENTER)
         return result(StandingCue.READY)
     }
 }

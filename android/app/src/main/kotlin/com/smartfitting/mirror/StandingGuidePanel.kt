@@ -36,11 +36,12 @@ internal class StandingGuidePanel(context: Context) : LinearLayout(context) {
     }
     private val detail = TextView(context).apply { tag = "fitting.standing.detail"; textSize = 13f }
     init { orientation = VERTICAL; tag = "fitting.standing.panel"; addView(hint); addView(detail); render(null, false) }
-    fun render(value: StandingAssessment?, synthetic: Boolean) {
+    fun render(value: StandingAssessment?, synthetic: Boolean, calibrated: Boolean = false) {
         val text = StandingWords.summary(value)
         if (hint.text.toString() != text) hint.text = text
         detail.text = (if (synthetic && value != null) "合成站位示例 · " else "") +
             if (value?.distanceM == null) "尚未测得距离；请保持头部和双脚完整入镜。" else
-                String.format(Locale.ROOT, "测得约 %.2f 米；最佳距离需按现场标定。", value.distanceM)
+                String.format(Locale.ROOT, "测得约 %.2f 米。", value.distanceM) +
+                    if (calibrated) "" else "请先标定站位范围。"
     }
 }

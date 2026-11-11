@@ -247,8 +247,8 @@ class CameraRgbSource(
     }
     private fun checkMain() = check(Looper.myLooper() == Looper.getMainLooper()) { "Call lifecycle methods on main thread" }
 
-    private companion object {
-        val landmarkTypes = mapOf(KeypointName.LEFT_SHOULDER to PoseLandmark.LEFT_SHOULDER,
+    internal companion object {
+        internal val landmarkTypes = mapOf(KeypointName.LEFT_SHOULDER to PoseLandmark.LEFT_SHOULDER,
             KeypointName.RIGHT_SHOULDER to PoseLandmark.RIGHT_SHOULDER,
             KeypointName.LEFT_ELBOW to PoseLandmark.LEFT_ELBOW, KeypointName.RIGHT_ELBOW to PoseLandmark.RIGHT_ELBOW,
             KeypointName.LEFT_WRIST to PoseLandmark.LEFT_WRIST, KeypointName.RIGHT_WRIST to PoseLandmark.RIGHT_WRIST,

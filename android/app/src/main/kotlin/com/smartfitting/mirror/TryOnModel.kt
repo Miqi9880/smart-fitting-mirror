@@ -28,6 +28,7 @@ class TryOnModel(application: Application) : AndroidViewModel(application) {
     private var bridge: Job? = null
     var baseUrl = "http://10.0.2.2:8000"
     var rgb = true
+    var rgbd = false
     var cameraId: String? = null
     var running = false
     var visionFailure: String? = null
