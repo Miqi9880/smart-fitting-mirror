@@ -162,10 +162,15 @@ class LicensedVideoFlowTest {
             open(s)
             assertEquals("风格偏好 · 优雅", text(s, "video.style.list"))
             selectStyle("不限")
-            await { view<View>(s, "video.card.0") != null }
-            s.onActivity {
-                val result = model(it).videoExperience.result as VideoResult.Items
-                assertTrue(result.videos.none { video -> video.matchesText.contains("已选风格") })
+            await {
+                var refreshed = false
+                s.onActivity {
+                    val memory = model(it).videoExperience
+                    val result = memory.result as? VideoResult.Items
+                    refreshed = memory.style == null &&
+                        result?.videos?.none { video -> video.matchesText.contains("已选风格") } == true
+                }
+                refreshed
             }
             selectStyle("休闲")
             await {
