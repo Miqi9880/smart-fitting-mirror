@@ -23,6 +23,7 @@ from starlette.requests import ClientDisconnect
 
 from .provider_images import MAX_SOURCE_BYTES, MAX_SOURCE_PIXELS
 from .outfit import LOWER_KINDS, MAX_MATERIALS, MAX_OUTFIT_REFERENCE_BYTES, valid_kinds
+from .flux_fidelity import PersonParser, neutralize_clothes, protected_face
 
 MODEL_ID = "flux2-klein-4b-e7b7dc2"
 MAX_REQUEST_BYTES = 2 * MAX_SOURCE_BYTES + 64 * 1024
@@ -39,7 +40,9 @@ PROMPT = (
     " Copy only design elements that are visible on the outside fabric of the reference garment. Ignore "
     "retailer logos, labels, watermarks and all other elements in the reference photo's margins and background. "
     "Keep plain fabric areas completely blank. Keep the reference's exact closure and neckline. Add "
-    "no badges, pockets, lettering, graphics or buttons absent from the garment itself."
+    "no badges, pockets, lettering, graphics or buttons absent from the garment itself. "
+    "Take all garment design and construction from the product reference, including its silhouette and hem. "
+    "Do not retain the original top's design or merge the two tops."
 )
 
 
@@ -216,21 +219,60 @@ def outfit_stages(references):
 def outfit_prompt(stage):
     edits = " ".join(OUTFIT_EDITS[kind].format(index=index) for index, (kind, _) in enumerate(stage, 2))
     waist = ""
-    if any(kind in LOWER_KINDS | {"upper_body"} for kind, _ in stage):
+    if any(kind in LOWER_KINDS for kind, _ in stage):
         waist = (
-            "Keep the visible waist overlap. An outside hem remains a continuous outer layer over the waistband. "
-            "A tucked hem stays behind the visible waistband. "
+            "Keep the unselected top and its visible waist overlap unchanged. "
+            "An outside hem remains over the waistband, and a tucked hem stays behind it. "
+        )
+    if any(kind == "upper_body" for kind, _ in stage):
+        waist = (
+            "Keep the reference top's hem length and wearing style. If the reference shows only a product, "
+            "let the entire hem hang outside the waistband. Do not invent a partial tuck. "
         )
     return (
         "Edit photo 1 using the numbered product references. " + edits +
         " Keep the original person's face, pose, hands, body proportions, shoes, framing and background. "
         "Leave every unselected area, item and occlusion in photo 1 unchanged. " + waist +
-        "Copy only the referenced item's visible design, color and construction. "
-        "Add only the selected items."
+        "Use the reference as the only source for each replacement garment's silhouette, color, fabric, "
+        "neckline, sleeve length, closure, pockets, pattern and hem. Remove the original garment's design "
+        "and layers completely within each selected region. Do not blend old and new garment details. "
+        "Add only the selected items and only the design elements visible on the reference garments."
     )
 
 
-def load_flux(weights: Path):
+def generate_stages(person, stages, deadline, infer_photos, parser=None):
+    size = output_size(person)
+    with ExitStack() as images:
+        original = person
+        if parser is not None:
+            check_deadline(deadline)
+            original = images.enter_context(person.resize(size, Image.Resampling.LANCZOS))
+            segmentation = images.enter_context(parser(original))
+            face = images.enter_context(protected_face(segmentation, parser.labels))
+        current = original
+        try:
+            for references, prompt in stages:
+                with ExitStack() as stage:
+                    conditioned = current
+                    if parser is not None:
+                        conditioned = stage.enter_context(neutralize_clothes(
+                            current, segmentation, parser.labels, (kind for kind, _ in references)
+                        ))
+                    result = infer_photos([conditioned, *(image for _, image in references)], prompt, size, deadline)
+                    if parser is not None:
+                        with result:
+                            result = Image.composite(original, result, face)
+                if current is not original:
+                    current.close()
+                current = result
+            return current
+        except BaseException:
+            if current is not original:
+                current.close()
+            raise
+
+
+def load_flux(weights: Path, parser_weights: Path | None = None):
     import torch
     from diffusers import Flux2KleinPipeline
 
@@ -240,6 +282,7 @@ def load_flux(weights: Path):
     started = time.monotonic()
     pipe = Flux2KleinPipeline.from_pretrained(str(weights), torch_dtype=torch.bfloat16, local_files_only=True).to(device)
     pipe.set_progress_bar_config(disable=True)
+    parser = PersonParser(parser_weights, device) if parser_weights is not None else None
     torch.cuda.synchronize(device)
     LOGGER.info("model=%s load_seconds=%.3f", MODEL_ID, time.monotonic() - started)
 
@@ -263,22 +306,11 @@ def load_flux(weights: Path):
             LOGGER.info("peak_allocated_mib=%.1f", torch.cuda.max_memory_allocated(device) / 2**20)
 
     def infer(person: Image.Image, garment: Image.Image, deadline: float) -> Image.Image:
-        return infer_photos([person, garment], PROMPT, output_size(person), deadline)
+        return generate_stages(person, [([("upper_body", garment)], PROMPT)], deadline, infer_photos, parser)
 
     def infer_outfit(person, references, deadline):
-        size = output_size(person)
-        current = person
-        try:
-            for stage in outfit_stages(references):
-                updated = infer_photos([current] + [image for _, image in stage], outfit_prompt(stage), size, deadline)
-                if current is not person:
-                    current.close()
-                current = updated
-            return current
-        except BaseException:
-            if current is not person:
-                current.close()
-            raise
+        stages = [(stage, outfit_prompt(stage)) for stage in outfit_stages(references)]
+        return generate_stages(person, stages, deadline, infer_photos, parser)
 
     return infer, infer_outfit
 
@@ -288,15 +320,18 @@ def main():
 
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--weights", type=Path, required=True)
+    parser.add_argument("--person-parser", type=Path)
     parser.add_argument("--port", type=int, default=8787)
     args = parser.parse_args()
     if not (args.weights / "model_index.json").is_file():
         parser.error("Expected the verified local FLUX weights directory")
+    if args.person_parser is not None and not (args.person_parser / "model.safetensors").is_file():
+        parser.error("Expected the verified local person parsing weights directory")
     os.environ["HF_HUB_OFFLINE"] = "1"
     os.environ["TRANSFORMERS_OFFLINE"] = "1"
     logging.basicConfig(level=logging.INFO)
     uvicorn.run(
-        create_app(*load_flux(args.weights)), host="127.0.0.1", port=args.port,
+        create_app(*load_flux(args.weights, args.person_parser)), host="127.0.0.1", port=args.port,
         workers=1, access_log=False, proxy_headers=False, http="h11", server_header=False,
     )
 
