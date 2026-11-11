@@ -5,6 +5,7 @@ import java.io.IOException
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.*
 import kotlinx.serialization.decodeFromString
+import kotlinx.serialization.encodeToString
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
 import org.junit.Assert.*
@@ -75,6 +76,34 @@ class VideoApiTest {
                 .replace("\"related_id\": \"upper_blue\"", "\"related_id\": null")))
             try { api.recommendVideos("test", VideoRecommendationRequest(garmentIds = listOf("upper_blue"))); fail("Expected unrequested tag") }
             catch (_: IOException) { }
+        } }
+    }
+
+    @Test fun modelEvidenceRequiresTheRequestedJobAndAnActualReturnedTag() = runBlocking {
+        val base = ContractJson.decodeFromString<VideoRecommendationList>(fixture("video-shortfall.json"))
+        val item = base.items.single()
+        val tag = VideoTag(VideoDimension.STYLE, "casual")
+        val result = base.copy(
+            items = listOf(item.copy(matches = listOf(VideoMatch(tag.dimension, tag.value, VideoMatchSource.MODEL_SEMANTICS, null)))),
+            semantic = VideoSemanticAnalysis("job_test", VideoSemanticStatus.USED, listOf(tag))
+        )
+        server().use { server -> HttpFittingApi(server.url("/").toString()).use { api ->
+            val request = VideoRecommendationRequest(semanticJobId = "job_test")
+            fun respond(response: VideoRecommendationList) {
+                server.enqueue(MockResponse().setBody(ContractJson.encodeToString(response)))
+            }
+            respond(result)
+            assertEquals(result, api.recommendVideos("test", request))
+            val sent = server.takeRequest(3, TimeUnit.SECONDS)!!.body.readUtf8()
+            assertEquals(request, ContractJson.decodeFromString<VideoRecommendationRequest>(sent))
+            assertFalse(sent.contains("image"))
+            val analysis = requireNotNull(result.semantic)
+            for (invalid in listOf(result.copy(semantic = analysis.copy(jobId = "job_other")),
+                result.copy(semantic = analysis.copy(tags = listOf(VideoTag(VideoDimension.STYLE, "formal")))))) {
+                respond(invalid)
+                try { api.recommendVideos("test", request); fail("Expected invalid model provenance") }
+                catch (_: IOException) { }
+            }
         } }
     }
 }

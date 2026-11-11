@@ -39,6 +39,7 @@ class VideoPanel(context: Context) : FrameLayout(context) {
     var onRetry: (() -> Unit)? = null
     var onInteraction: (() -> Unit)? = null
     var onStyleChange: ((String?) -> Unit)? = null
+    var onAnalyze: (() -> Unit)? = null
 
     private val handler = Handler(Looper.getMainLooper())
     private val worker = Executors.newSingleThreadExecutor()
@@ -132,17 +133,18 @@ class VideoPanel(context: Context) : FrameLayout(context) {
     }
 
     /** Renders a repository result: card list, or a readable empty/failure state with a way back. */
-    fun present(result: VideoResult) {
+    fun present(result: VideoResult, semanticNote: String? = null) {
         releasePlayer(); posters.clear(); listPane.removeAllViews()
         when (result) {
             is VideoResult.Items -> {
                 items = result.videos
                 availableCount = result.availableCount
                 attachController()
-                buildCards()
+                buildCards(semanticNote)
                 showPane(listScroll)
             }
-            is VideoResult.Empty -> showState(result.message, retryable = false, allowStyleChange = true)
+            is VideoResult.Empty -> showState(listOfNotNull(semanticNote, result.message).joinToString("\n"),
+                retryable = false, allowStyleChange = true)
             is VideoResult.Failure -> showState(result.message, retryable = result.retryable, allowStyleChange = true)
         }
     }
@@ -158,7 +160,10 @@ class VideoPanel(context: Context) : FrameLayout(context) {
     fun volume(): Float = controller?.snapshot?.volume ?: volumePreference
     fun hasRenderedFrame(): Boolean = renderedFrame
     fun isPlayerVisible(): Boolean = playerPane.visibility == View.VISIBLE
-    fun showLoading() { releasePlayer(); posters.clear(); showState("正在根据当前搭配查找视频…", false) }
+    fun showLoading(analyzing: Boolean = false) {
+        releasePlayer(); posters.clear()
+        showState(if (analyzing) "正在分析试衣结果…" else "正在根据当前搭配查找视频…", false)
+    }
     fun clearContent() {
         releasePlayer(); posters.clear(); dialog?.dismiss(); dialog = null
         listPane.removeAllViews(); items = emptyList(); controller = null
@@ -225,7 +230,7 @@ class VideoPanel(context: Context) : FrameLayout(context) {
         }
     }
 
-    private fun buildCards() {
+    private fun buildCards(semanticNote: String?) {
         listPane.removeAllViews()
         val heading = TextView(context).apply {
             tag = "video.heading"
@@ -244,6 +249,8 @@ class VideoPanel(context: Context) : FrameLayout(context) {
         }
         listPane.addView(heading)
         if (onStyleChange != null) listPane.addView(styleButton("video.style.list"))
+        if (onAnalyze != null) listPane.addView(analysisButton("video.ai.list"))
+        if (semanticNote != null) listPane.addView(cardText(semanticNote, 15f).apply { tag = "video.ai.summary" })
         listPane.addView(note)
         items.forEachIndexed { index, item -> listPane.addView(card(index, item)) }
         val exit = Button(context).apply {
@@ -464,6 +471,8 @@ class VideoPanel(context: Context) : FrameLayout(context) {
         retryButton.visibility = if (retryable) View.VISIBLE else View.GONE
         statePane.findViewWithTag<Button>("video.style.state").visibility =
             if (allowStyleChange && onStyleChange != null) View.VISIBLE else View.GONE
+        statePane.findViewWithTag<Button>("video.ai.state").visibility =
+            if (allowStyleChange && onAnalyze != null) View.VISIBLE else View.GONE
         showPane(statePane)
     }
 
@@ -554,6 +563,7 @@ class VideoPanel(context: Context) : FrameLayout(context) {
         setPadding(dp(24), dp(24), dp(24), dp(24))
         addView(stateMessage)
         addView(styleButton("video.style.state").apply { visibility = View.GONE })
+        addView(analysisButton("video.ai.state").apply { visibility = View.GONE })
         addView(retryButton)
         addView(Button(context).apply {
             tag = "video.state.back"
@@ -567,6 +577,13 @@ class VideoPanel(context: Context) : FrameLayout(context) {
     private fun endButton(tag: String) = Button(context).apply {
         this.tag = tag; text = "结束体验"; textSize = 16f; minHeight = dp(56)
         setOnClickListener { onInteraction?.invoke(); endSession?.invoke() }
+    }
+
+    private fun analysisButton(tag: String) = Button(context).apply {
+        this.tag = tag
+        text = "AI 分析生成图并推荐"
+        minHeight = dp(56)
+        setOnClickListener { onInteraction?.invoke(); onAnalyze?.invoke() }
     }
 
     private fun cardBackground(): Drawable? {

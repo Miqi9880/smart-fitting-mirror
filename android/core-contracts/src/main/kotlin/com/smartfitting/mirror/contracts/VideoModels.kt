@@ -1,6 +1,9 @@
+@file:OptIn(kotlinx.serialization.ExperimentalSerializationApi::class)
+
 package com.smartfitting.mirror.contracts
 
 import java.net.URI
+import kotlinx.serialization.EncodeDefault
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
@@ -24,12 +27,15 @@ private fun mediaUrl(value: String) {
 @Serializable data class VideoRecommendationRequest(
     @SerialName("garment_ids") val garmentIds: List<String> = emptyList(),
     @SerialName("makeup_ids") val makeupIds: List<String> = emptyList(),
-    @SerialName("user_tags") val userTags: List<VideoTag> = emptyList(), val limit: Int = 5
+    @SerialName("user_tags") val userTags: List<VideoTag> = emptyList(), val limit: Int = 5,
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    @SerialName("semantic_job_id") val semanticJobId: String? = null
 ) {
     init {
         require(garmentIds.size <= 6 && garmentIds.unique() && garmentIds.all(garmentId::matches))
         require(makeupIds.size <= 8 && makeupIds.unique() && makeupIds.all(videoIdentifier::matches))
         require(userTags.size <= 20 && userTags.unique() && limit in 1..20)
+        require(semanticJobId == null || videoIdentifier.matches(semanticJobId))
     }
 }
 @Serializable enum class VideoOrientation { @SerialName("landscape") LANDSCAPE, @SerialName("portrait") PORTRAIT }
@@ -70,8 +76,21 @@ private fun mediaUrl(value: String) {
         require(matches.all { VideoTag(it.dimension, it.value) in video.tags })
     }
 }
+@Serializable enum class VideoSemanticStatus {
+    @SerialName("used") USED, @SerialName("no_tags") NO_TAGS, @SerialName("unavailable") UNAVAILABLE
+}
+@Serializable data class VideoSemanticAnalysis(
+    @SerialName("job_id") val jobId: String, val status: VideoSemanticStatus, val tags: List<VideoTag>
+) {
+    init {
+        require(videoIdentifier.matches(jobId) && tags.size <= 4 && tags.unique())
+        require((status == VideoSemanticStatus.USED) == tags.isNotEmpty())
+        require(tags.none { it.dimension == VideoDimension.CATEGORY })
+    }
+}
 @Serializable data class VideoRecommendationList(val items: List<VideoRecommendation>,
-    @SerialName("requested_limit") val requestedLimit: Int, @SerialName("available_count") val availableCount: Int) {
+    @SerialName("requested_limit") val requestedLimit: Int, @SerialName("available_count") val availableCount: Int,
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val semantic: VideoSemanticAnalysis? = null) {
     init {
         require(requestedLimit in 1..20 && availableCount in 0..100000)
         require(items.size == minOf(requestedLimit, availableCount) && items.map { it.video.videoId }.unique())

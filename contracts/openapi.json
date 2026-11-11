@@ -995,7 +995,7 @@
       "post": {
         "operationId": "recommendVideos",
         "summary": "按当前造型和主动标签获取视频候选",
-        "description": "Read-only structured recall, no photos, generation job or AI call. Current session token required; does not refresh session TTL. No automatic request replay. HTTP route implementation is a separate backend increment.",
+        "description": "Structured recall with the current guest token. Only an explicit semantic_job_id requests local analysis of an existing successful result. No photo, upload URL or tags from a client-provided model are accepted. Session TTL is unchanged.",
         "requestBody": {
           "required": true,
           "content": {
@@ -1058,6 +1058,16 @@
           },
           "400": {
             "description": "请求非法、重复或无法解析的上下文ID；不静默忽略未知妆容/服装",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "当前游客会话没有可分析的成功生成结果",
             "content": {
               "application/json": {
                 "schema": {
@@ -2261,6 +2271,12 @@
             "uniqueItems": true,
             "default": []
           },
+          "semantic_job_id": {
+            "type": "string",
+            "nullable": true,
+            "pattern": "^[a-z][a-z0-9_-]{0,63}$",
+            "description": "Optional successful non-MOCK result in the current guest session. Omit for rule-only recall."
+          },
           "limit": {
             "type": "integer",
             "minimum": 1,
@@ -2451,6 +2467,38 @@
         ],
         "description": "Only on-shelf, playable-authorized or explicitly synthetic candidates. Each match must equal a video tag and be supported by actual request context."
       },
+      "VideoSemanticAnalysis": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "job_id",
+          "status",
+          "tags"
+        ],
+        "properties": {
+          "job_id": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "used",
+              "no_tags",
+              "unavailable"
+            ]
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/VideoTag"
+            },
+            "uniqueItems": true,
+            "maxItems": 4
+          }
+        },
+        "description": "Tags are emitted by the local model for this job. Only used includes nonempty tags, and model tags never have the category dimension."
+      },
       "VideoRecommendationList": {
         "type": "object",
         "additionalProperties": false,
@@ -2473,6 +2521,9 @@
             "type": "integer",
             "minimum": 0,
             "maximum": 100000
+          },
+          "semantic": {
+            "$ref": "#/components/schemas/VideoSemanticAnalysis"
           }
         },
         "required": [
@@ -2480,7 +2531,7 @@
           "requested_limit",
           "available_count"
         ],
-        "description": "Unique video ids; len(items)=min(requested_limit,available_count). available_count counts eligible unique relevant candidates before truncation. Empty context yields zero; never pad with unrelated/repeated videos."
+        "description": "Unique video ids; len(items)=min(requested_limit,available_count). An explicit semantic_job_id includes semantic analysis or its fallback status. Empty context yields zero; never pad with unrelated/repeated videos."
       },
       "OutfitSelection": {
         "type": "object",
