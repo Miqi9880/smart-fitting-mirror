@@ -191,6 +191,39 @@ class LicensedVideoFlowTest {
         }
     }
 
+    @Test fun realResultOffersExplicitSemanticRecallAndRetainsTheComparison() {
+        launch(host("video_semantic_host", 8025)).use { s ->
+            open(s)
+            assertNull(view<View>(s, "video.ai.list"))
+            click(s, "video.exit")
+            val image = Bitmap.createBitmap(200, 300, Bitmap.Config.ARGB_8888).apply { eraseColor(Color.CYAN) }
+            val bytes = ByteArrayOutputStream().apply { image.compress(Bitmap.CompressFormat.PNG, 100, this) }.toByteArray()
+            image.recycle()
+            s.onActivity { model(it).controller!!.generate(CapturedPhoto("semantic-test", 1, 200, 300, "image/png", bytes)) }
+            await {
+                var ready = false
+                s.onActivity { ready = model(it).state.value.phase == FittingPhase.SUCCEEDED }
+                ready
+            }
+            open(s)
+            assertTrue(text(s, "video.ai.summary").isEmpty())
+            click(s, "video.ai.list")
+            await(46_000) { text(s, "video.ai.summary").contains("AI 识别标签") }
+            s.onActivity {
+                val result = model(it).videoExperience.result as VideoResult.Items
+                assertTrue(result.videos.first().matchesText.contains("AI 识别"))
+                assertNotNull(model(it).state.value.result)
+            }
+            click(s, "video.end.list")
+            await {
+                var ended = false
+                s.onActivity { ended = model(it).state.value.phase == FittingPhase.CLOSED }
+                ended
+            }
+            s.onActivity { assertNull(model(it).videoExperience.semanticNote) }
+        }
+    }
+
     @Test fun pauseRotationBackgroundAndReturnPreserveOriginalAndOutfitWithoutAutoplay() {
         launch(host()).use { s ->
             val image=Bitmap.createBitmap(200,300,Bitmap.Config.ARGB_8888).apply { eraseColor(Color.CYAN) }

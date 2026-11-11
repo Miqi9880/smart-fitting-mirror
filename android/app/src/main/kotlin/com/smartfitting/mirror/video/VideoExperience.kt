@@ -10,8 +10,10 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.lifecycle.lifecycleScope
 import com.smartfitting.mirror.TryOnModel
 import com.smartfitting.mirror.contracts.Garment
+import com.smartfitting.mirror.contracts.JobStatus
 import com.smartfitting.mirror.contracts.VideoDimension
 import com.smartfitting.mirror.contracts.VideoRecommendationRequest
+import com.smartfitting.mirror.contracts.VideoSemanticStatus
 import com.smartfitting.mirror.contracts.VideoTag
 import com.smartfitting.mirror.network.ApiFailure
 import com.smartfitting.mirror.network.FittingPhase
@@ -26,6 +28,8 @@ class VideoExperienceMemory {
     var result: VideoResult? = null
     var garments: List<Garment> = emptyList()
     var style: String? = null
+    var semanticNote: String? = null
+    var semanticJobId: String? = null
     var selectedId: String? = null
     var positionMs = 0
     var volume = 0f
@@ -33,6 +37,7 @@ class VideoExperienceMemory {
     fun clear() {
         open = false; requestedFromHome = false; result = null; garments = emptyList()
         style = null
+        semanticNote = null; semanticJobId = null
         selectedId = null; positionMs = 0; volume = 0f; retryAtMs = 0
     }
 }
@@ -90,9 +95,12 @@ class VideoExperience(
 
     fun onSessionChanged() {
         if (model.state.value.phase in setOf(FittingPhase.ENDING,FittingPhase.CLOSED) || !model.state.value.connected && memory.open && model.controller == null) clear()
-        if (memory.open && memory.garments != model.outfit.values.sortedBy { it.garmentId }) {
+        if (memory.open && (memory.garments != model.outfit.values.sortedBy { it.garmentId } ||
+                memory.semanticJobId?.let { it != analysisJob() } == true)) {
             query?.cancel(); query = null; memory.garments = model.outfit.values.sortedBy { it.garmentId }
             memory.selectedId = null; memory.positionMs = 0
+            memory.semanticNote = null; memory.semanticJobId = null
+            setAnalysisAction()
             memory.result = VideoResult.Failure("搭配已更新，请点击重试查看相关视频。")
             panel.present(memory.result!!)
         }
@@ -106,21 +114,35 @@ class VideoExperience(
         if (!memory.open) interacted()
         memory.open = true; stopPreview(); fittingPage.visibility = View.GONE; panel.visibility = View.VISIBLE; back.isEnabled = true
         val selection = model.outfit.values.sortedBy { it.garmentId }
-        if (selection != memory.garments) {
+        if (selection != memory.garments || memory.semanticJobId?.let { it != analysisJob() } == true) {
             memory.result = null; memory.selectedId = null; memory.positionMs = 0; memory.garments = selection
+            memory.semanticNote = null; memory.semanticJobId = null
         }
         panel.setVolumePreference(memory.volume)
         panel.setStylePreference(memory.style)
+        setAnalysisAction()
         val cached = memory.result
         if (cached == null) load() else {
-            panel.present(cached)
+            panel.present(cached, memory.semanticNote)
             val items = (cached as? VideoResult.Items)?.videos.orEmpty()
             val index = items.indexOfFirst { it.videoId == memory.selectedId }
             if (index >= 0) panel.resumeClip(index,memory.positionMs,autoplay=false)
         }
     }
 
-    private fun load() {
+    private fun analysisJob(): String? {
+        val state = model.state.value
+        val job = state.job ?: return null
+        if (job.isMock || job.status != JobStatus.SUCCEEDED || state.result == null) return null
+        val generated = job.outfit?.garmentIds ?: listOf(job.garmentId)
+        return job.jobId.takeIf { generated.toSet() == model.outfit.values.map { it.garmentId }.toSet() }
+    }
+
+    private fun setAnalysisAction() {
+        panel.onAnalyze = analysisJob()?.let { id -> { if (analysisJob() == id) load(id) } }
+    }
+
+    private fun load(semanticJobId: String? = null) {
         query?.cancel(); query = null
         if (!foreground || !memory.open) return
         val session = model.controller
@@ -133,18 +155,36 @@ class VideoExperience(
             panel.present(memory.result!!); return
         }
         memory.result = null; memory.selectedId = null; memory.positionMs = 0
+        memory.semanticNote = null; memory.semanticJobId = null
         val selection = model.outfit.values.sortedBy { it.garmentId }.toList()
         val style = memory.style
         memory.garments = selection
         val tags = style?.let { listOf(VideoTag(VideoDimension.STYLE, it)) }.orEmpty()
-        val request = VideoRecommendationRequest(garmentIds = selection.map { it.garmentId }, userTags = tags)
-        panel.showLoading()
+        val request = VideoRecommendationRequest(garmentIds = selection.map { it.garmentId }, userTags = tags,
+            semanticJobId = semanticJobId)
+        panel.showLoading(analyzing = semanticJobId != null)
         query = activity.lifecycleScope.launch {
             try {
-                val result = session.recommendVideos(request).forDisplay()
+                val reply = try { session.recommendVideos(request) } catch (error: ApiFailure) {
+                    if (semanticJobId == null || error.status !in setOf(400, 404)) throw error
+                    session.recommendVideos(request.copy(semanticJobId = null))
+                }
                 if (!foreground || !memory.open || model.controller !== session || style != memory.style ||
-                    selection != model.outfit.values.sortedBy { it.garmentId }) return@launch
-                memory.result = result; panel.present(result); panel.setVolumePreference(memory.volume)
+                    selection != model.outfit.values.sortedBy { it.garmentId } ||
+                    (semanticJobId != null && analysisJob() != semanticJobId)) return@launch
+                val analysis = reply.semantic
+                memory.semanticJobId = semanticJobId
+                memory.semanticNote = when {
+                    semanticJobId == null -> null
+                    analysis?.status == VideoSemanticStatus.USED ->
+                        "AI 识别标签 · " + analysis.tags.joinToString(" · ") { it.value }
+                    analysis?.status == VideoSemanticStatus.NO_TAGS -> "AI 未识别出合适标签，继续按搭配推荐。"
+                    else -> "AI 分析暂不可用，继续按搭配推荐。"
+                }
+                val result = reply.forDisplay()
+                memory.result = result
+                panel.present(result, memory.semanticNote)
+                panel.setVolumePreference(memory.volume)
             } catch (cancelled: CancellationException) { throw cancelled }
             catch (error: Exception) {
                 if (!foreground || !memory.open || model.controller !== session || style != memory.style ||

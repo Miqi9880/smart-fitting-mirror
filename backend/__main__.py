@@ -17,6 +17,7 @@ parser.add_argument("--enable-real-provider", action="store_true", help="明确�
 parser.add_argument("--cos-env-file", type=Path, default=Path(".env.cos"))
 parser.add_argument("--aliyun-env-file", type=Path, default=Path(".env.aliyun"))
 parser.add_argument("--catalog-profile", choices=["studio", "regression"], default="studio", help="regression is for historical synthetic tests only")
+parser.add_argument("--enable-video-semantics", action="store_true", help="使用本机 Ollama 按需分析试衣结果")
 args = parser.parse_args()
 provider = None
 provider_disabled = args.provider == "aidge-cos" and not args.enable_real_provider
@@ -41,7 +42,12 @@ if args.provider == "aidge-cos" and args.enable_real_provider:
         provider = AidgeCosProvider.from_env(args.cos_env_file, args.aliyun_env_file)
     except ConfigurationError as error:
         parser.error(str(error))
+outfit_tagger = None
+if args.enable_video_semantics:
+    from .video_semantics import OllamaOutfitTagger
+    outfit_tagger = OllamaOutfitTagger()
 uvicorn.run(create_app(args.mode, catalog_path=args.catalog_db,catalog_profile=args.catalog_profile,provider=provider,
                        provider_disabled=provider_disabled,
+                       outfit_tagger=outfit_tagger,
                        usage_metrics=UsageMetrics(args.usage_metrics_db)), host=args.host, port=args.port, workers=1, access_log=False,
             proxy_headers=False)

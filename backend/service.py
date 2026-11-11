@@ -22,7 +22,7 @@ from typing import Callable, Literal
 from fastapi import FastAPI, Request, Query
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, Response, FileResponse
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 from starlette.concurrency import run_in_threadpool
 from starlette.datastructures import UploadFile
 from starlette.exceptions import HTTPException
@@ -33,8 +33,9 @@ from .outfit import ACCESSORY_DIRECTORY, OutfitSelection, accessory_catalog, val
 from .tryon_provider import ProviderFailure, ProviderResult, TryOnProvider
 from .provider_control import GenerationBudget
 from .usage_metrics import UsageMetrics
-from .video_contracts import VideoRecommendationRequest
+from .video_contracts import VideoRecommendationRequest, VideoSemanticAnalysis, VideoTag
 from .video_library import VideoLibrary
+from .video_semantics import OutfitTagger, SemanticUnavailable
 
 MAX_FILE = 10 * 1024 * 1024
 MAX_BODY = MAX_FILE + 64 * 1024
@@ -142,6 +143,7 @@ class Job:
     budget: GenerationBudget | None = None
     started_monotonic: float = 0.0
     metrics_terminal_recorded: bool = False
+    semantic_tags: list[VideoTag] | None = None
 
 
 @dataclass
@@ -157,7 +159,7 @@ class Guest:
 
 class Store:
     """One-process service. State transitions and ownership checks share a lock."""
-    def __init__(self, mode: Mode = "success", clock: Callable[[], float] = time.time, ttl: float = 1800, catalog_path=None, catalog_profile="studio", provider: TryOnProvider | None = None, monotonic: Callable[[], float] = time.monotonic, provider_disabled: bool = False, metrics: UsageMetrics | None = None, video_library: VideoLibrary | None = None):
+    def __init__(self, mode: Mode = "success", clock: Callable[[], float] = time.time, ttl: float = 1800, catalog_path=None, catalog_profile="studio", provider: TryOnProvider | None = None, monotonic: Callable[[], float] = time.monotonic, provider_disabled: bool = False, metrics: UsageMetrics | None = None, video_library: VideoLibrary | None = None, outfit_tagger: OutfitTagger | None = None):
         self.mode, self.clock, self.ttl = mode, clock, ttl
         self.monotonic = monotonic
         self.provider = provider
@@ -166,6 +168,8 @@ class Store:
         self.accessories = accessory_catalog()
         self.metrics = metrics
         self.video_library = video_library if video_library is not None else VideoLibrary.from_file()
+        self.outfit_tagger = outfit_tagger
+        self.outfit_tagging = threading.Lock()
         # Keep one local provider worker in flight, including its cleanup.
         # The upstream cannot be cancelled; a local timeout is not cloud cancellation.
         self.executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="tryon-provider") if provider else None
@@ -179,6 +183,31 @@ class Store:
         observe_submission = getattr(provider, "set_submission_observer", None)
         if metrics is not None and callable(observe_submission):
             observe_submission(lambda metric: self._record_usage(metric, is_mock=False))
+
+    def analyze_outfit(self, authorization: str | None, job_id: str) -> VideoSemanticAnalysis:
+        unavailable = VideoSemanticAnalysis(job_id=job_id, status="unavailable", tags=[])
+        with self.lock:
+            guest = self.guest(authorization)
+            job = guest.jobs.get(job_id)
+            if job is None or job.value["status"] != "succeeded" or job.is_mock or job.result_bytes is None:
+                raise Problem(404, "RESOURCE_NOT_FOUND", "当前会话没有可分析的生成结果")
+            if job.semantic_tags is not None:
+                status = "used" if job.semantic_tags else "no_tags"
+                return VideoSemanticAnalysis(job_id=job_id, status=status, tags=job.semantic_tags)
+            if self.outfit_tagger is None or not self.outfit_tagging.acquire(blocking=False):
+                return unavailable
+            image = job.result_bytes
+        try:
+            tags = self.outfit_tagger.tags(image)
+            analysis = VideoSemanticAnalysis(job_id=job_id, status="used" if tags else "no_tags", tags=tags)
+            with self.lock:
+                self.guest(authorization)
+                job.semantic_tags = analysis.tags
+            return analysis
+        except (SemanticUnavailable, ValidationError):
+            return unavailable
+        finally:
+            self.outfit_tagging.release()
 
     def _record_usage(self, metric: str, *, is_mock: bool, duration_ms: int | None = None) -> None:
         if self.metrics is None:
@@ -556,7 +585,7 @@ class CreateInput(BaseModel):
         return self
 
 
-def create_app(mode: Mode = "success", *, clock=time.time, ttl=1800, catalog_path=None, catalog_profile="studio", provider: TryOnProvider | None = None, monotonic=time.monotonic, provider_disabled: bool = False, usage_metrics: UsageMetrics | None = None, video_library: VideoLibrary | None = None) -> FastAPI:
+def create_app(mode: Mode = "success", *, clock=time.time, ttl=1800, catalog_path=None, catalog_profile="studio", provider: TryOnProvider | None = None, monotonic=time.monotonic, provider_disabled: bool = False, usage_metrics: UsageMetrics | None = None, video_library: VideoLibrary | None = None, outfit_tagger: OutfitTagger | None = None) -> FastAPI:
     if mode not in {"success", "failure", "delayed", "timeout", "rate-limit"}:
         raise ValueError("Unknown mock mode")
     if not 0 < ttl <= 1800:
@@ -568,7 +597,7 @@ def create_app(mode: Mode = "success", *, clock=time.time, ttl=1800, catalog_pat
     if provider is not None and provider_disabled:
         raise ValueError("A provider cannot be active while real-provider calls are disabled")
     store = Store(mode, clock, ttl, catalog_path, catalog_profile, provider, monotonic,
-                  provider_disabled, usage_metrics, video_library)
+                  provider_disabled, usage_metrics, video_library, outfit_tagger)
 
     @asynccontextmanager
     async def lifespan(app):
@@ -651,15 +680,19 @@ def create_app(mode: Mode = "success", *, clock=time.time, ttl=1800, catalog_pat
 
     @app.post("/api/v1/video-recommendations")
     def video_recommendations(request: Request, body: VideoRecommendationRequest):
+        authorization = auth(request)
         with store.lock:
-            guest = store.guest(auth(request))
+            guest = store.guest(authorization)
             store.rate("video-recommendations:" + guest.sid, 30)
             if body.makeup_ids:
                 raise Problem(400, "INVALID_REQUEST", "妆容目录尚未接入，请暂时不要传 makeup_ids")
             if any(garment_id not in guest.catalog for garment_id in body.garment_ids):
                 raise Problem(400, "INVALID_REQUEST", "服装ID不属于当前会话衣柜")
+        analysis = store.analyze_outfit(authorization, body.semantic_job_id) if body.semantic_job_id else None
+        with store.lock:
+            guest = store.guest(authorization)
             try:
-                result = store.video_library.recommend(body, guest.catalog)
+                result = store.video_library.recommend(body, guest.catalog, analysis)
             except ValueError:
                 raise Problem(400, "INVALID_REQUEST", "服装或妆容上下文暂不可用")
             result.validate_context(body)

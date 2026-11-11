@@ -8,20 +8,21 @@
 
 ## 请求、数量与匹配
 
-`POST /api/v1/video-recommendations`，`Content-Type: application/json`，沿用当前`Authorization: Bearer <session_token>`。不创建另一个游客会话，不传人物图、生成图、身份或Token字段；Token只在鉴权头。POST用于有界结构化查询，**只读**，不上传、不生成、不调用收费VLM／LLM、不延长会话TTL，也不需要生成任务的Idempotency-Key。
+`POST /api/v1/video-recommendations` 沿用游客会话鉴权，普通请求只查询推荐。显式传入 `semantic_job_id` 时，服务可以用本机模型读取该会话已有的生成结果。客户端只传任务 ID。两种请求均沿用原会话有效期。
 
 | 请求字段 | 约束／含义 |
 | --- | --- |
 | garment_ids | 默认空，至多6个不重复的当前会话服装ID；沿用衣柜ID，不能用素材标题或随手改ID |
 | makeup_ids | 默认空，至多8个不重复ID；当前服饰端传空，后端未取得面部组目录时，对非空值明确报400，不静默忽略或冒充已联动 |
 | user_tags | 默认空，至多20个不重复`{dimension,value}`；dimension为category／style／color／scene，value去首尾空白、非空、至多64字符 |
+| semantic_job_id | 可选。仅接受当前游客会话中已成功的非 MOCK 生成任务。点击「AI 分析生成图并推荐」才发送 |
 | limit | 整数1～20，默认5；不是“必须凑够”的数量 |
 
-服务端按当前会话目录解析ID，不认识／不属于该会话的ID报400 `INVALID_REQUEST`；不能把坏ID当空上下文。空上下文合法，返回空列表，不泛推无关内容。不接受客户端任意指定标签来源或模型语义；模型标签来源只预留枚举，当前没有实现FR-VID-03。
+服务端按当前会话解析服装 ID，未知服装报 400。不可访问、未成功或 MOCK 任务报 404。空上下文返回空列表。模型语义标签由服务端生成和校验，客户端只可主动提交 `user_tags`。
 
-首轮按**维度＋值精确匹配**，大小写敏感。category使用现有服饰枚举，如upper_body、lower_body、dress；颜色沿用目录`details.colors`的规范值。style／scene只取明确维护的元数据或用户选择，不从photo、official-studio等素材标记猜风格。不做隐式中英文转换；确需别名表时由后端维护并给双方相同选项。
+首轮按**维度＋值精确匹配**，大小写敏感。品类沿用现有服饰枚举，颜色沿用目录规范值。风格、场景和颜色可由明确维护的数据、主动选择或已校验的模型输出提供。
 
-只召回上架、来源合格且有已确认播放资料的候选。去重后至少匹配品类、风格、颜色或场景中的一个维度。用户主动选择的标签优先，其后按匹配维度数降序、`video_id` 升序排序。当前搭配匹配仍参与召回。App 的「风格偏好」提供不限、休闲、简约、优雅，仅保存在当前游客会话内。实测覆盖与验收方法见[视频推荐验收](../reports/video-acceptance-2026-11-11.md)。
+只召回上架、来源合格且有已确认播放资料的候选。去重后至少匹配品类、风格、颜色或场景中的一个维度。先按是否命中主动偏好排序，其后依次按模型标签命中数、匹配维度数降序、`video_id` 升序排序。App 的「风格偏好」仅保存在当前游客会话内。实测覆盖与验收方法见[视频推荐验收](../reports/video-acceptance-2026-11-11.md)。
 
 请求完整样例：[video-request.json](../../contracts/examples/video-request.json)。
 
@@ -46,7 +47,7 @@
 | source.attribution／authorization | 非空来源与授权／测试说明。真实权限凭据由内容维护人核对留存，不把密钥或人像放进这里 |
 | matches | 每条为dimension、value、source、related_id；维度／值必须出现在此视频tags，并由实际本次上下文支持 |
 
-matches.source为garment_metadata／makeup_metadata时，related_id必须是本次对应上下文资源ID；user_selection时为null且必须来自本次user_tags。model_semantics仅预留，当前不得伪造；本轮客户端和Python的validate_context拒绝此来源，后续接入需明确触发、来源和费用条件并同步升级调用方。匹配证据可以产生简单说明，但不表示P1的自然语言推荐理由或AI语义已交付。
+`matches.source` 为 `garment_metadata` 或 `makeup_metadata` 时，`related_id` 是本次请求对应的资源 ID。主动选择与模型匹配的 `related_id` 为 null，标签必须分别来自本次请求的 `user_tags` 和响应的 `semantic.tags`。只有显式请求语义时才返回 `semantic`，包含对应 `job_id`、`status` 和最多 4 个标签。状态为 `used` 时返回标签，为 `no_tags` 或 `unavailable` 时返回空标签和规则候选。App 显示具体来源。详见[语义标签试验](../reports/video-semantics-2026-11-11.md)。
 
 媒体URL不带userinfo或fragment，最长2048字符。**播放器和封面加载器不把游客Authorization附加到任何响应媒体URL，也不把Token放查询串。** 首轮内容使用无需游客凭证即可访问的受控／获准资源；若将来需要受鉴权文件流，应另行约定媒体路由／请求头，不套用当前只下载PNG/JPEG的`FittingTransport.download()`。release使用HTTPS，HTTP仅限debug受控本地联调；不在日志、偏好设置或Issue保存临时签名URL。
 

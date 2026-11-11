@@ -22,7 +22,11 @@ fun VideoRecommendationList.forDisplay(): VideoResult {
             playbackUrl = video.playbackUrl, coverUrl = video.coverUrl,
             sourceText = video.source.attribution + "\n" + video.source.authorization,
             matchesText = item.matches.map {
-                val name = if (it.source == VideoMatchSource.USER_SELECTION) "已选${dimension(it.dimension)}" else dimension(it.dimension)
+                val name = when (it.source) {
+                    VideoMatchSource.USER_SELECTION -> "已选${dimension(it.dimension)}"
+                    VideoMatchSource.MODEL_SEMANTICS -> "AI 识别${dimension(it.dimension)}"
+                    else -> dimension(it.dimension)
+                }
                 "$name：${label(VideoTag(it.dimension, it.value))}"
             }.distinct().joinToString(" · "))
     }, availableCount)
