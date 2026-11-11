@@ -34,7 +34,13 @@ class ScenarioControlsTest {
         ActivityScenario.launch(MainActivity::class.java).use { scenario ->
             awaitUi(scenario) { it.button("查看原始帧").isEnabled }
             scenario.onActivity {
-                it.window.decorView.findViewWithTag<Spinner>("synthetic.scenario").setSelection(SyntheticScenario.PARTIAL.ordinal)
+                val scenes = it.window.decorView.findViewWithTag<Spinner>("synthetic.scenario")
+                assertEquals(
+                    listOf("静止人体", "左右移动", "人物大小变化", "缺少左肩", "人物丢失", "丢失与恢复"),
+                    (0 until scenes.count).map { index -> scenes.getItemAtPosition(index).toString() },
+                )
+                assertEquals("静止人体", scenes.selectedItem.toString())
+                scenes.setSelection(SyntheticScenario.PARTIAL.ordinal)
                 it.window.decorView.findViewWithTag<Spinner>("synthetic.viewport").setSelection(SyntheticViewport.LANDSCAPE.ordinal)
                 it.window.decorView.findViewWithTag<Button>("synthetic.play").performClick()
             }

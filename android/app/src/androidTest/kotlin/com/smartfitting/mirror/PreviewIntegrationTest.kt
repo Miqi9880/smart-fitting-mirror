@@ -12,6 +12,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.smartfitting.mirror.network.FittingPhase
 import com.smartfitting.mirror.tryon.PreviewViewport
+import com.smartfitting.mirror.vision.SyntheticScenario
 import org.junit.Assert.*
 import org.junit.Assume.assumeTrue
 import org.junit.Test
@@ -61,7 +62,7 @@ class PreviewIntegrationTest {
                 root.findViewWithTag<EditText>("fitting.address").setText(host)
                 root.findViewWithTag<Button>("fitting.connect").performClick()
                 root.findViewWithTag<Button>("fitting.mock").performClick()
-                root.findViewWithTag<Spinner>("synthetic.scenario").setSelection(1)
+                root.findViewWithTag<Spinner>("synthetic.scenario").setSelection(SyntheticScenario.STILL.ordinal)
                 root.findViewWithTag<Spinner>("synthetic.viewport").setSelection(1)
             }
             await { model(it).state.value.canSelect }
