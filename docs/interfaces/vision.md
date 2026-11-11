@@ -65,4 +65,4 @@ RGB 输出在当前帧模型点通过有效性检查后，使用 `PoseStabilizer
 
 目录中的长袖牛津纺衬衫和圆领卫衣在实时预览中关闭衣身遮挡，包含姿态遮挡与对齐深度遮挡。使用同一预览素材的游客复制款沿用该行为。其他上衣和连衣裙继续使用遮挡。
 
-本地 BitmapPixels 可附 AlignedDepthPixels，其 metadata 必须匹配同一个 VisionFrame.depth，使用相同画幅下的 uint16 小端毫米。提供者负责 RGB 与深度的同步和配准。上衣和连衣裙可用 `distance_m` 或同帧有效躯干样本的中位数估计衣服平面，再用场景深度遮挡较近物体。深度 0 表示未知。此路径已用合成毫米深度做绘制回归。Gemini 2 的 Android 深度取流与配准仍需接入和真机验证。
+本地 BitmapPixels 可附 AlignedDepthPixels，其 metadata 必须匹配同一个 VisionFrame.depth，使用相同画幅下的 uint16 小端毫米。提供者负责 RGB 与深度的同步和配准。上衣和连衣裙可用 `distance_m` 或同帧有效躯干样本的中位数估计衣服平面，再用场景深度遮挡较近物体。深度 0 表示未知。带 Orbbec SDK 的 Android 构建可选择 Gemini 2 深度预览，也会提供同一 RGB 画幅归一化坐标下的前景置信度 `personMask`，其 metadata 对应 `VisionFrame.mask`。实机取流、配准和距离仍待确认，见 [Gemini 2 记录](../reports/gemini-depth-2026-11-11.md)。

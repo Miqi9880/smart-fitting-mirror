@@ -26,6 +26,6 @@ ollama pull qwen3-vl:2b-instruct
 python -m backend --provider local-model --local-model-url http://127.0.0.1:8787 --enable-video-semantics
 ```
 
-后端语义开关默认关闭。启用时 Ollama 需在同一主机监听回环端口 11434。模型权重约 1.9 GB。当前校园网 HTTPS 服务仍用已验的原部署。正式启用前需在服务器核对与 FLUX 共用资源的条件。
+后端命令行语义开关默认关闭。校园 HTTPS 后端 0.6.0 已单独启用 Ollama。本机回环端口为 11434，模型权重约 1.9 GB，服务器限制为 12 个 CPU 线程。一次获准 CG 输入的蓝色 T 恤与黑色长裤生成耗时 7.51 秒，随后语义分析 11.44 秒，返回简约、日常、蓝色、黑色。五条视频具有模型匹配依据。重复请求复用了标签，结束会话后结果已撤销访问。镜子上的 0.6.0 语义流程待现场验收。
 
 [Qwen 模型说明](https://huggingface.co/Qwen/Qwen3-VL-2B-Instruct) · [Ollama 模型包](https://ollama.com/library/qwen3-vl:2b-instruct) · [结构化输出文档](https://docs.ollama.com/capabilities/structured-outputs)

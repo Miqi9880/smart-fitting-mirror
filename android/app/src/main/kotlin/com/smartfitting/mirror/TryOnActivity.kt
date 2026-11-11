@@ -41,7 +41,15 @@ class TryOnActivity : ComponentActivity() {
     private val model: TryOnModel by viewModels()
     private val mock = SyntheticVisionSource()
     private lateinit var rgb: CameraRgbSource
-    private val source: VisionSource<BitmapPixels> get() = if (model.rgb) rgb else mock
+    private val rgbd by lazy { geminiDepthSource(this) }
+    private val source: VisionSource<BitmapPixels> get() = when {
+        !model.rgb -> mock
+        model.rgbd -> requireNotNull(rgbd)
+        else -> rgb
+    }
+    private var pendingRgbd = false
+    private val depthSettings by lazy { getSharedPreferences("depth-standing", MODE_PRIVATE) }
+    private var depthRange: StandingRange? = null
     private lateinit var preview: TryOnView
     private lateinit var previewPanel: PreviewPanel
     private lateinit var pageScroll: ScrollView
@@ -98,7 +106,10 @@ class TryOnActivity : ComponentActivity() {
     private val permission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         if (!pendingPermission) return@registerForActivityResult
         pendingPermission = false
-        if (granted) { model.rgb = true; model.running = true; model.visionFailure = null; if (visible) beginVision() }
+        if (granted) {
+            model.rgb = true; model.rgbd = pendingRgbd; model.running = true; model.visionFailure = null
+            if (visible) beginVision()
+        }
         else {
             val message = "摄像头未授权，可重试或打开权限设置；合成样例可继续使用。"
             if (!model.running) { model.visionFailure = message; stopVision() }
@@ -119,6 +130,8 @@ class TryOnActivity : ComponentActivity() {
             })
         }
         pendingPermission = savedInstanceState?.getBoolean("pending_permission") ?: false
+        pendingRgbd = savedInstanceState?.getBoolean("pending_rgbd") ?: false
+        depthRange = calibratedRange(depthSettings.getFloat("near", 0f), depthSettings.getFloat("far", 0f))
         rgb = CameraRgbSource(this, this,
             targetRotation = { @Suppress("DEPRECATION") windowManager.defaultDisplay.rotation },
             cameraId = { model.cameraId })
@@ -196,16 +209,19 @@ class TryOnActivity : ComponentActivity() {
                     pendingPermission = false
                     model.visionFailure = null
                     model.cameraId = id; cameraChoice.text = CameraChooser.label(id)
-                    if (model.running && model.rgb) beginVision()
-                    else {
+                    if (!model.running) {
                         visionStatus.text = "${CameraChooser.label(id)}；点击 RGB 摄像头启动"
                         previewPanel.sourceStatus.text = visionStatus.text
-                        previewPanel.renderInput(model.running,false,model.rgb)
-                    }
+                        previewPanel.renderInput(false, false, sourceDescription())
+                    } else if (model.rgb && !model.rgbd) beginVision()
                 }
             }
         }
         root.addView(cameraChoice)
+        if (rgbd != null) {
+            root.addView(row(button("Gemini 2 深度预览", "fitting.rgbd") { requestPreview(true, depth = true) },
+                button("站位标定", "fitting.depth.calibrate") { showDepthCalibration() }))
+        }
         visionStatus = label("点击 RGB 摄像头开始真人预览；合成样例用于开发检查。", 12f).apply { tag = "fitting.vision" }
         root.addView(visionStatus)
         preview = TryOnView(this).apply {
@@ -328,9 +344,9 @@ class TryOnActivity : ComponentActivity() {
         previewPanel = PreviewPanel(this,root,preview,tail, cancelCountdown = { setPreviewFullscreen(false) }, toggleInput = {
             if (model.running) {
                 pendingPermission = false; model.running = false; model.visionFailure = null; stopVision()
-            } else requestPreview(model.rgb)
+            } else requestPreview(model.rgb, depth = model.rgbd)
         }) { setPreviewFullscreen(!model.previewFullscreen) }
-        previewPanel.renderInput(model.running,model.visionFailure != null,model.rgb)
+        previewPanel.renderInput(model.running, model.visionFailure != null, sourceDescription())
         model.visionFailure?.let { visionStatus.text = it; previewPanel.sourceStatus.text = it }
         preview.viewportChanged = { model.previewViewport = it; previewPanel.renderZoom() }
         pageScroll = ScrollView(this).apply {
@@ -360,7 +376,7 @@ class TryOnActivity : ComponentActivity() {
         setPreviewFullscreen(model.previewFullscreen)
         lifecycleScope.launch { repeatOnLifecycle(Lifecycle.State.STARTED) { model.state.collect { render(it) } } }
         lifecycleScope.launch { repeatOnLifecycle(Lifecycle.State.STARTED) { model.standing.collect {
-            standingPanel.render(it, !model.rgb); refreshPreviewSummary()
+            standingPanel.render(it, !model.rgb, model.rgbd && depthRange != null); refreshPreviewSummary()
         } } }
         lifecycleScope.launch { model.exitRequests.collect { if (it != null) endExperience(it) } }
         lifecycleScope.launch { model.state.collect {
@@ -404,9 +420,10 @@ class TryOnActivity : ComponentActivity() {
     }
     override fun onSaveInstanceState(outState: Bundle) {
         outState.putBoolean("pending_permission", pendingPermission)
+        outState.putBoolean("pending_rgbd", pendingRgbd)
         super.onSaveInstanceState(outState)
     }
-    override fun onDestroy() { videos.dispose(); rgb.close(); mock.close(); super.onDestroy() }
+    override fun onDestroy() { videos.dispose(); rgb.close(); rgbd?.close(); mock.close(); super.onDestroy() }
     override fun onUserInteraction() { super.onUserInteraction(); model.interact() }
 
     private fun endExperience(reason: GuestEndReason) {
@@ -463,15 +480,64 @@ class TryOnActivity : ComponentActivity() {
         pageScroll.post { pageScroll.scrollTo(0,if (value) 0 else normalScrollY) }
     }
 
-    private fun requestPreview(rgbInput: Boolean) {
+    private fun requestPreview(rgbInput: Boolean, depth: Boolean = false) {
         model.startExperience(); model.interact()
         pendingPermission = false
         if (rgbInput && ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
+            pendingRgbd = depth
             pendingPermission = true; permission.launch(Manifest.permission.CAMERA)
             return
         }
-        model.rgb = rgbInput; model.running = true; model.visionFailure = null
+        model.rgb = rgbInput; model.rgbd = depth; model.running = true; model.visionFailure = null
         beginVision()
+    }
+
+    private fun sourceLabel() = when {
+        !model.rgb -> "合成输入（非真人）"
+        model.rgbd -> "Gemini 2 彩色与深度"
+        else -> "RGB 摄像头"
+    }
+
+    private fun sourceDescription() =
+        if (model.rgb && !model.rgbd) "${sourceLabel()}，保持已选相机通道" else sourceLabel()
+
+    private fun calibratedRange(near: Float, far: Float): StandingRange? =
+        if (near in .25f..8f && far in .25f..8f && near < far) StandingRange(near, far) else null
+
+    private fun showDepthCalibration() {
+        val fields = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(24), 0, dp(24), 0)
+        }
+        fun field(title: String, value: Float?) = EditText(this).apply {
+            hint = title
+            inputType = android.text.InputType.TYPE_CLASS_NUMBER or android.text.InputType.TYPE_NUMBER_FLAG_DECIMAL
+            setText(value?.toString().orEmpty())
+            fields.addView(this)
+        }
+        val near = field("最近距离（米）", depthRange?.nearM)
+        val far = field("最远距离（米）", depthRange?.farM)
+        val dialog = AlertDialog.Builder(this).setTitle("站位标定")
+            .setMessage("请填写在镜子现场测得的有效站位范围。")
+            .setView(fields).setPositiveButton("保存", null).setNegativeButton("取消", null)
+            .setNeutralButton("清除标定") { _, _ ->
+                depthRange = null
+                depthSettings.edit().remove("near").remove("far").apply()
+            }.create()
+        dialog.setOnShowListener {
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                val range = calibratedRange(near.text.toString().toFloatOrNull() ?: 0f,
+                    far.text.toString().toFloatOrNull() ?: 0f)
+                if (range == null) {
+                    far.error = "请输入 0.25 至 8 米之间的距离，最远距离须大于最近距离"
+                    return@setOnClickListener
+                }
+                depthRange = range
+                depthSettings.edit().putFloat("near", range.nearM).putFloat("far", range.farM).apply()
+                dialog.dismiss()
+            }
+        }
+        dialog.show()
     }
 
     private fun beginVision() {
@@ -482,8 +548,9 @@ class TryOnActivity : ComponentActivity() {
             if (activeVision != frame.metadata.sessionId) return@start
             hasFrame = true
             latestTracking = frame.metadata.trackingState
-            model.observeBody(StandingGuide.assess(frame.metadata,
-                source.capabilities.alignedDepth && frame.metadata.depth != null && frame.pixels.alignedDepth?.metadata == frame.metadata.depth))
+            val aligned = source.capabilities.alignedDepth && frame.metadata.depth != null &&
+                frame.pixels.alignedDepth?.metadata == frame.metadata.depth
+            model.observeBody(StandingGuide.assess(frame.metadata, aligned, if (model.rgbd) depthRange else null))
             preview.submit(frame, model.state.value.selected)
             controls.render(!model.rgb, true, frame.metadata.trackingState)
             val occlusion = when {
@@ -491,7 +558,9 @@ class TryOnActivity : ComponentActivity() {
                 frame.pixels.imagePose != null -> "姿态辅助遮挡"
                 else -> "基础预览"
             }
-            visionStatus.text = "${if (model.rgb) "RGB 摄像头（通道 ${rgb.activeCameraId ?: "未知"}）" else "合成输入（非真人）"} · ${frame.metadata.trackingState} · $occlusion"
+            val camera = if (model.rgb && !model.rgbd) "RGB 摄像头（通道 ${rgb.activeCameraId ?: "未知"}）" else sourceLabel()
+            val mask = if (frame.pixels.personMask != null) " · 人体分割" else ""
+            visionStatus.text = "$camera · ${frame.metadata.trackingState} · $occlusion$mask"
             refreshPreviewSummary()
             updateCaptureActions()
         }, { update ->
@@ -510,10 +579,10 @@ class TryOnActivity : ComponentActivity() {
         activeVision = null; hasFrame = false; latestTracking = null; captureBusy = false
         if (captureCountdown != null) setPreviewFullscreen(false)
         assetJobs.values.forEach { it.cancel() }; assetJobs.clear(); assetKeys.clear(); loadedAssets.clear(); assetErrors.clear()
-        mock.stop(); rgb.stop(); preview.clear(); generate.isEnabled = false
+        mock.stop(); rgb.stop(); rgbd?.stop(); preview.clear(); generate.isEnabled = false
         visionStatus.text = model.visionFailure ?: "采集已停止，临时预览帧已清理"
         previewPanel.sourceStatus.text = visionStatus.text
-        previewPanel.renderInput(model.running,model.visionFailure != null,model.rgb)
+        previewPanel.renderInput(model.running, model.visionFailure != null, sourceDescription())
         updateCaptureActions()
         controls.render(!model.rgb, false)
     }
@@ -701,7 +770,7 @@ class TryOnActivity : ComponentActivity() {
     }
     private fun refreshPreviewSummary() {
         if (!hasFrame) return
-        previewPanel.sourceStatus.text = "${if (model.rgb) "真人 RGB" else "合成输入（非真人）"} · $latestTracking · 已加载 ${loadedAssets.size}/${model.outfit.size} 件" +
+        previewPanel.sourceStatus.text = "${sourceLabel()} · $latestTracking · 已加载 ${loadedAssets.size}/${model.outfit.size} 件" +
             " · ${StandingWords.summary(model.standing.value)}" +
             (if (assetErrors.isEmpty()) "" else " · 有加载失败，请退出全屏重载")
     }
