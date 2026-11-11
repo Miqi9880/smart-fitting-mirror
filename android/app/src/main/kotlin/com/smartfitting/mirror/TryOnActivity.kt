@@ -211,14 +211,10 @@ class TryOnActivity : ComponentActivity() {
             protectHead = model.protectHead; viewport = model.previewViewport
         }
         preview.mode = if (model.meshMode) TryOnView.Mode.OBJ_MESH else TryOnView.Mode.PHOTO
-        // Keep both switches before the tall preview so landmarks are discoverable.
-        root.addView(row(Switch(this).apply {
+        root.addView(Switch(this).apply {
             text = "镜面显示"; isChecked = model.mirrored
             setOnCheckedChangeListener { _, value -> model.mirrored = value; preview.mirrored = value }
-        }, Switch(this).apply {
-            text = "显示关键点"; tag = "fitting.landmarks"; isChecked = model.showLandmarks
-            setOnCheckedChangeListener { _, value -> model.showLandmarks = value; preview.showLandmarks = value }
-        }))
+        })
         root.addView(Switch(this).apply {
             text = "上衣避开头部（近似）"; tag = "fitting.head.protection"; isChecked = model.protectHead
             setOnCheckedChangeListener { _, value -> model.protectHead = value; preview.protectHead = value }
@@ -240,6 +236,27 @@ class TryOnActivity : ComponentActivity() {
         standingPanel = StandingGuidePanel(this)
         root.addView(standingPanel)
         val tail = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        val landmarks = Switch(this).apply {
+            text = "显示关键点"
+            tag = "fitting.landmarks"
+            visibility = View.GONE
+            isChecked = model.showLandmarks
+            setOnCheckedChangeListener { _, value ->
+                model.showLandmarks = value
+                preview.showLandmarks = value
+            }
+        }
+        tail.addView(Button(this, null, android.R.attr.borderlessButtonStyle).apply {
+            text = "预览调试"
+            tag = "fitting.preview.debug"
+            gravity = android.view.Gravity.START or android.view.Gravity.CENTER_VERTICAL
+            setOnClickListener {
+                val expand = landmarks.visibility == View.GONE
+                landmarks.visibility = if (expand) View.VISIBLE else View.GONE
+                text = if (expand) "收起预览调试" else "预览调试"
+            }
+        })
+        tail.addView(landmarks)
         assetStatus = label("连接服务后加载透明服装", 12f).apply { tag = "fitting.asset" }
         tail.addView(assetStatus)
         tail.addView(button("重载服装", "fitting.reload") { loadOutfit(true) })

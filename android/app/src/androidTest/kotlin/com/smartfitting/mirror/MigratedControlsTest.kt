@@ -1,11 +1,13 @@
 package com.smartfitting.mirror
 
 import android.content.Intent
+import android.view.View
 import android.widget.Button
 import android.widget.Switch
 import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import com.smartfitting.mirror.tryon.TryOnView
 import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -20,14 +22,34 @@ class MigratedControlsTest {
     @Test fun displayControlsSurviveRecreationAndStopStillDisablesCapture() {
         ActivityScenario.launch(TryOnActivity::class.java).use { scenario ->
             scenario.onActivity { activity ->
-                assertFalse(activity.window.decorView.findViewWithTag<Button>("fitting.generate").isEnabled)
-                activity.window.decorView.findViewWithTag<Button>("fitting.mock").performClick()
-                activity.window.decorView.findViewWithTag<Switch>("fitting.landmarks").isChecked = true
-                activity.window.decorView.findViewWithTag<Switch>("fitting.mesh").isChecked = true
+                val root = activity.window.decorView
+                val preview = root.findViewWithTag<TryOnView>("fitting.preview")
+                val debug = root.findViewWithTag<Button>("fitting.preview.debug")
+                val landmarks = root.findViewWithTag<Switch>("fitting.landmarks")
+                assertEquals(View.GONE, landmarks.visibility)
+                assertFalse(landmarks.isChecked)
+                assertFalse(preview.showLandmarks)
+                assertFalse(root.findViewWithTag<Button>("fitting.generate").isEnabled)
+                root.findViewWithTag<Button>("fitting.mock").performClick()
+                debug.performClick()
+                assertEquals(View.VISIBLE, landmarks.visibility)
+                val mirrored = preview.mirrored
+                landmarks.performClick()
+                assertTrue(preview.showLandmarks)
+                assertEquals(mirrored, preview.mirrored)
+                debug.performClick()
+                assertEquals(View.GONE, landmarks.visibility)
+                root.findViewWithTag<Switch>("fitting.mesh").isChecked = true
             }
             scenario.recreate()
             scenario.onActivity { activity ->
-                assertTrue(activity.window.decorView.findViewWithTag<Switch>("fitting.landmarks").isChecked)
+                val root = activity.window.decorView
+                val landmarks = root.findViewWithTag<Switch>("fitting.landmarks")
+                assertEquals(View.GONE, landmarks.visibility)
+                root.findViewWithTag<Button>("fitting.preview.debug").performClick()
+                assertTrue(landmarks.isChecked)
+                landmarks.performClick()
+                assertFalse(root.findViewWithTag<TryOnView>("fitting.preview").showLandmarks)
                 assertTrue(activity.window.decorView.findViewWithTag<Switch>("fitting.mesh").isChecked)
                 assertFalse(activity.window.decorView.findViewWithTag<Button>("fitting.generate").isEnabled)
             }
