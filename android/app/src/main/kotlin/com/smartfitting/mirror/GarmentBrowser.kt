@@ -213,7 +213,7 @@ internal class GarmentBrowser(private val context: Context, private val controll
                     setPadding(dp(8), dp(8), dp(8), dp(8))
                     setBackgroundColor(Color.WHITE)
                     addView(thumbnail(item.name) { controller.accessoryThumbnail(item) },
-                        LinearLayout.LayoutParams(-1, dp(88)))
+                        LinearLayout.LayoutParams(-1, dp(72)))
                     val pick = Button(context).apply {
                         tag = "fitting.accessory.${item.accessoryId}"
                         isEnabled = state.canSelect
