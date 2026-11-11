@@ -36,6 +36,7 @@ class TryOnModel(application: Application) : AndroidViewModel(application) {
     var playing = true
     var showLandmarks = false
     var protectHead = true
+    var captureDelaySeconds = 0
     var previewFullscreen = false
     var previewViewport = PreviewViewport()
     internal var resultComparisonMode = ResultComparisonMode.SIDE_BY_SIDE
