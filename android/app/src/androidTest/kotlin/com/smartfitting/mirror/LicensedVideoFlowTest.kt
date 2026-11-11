@@ -7,6 +7,7 @@ import android.graphics.Rect
 import android.os.SystemClock
 import android.view.MotionEvent
 import android.view.View
+import android.view.accessibility.AccessibilityNodeInfo
 import android.widget.Button
 import android.widget.SeekBar
 import android.widget.TextView
@@ -118,6 +119,57 @@ class LicensedVideoFlowTest {
             click(s,"video.end.player")
             await { var ended=false; s.onActivity { ended=model(it).state.value.phase==FittingPhase.CLOSED }; ended }
             assertFalse(panel(s).isPlaying()); assertFalse(panel(s).hasRenderedFrame())
+        }
+    }
+
+    @Test fun selectedStyleUpdatesTheCurrentGuestRecommendationsAndClearsAtEnd() {
+        launch(host()).use { s ->
+            open(s)
+            fun selectStyle(label: String) {
+                click(s, "video.style.list")
+                await {
+                    val option = instrumentation.uiAutomation.rootInActiveWindow
+                        ?.findAccessibilityNodeInfosByText(label)
+                        ?.firstOrNull { it.text?.toString() == label }
+                    option?.performAction(AccessibilityNodeInfo.ACTION_CLICK) == true
+                }
+            }
+            selectStyle("优雅")
+            await {
+                var ready = false
+                s.onActivity {
+                    val first = (model(it).videoExperience.result as? VideoResult.Items)?.videos?.firstOrNull()
+                    ready = first?.videoId == "pexels-9511253" && first.matchesText.contains("已选风格：优雅")
+                }
+                ready
+            }
+            assertEquals("风格偏好 · 优雅", text(s, "video.style.list"))
+            evidence(s,"style-preference")
+            click(s, "video.exit")
+            open(s)
+            assertEquals("风格偏好 · 优雅", text(s, "video.style.list"))
+            selectStyle("不限")
+            await { view<View>(s, "video.card.0") != null }
+            s.onActivity {
+                val result = model(it).videoExperience.result as VideoResult.Items
+                assertTrue(result.videos.none { video -> video.matchesText.contains("已选风格") })
+            }
+            selectStyle("休闲")
+            await {
+                var ready = false
+                s.onActivity {
+                    val result = model(it).videoExperience.result as? VideoResult.Items
+                    ready = result?.videos?.firstOrNull()?.matchesText?.contains("已选风格：休闲") == true
+                }
+                ready
+            }
+            click(s, "video.end.list")
+            await {
+                var ended = false
+                s.onActivity { ended = model(it).state.value.phase == FittingPhase.CLOSED }
+                ended
+            }
+            s.onActivity { assertNull(model(it).videoExperience.style) }
         }
     }
 

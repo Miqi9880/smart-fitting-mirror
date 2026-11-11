@@ -10,7 +10,9 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.lifecycle.lifecycleScope
 import com.smartfitting.mirror.TryOnModel
 import com.smartfitting.mirror.contracts.Garment
+import com.smartfitting.mirror.contracts.VideoDimension
 import com.smartfitting.mirror.contracts.VideoRecommendationRequest
+import com.smartfitting.mirror.contracts.VideoTag
 import com.smartfitting.mirror.network.ApiFailure
 import com.smartfitting.mirror.network.FittingPhase
 import kotlinx.coroutines.CancellationException
@@ -23,12 +25,14 @@ class VideoExperienceMemory {
     var requestedFromHome = false
     var result: VideoResult? = null
     var garments: List<Garment> = emptyList()
+    var style: String? = null
     var selectedId: String? = null
     var positionMs = 0
     var volume = 0f
     var retryAtMs = 0L
     fun clear() {
         open = false; requestedFromHome = false; result = null; garments = emptyList()
+        style = null
         selectedId = null; positionMs = 0; volume = 0f; retryAtMs = 0
     }
 }
@@ -63,6 +67,13 @@ class VideoExperience(
         activity.onBackPressedDispatcher.addCallback(activity, back)
         panel.onExit = { hide() }; panel.onRetry = { load() }; panel.onInteraction = interacted
         panel.enableSessionEnd(endSession)
+        panel.onStyleChange = { style ->
+            if (style != memory.style) {
+                memory.style = style
+                panel.setStylePreference(style)
+                load()
+            }
+        }
     }
 
     fun onStart() { foreground = true; if (memory.open) show() else onSessionChanged() }
@@ -99,6 +110,7 @@ class VideoExperience(
             memory.result = null; memory.selectedId = null; memory.positionMs = 0; memory.garments = selection
         }
         panel.setVolumePreference(memory.volume)
+        panel.setStylePreference(memory.style)
         val cached = memory.result
         if (cached == null) load() else {
             panel.present(cached)
@@ -113,7 +125,7 @@ class VideoExperience(
         if (!foreground || !memory.open) return
         val session = model.controller
         if (session == null || !model.state.value.canSelect) {
-            panel.present(VideoResult.Failure("请先连接服务并选择服装，再查看相关视频。")); return
+            panel.present(VideoResult.Failure("请先连接服务，再查看相关视频。")); return
         }
         val remaining = memory.retryAtMs - SystemClock.elapsedRealtime()
         if (remaining > 0) {
@@ -122,17 +134,21 @@ class VideoExperience(
         }
         memory.result = null; memory.selectedId = null; memory.positionMs = 0
         val selection = model.outfit.values.sortedBy { it.garmentId }.toList()
+        val style = memory.style
         memory.garments = selection
-        val request = VideoRecommendationRequest(garmentIds=selection.map { it.garmentId })
+        val tags = style?.let { listOf(VideoTag(VideoDimension.STYLE, it)) }.orEmpty()
+        val request = VideoRecommendationRequest(garmentIds = selection.map { it.garmentId }, userTags = tags)
         panel.showLoading()
         query = activity.lifecycleScope.launch {
             try {
                 val result = session.recommendVideos(request).forDisplay()
-                if (!foreground || !memory.open || model.controller !== session || selection != model.outfit.values.sortedBy { it.garmentId }) return@launch
+                if (!foreground || !memory.open || model.controller !== session || style != memory.style ||
+                    selection != model.outfit.values.sortedBy { it.garmentId }) return@launch
                 memory.result = result; panel.present(result); panel.setVolumePreference(memory.volume)
             } catch (cancelled: CancellationException) { throw cancelled }
             catch (error: Exception) {
-                if (!foreground || !memory.open || model.controller !== session || model.state.value.phase == FittingPhase.CLOSED) return@launch
+                if (!foreground || !memory.open || model.controller !== session || style != memory.style ||
+                    model.state.value.phase == FittingPhase.CLOSED) return@launch
                 val apiError = error as? ApiFailure
                 if (apiError?.status == 429) memory.retryAtMs = SystemClock.elapsedRealtime() + (apiError.retryAfterSeconds ?: 1).coerceAtMost(86400) * 1000
                 val message = when {

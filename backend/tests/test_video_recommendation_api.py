@@ -100,6 +100,27 @@ def test_candidate_is_returned_once_with_only_context_supported_match_evidence()
     assert {match["dimension"] for match in result["items"][0]["matches"]} == {"category", "color"}
 
 
+def test_explicit_style_leads_outfit_matches_and_keeps_context_fallback():
+    style = {"dimension": "style", "value": "casual"}
+    outfit = record("outfit-first-by-dimensions", [
+        {"dimension": "category", "value": "upper_body"},
+        {"dimension": "color", "value": "blue"},
+    ])
+    preferred = record("style-first-by-choice", [style])
+    with client_with([outfit, preferred]) as client:
+        headers = open_session(client)
+        garment_ids = ["upper_blue"]
+        default = post_recommendations(client, headers, {"garment_ids": garment_ids})
+        selected = post_recommendations(client, headers, {"garment_ids": garment_ids, "user_tags": [style]})
+        preference_only = post_recommendations(client, headers, {"user_tags": [style]})
+    assert [item["video"]["video_id"] for item in default.json()["items"]] == [outfit.content.video_id]
+    assert [item["video"]["video_id"] for item in selected.json()["items"]] == [
+        preferred.content.video_id, outfit.content.video_id
+    ]
+    assert [item["video"]["video_id"] for item in preference_only.json()["items"]] == [preferred.content.video_id]
+    assert selected.json()["items"][0]["matches"] == [{**style, "source": "user_selection", "related_id": None}]
+
+
 def test_empty_context_and_default_library_return_empty_without_generic_recommendations():
     with client_with([record("matching", [{"dimension": "category", "value": "upper_body"}])]) as client:
         empty_context = post_recommendations(client, open_session(client), {})

@@ -156,17 +156,19 @@ class VideoLibrary:
                 )
             candidates.append(VideoRecommendation(video=video, matches=matches))
 
-        # A video matching several tags remains one candidate. Relevance is the
-        # number of distinct matched dimensions; video ID makes ties repeatable.
+        # A video matching several tags remains one candidate.
         by_id: dict[str, VideoRecommendation] = {}
         for candidate in candidates:
             previous = by_id.get(candidate.video.video_id)
             if previous is None or len({m.dimension for m in candidate.matches}) > len({m.dimension for m in previous.matches}):
                 by_id[candidate.video.video_id] = candidate
-        ordered = sorted(
-            by_id.values(),
-            key=lambda item: (-len({match.dimension for match in item.matches}), item.video.video_id),
-        )
+        preferred = {(tag.dimension, tag.value) for tag in request.user_tags}
+
+        def rank(item: VideoRecommendation):
+            matches_preference = any((tag.dimension, tag.value) in preferred for tag in item.video.tags)
+            return (not matches_preference, -len({match.dimension for match in item.matches}), item.video.video_id)
+
+        ordered = sorted(by_id.values(), key=rank)
         response = VideoRecommendationList(
             items=ordered[:request.limit],
             requested_limit=request.limit,
