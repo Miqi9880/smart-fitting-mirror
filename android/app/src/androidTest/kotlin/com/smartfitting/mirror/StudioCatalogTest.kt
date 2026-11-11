@@ -10,7 +10,6 @@ import android.view.inspector.WindowInspector
 import android.widget.Button
 import android.widget.EditText
 import android.widget.ImageView
-import android.widget.Spinner
 import android.widget.TextView
 import androidx.lifecycle.ViewModelProvider
 import androidx.test.core.app.ActivityScenario
@@ -61,23 +60,42 @@ class StudioCatalogTest {
             scenario.onActivity { model(it).connect(host!!) }
             await("Outfit catalog ready") { model(it).state.value.outfitAvailable }
             val jeans = "studio_straight_jeans_67"
-            val top = "studio_black_tee"
-            scenario.onActivity { activity ->
-                val garments = model(activity).state.value.garments
-                activity.window.decorView.findViewWithTag<Spinner>("fitting.garments")
-                    .setSelection(garments.indexOfFirst { it.garmentId == jeans })
-            }
-            await("Top and jeans selected") { model(it).outfit.values.map { item -> item.garmentId }.containsAll(listOf(top, jeans)) }
+            val top = "studio_blue_tee"
             fun button(tag: String) = windows().filterIsInstance<Button>().single { it.tag == tag }
+            fun select(activity: TryOnActivity, id: String) {
+                val name = model(activity).state.value.garments.single { it.garmentId == id }.name
+                windows().single { it.contentDescription == "查看${name}详情" }.performClick()
+                windows().filterIsInstance<Button>().single { it.text == "试穿这件" }.performClick()
+            }
             scenario.onActivity {
-                val catalog = it.window.decorView.findViewWithTag<Button>("fitting.catalog")
+                val root = it.window.decorView
+                val catalog = root.findViewWithTag<Button>("fitting.catalog")
                 assertEquals("浏览衣柜", catalog.text.toString())
-                assertNull(it.window.decorView.findViewWithTag<View>("fitting.generation.accessories"))
+                assertNull(root.findViewWithTag<View>("fitting.generation.accessories"))
+                val mesh = root.findViewWithTag<View>("fitting.mesh")
+                val tail = mesh.parent as ViewGroup
+                assertSame(mesh, tail.getChildAt(tail.childCount - 1))
                 catalog.performClick()
+                button("catalog.tab.tops").performClick()
+                select(it, top)
+            }
+            await("Top selected without leaving the wardrobe") {
+                model(it).state.value.selectedId == top && windows().any { it.tag == "catalog.close" }
+            }
+            scenario.onActivity {
+                assertTrue(button("catalog.tab.tops").isSelected)
                 button("catalog.tab.bottoms").performClick()
                 val labels = windows().filterIsInstance<TextView>().map { view -> view.text.toString() }
                 assertTrue(labels.containsAll(listOf("长裤", "短裤", "半裙")))
                 assertEquals(24, images().size)
+                select(it, jeans)
+            }
+            await("Top and jeans selected in one visit") {
+                model(it).outfit.values.map { item -> item.garmentId }.containsAll(listOf(top, jeans)) &&
+                    windows().any { it.tag == "catalog.close" }
+            }
+            scenario.onActivity {
+                assertTrue(button("catalog.tab.bottoms").isSelected)
                 button("catalog.tab.accessories").performClick()
                 assertTrue(button("catalog.tab.accessories").isSelected)
                 assertTrue(images().isEmpty())
@@ -96,7 +114,7 @@ class StudioCatalogTest {
                 studs.performClick()
                 assertFalse(studs.isSelected)
                 studs.performClick()
-                button("catalog.back").performClick()
+                button("catalog.close").performClick()
             }
             scenario.onActivity {
                 val summary = it.window.decorView.findViewWithTag<TextView>("fitting.generation.summary").text.toString()

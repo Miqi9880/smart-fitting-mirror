@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+from hashlib import sha256
 import io
+import json
 import logging
 import os
 from pathlib import Path
@@ -23,6 +25,7 @@ from starlette.requests import ClientDisconnect
 
 from .provider_images import MAX_SOURCE_BYTES, MAX_SOURCE_PIXELS
 from .outfit import LOWER_KINDS, MAX_MATERIALS, MAX_OUTFIT_REFERENCE_BYTES, valid_kinds
+from .flux_fidelity import PersonParser, clothing_area, merge_clothing, neutralize_clothes, protected_identity
 
 MODEL_ID = "flux2-klein-4b-e7b7dc2"
 MAX_REQUEST_BYTES = 2 * MAX_SOURCE_BYTES + 64 * 1024
@@ -39,8 +42,38 @@ PROMPT = (
     " Copy only design elements that are visible on the outside fabric of the reference garment. Ignore "
     "retailer logos, labels, watermarks and all other elements in the reference photo's margins and background. "
     "Keep plain fabric areas completely blank. Keep the reference's exact closure and neckline. Add "
-    "no badges, pockets, lettering, graphics or buttons absent from the garment itself."
+    "no badges, pockets, lettering, graphics or buttons absent from the garment itself. "
+    "Take all garment design and construction from the product reference, including its silhouette and hem. "
+    "Do not retain the original top's design or merge the two tops."
 )
+STYLE_GUIDANCE = {
+    "airism_tee": (
+        "A relaxed, wide and straight short-sleeve T-shirt. The simple round crew-neck opening has a narrow "
+        "ribbed band. The front panel is continuous flat fabric, with no collar flaps, buttons or placket. "
+        "Keep the sides loose through the waist and let the whole hem hang straight outside."
+    ),
+    "crew_sweatshirt": (
+        "A relaxed long-sleeve pullover sweatshirt with a round crew neckline and a continuous plain front. "
+        "Use the reference's ribbed neck band, cuffs and hem. No collar flaps, buttons or placket. "
+        "Keep the sides loose through the waist."
+    ),
+    "oxford_shirt": "An Oxford shirt with a pointed collar, a full-length front button closure and long sleeves.",
+    "pique_polo": "A short-sleeve polo with a fold-over collar and a short front button placket.",
+}
+
+
+def catalog_reference_styles() -> dict[str, str]:
+    manifest = Path(__file__).parent / "assets/studio/manifest.json"
+    if not manifest.is_file():
+        return {}
+    return {
+        item["sha256"]: item["style_id"]
+        for item in json.loads(manifest.read_text(encoding="utf-8"))["items"]
+        if item.get("style_id") in STYLE_GUIDANCE
+    }
+
+
+REFERENCE_STYLES = catalog_reference_styles()
 
 
 class InvalidImage(ValueError):
@@ -107,7 +140,7 @@ def create_app(infer, infer_outfit=None) -> FastAPI:
             payload["outfit_supported"] = True
         return payload
 
-    def run_job(person_bytes: bytes, garment_bytes: list[bytes], kinds: list[str] | None, deadline: float) -> Response:
+    def run_job(person_bytes: bytes, garment_bytes: list[bytes], kinds: list[str] | None, styles: list[str | None], deadline: float) -> Response:
         started = time.monotonic()
         outcome = "failed"
         try:
@@ -116,7 +149,8 @@ def create_app(infer, infer_outfit=None) -> FastAPI:
                 person = images.enter_context(decode_image(person_bytes))
                 garments = [images.enter_context(decode_image(data)) for data in garment_bytes]
                 check_deadline(deadline)
-                result = infer(person, garments[0], deadline) if kinds is None else infer_outfit(person, list(zip(kinds, garments)), deadline)
+                result = (infer(person, garments[0], deadline, styles[0]) if kinds is None
+                          else infer_outfit(person, list(zip(kinds, garments)), deadline, dict(zip(kinds, styles))))
                 with result as image:
                     check_deadline(deadline)
                     encoded = io.BytesIO()
@@ -180,7 +214,8 @@ def create_app(infer, infer_outfit=None) -> FastAPI:
                 deadline = received_at + int(budget) / 1000
                 person_bytes = await person.read()
                 garment_bytes = [await garment.read() for garment in garments]
-            job = asyncio.create_task(asyncio.to_thread(run_job, person_bytes, garment_bytes, kinds, deadline))
+                styles = [REFERENCE_STYLES.get(sha256(data).hexdigest()) for data in garment_bytes]
+            job = asyncio.create_task(asyncio.to_thread(run_job, person_bytes, garment_bytes, kinds, styles, deadline))
             # asyncio.wait does not cancel inference on a deadline or caller
             # disconnect. Only run_job releases the slot after GPU work ends.
             finished, _ = await asyncio.wait({job}, timeout=max(0, deadline - time.monotonic()))
@@ -198,7 +233,7 @@ OUTFIT_EDITS = {
     "lower_body": "Replace the visible lower garment with the exact long trousers in reference {index}.",
     "skirt": "Replace the visible lower garment with the exact skirt in reference {index}, keeping its length and drape.",
     "shorts": "Replace the visible lower garment with the exact shorts in reference {index}, keeping their length.",
-    "upper_body": "Replace only the upper garment with the exact top in reference {index}, including its collar, closures and cuffs.",
+    "upper_body": "Replace only the upper garment with the exact top in reference {index}.",
     "dress": "Replace the upper and lower garments with the single dress in reference {index}, keeping its neckline, cut and hem length.",
     "headwear": "Place the exact hat in reference {index} on the head, keeping the eyes visible.",
     "belt": "Place the belt in reference {index} around the waist, on the outer clothing layer, copying the buckle and color.",
@@ -209,28 +244,77 @@ OUTFIT_EDITS = {
 def outfit_stages(references):
     # Resolve the lower garment against the original hem before changing the
     # upper garment, so the waistband reference does not pull the top upwards.
-    groups = (LOWER_KINDS, {"upper_body", "dress", "headwear"}, {"belt"}, {"earrings"})
+    groups = (LOWER_KINDS, {"upper_body", "dress"}, {"headwear"}, {"belt"}, {"earrings"})
     return [stage for group in groups if (stage := [(kind, image) for kind, image in references if kind in group])]
 
 
-def outfit_prompt(stage):
+def outfit_prompt(stage, styles):
     edits = " ".join(OUTFIT_EDITS[kind].format(index=index) for index, (kind, _) in enumerate(stage, 2))
+    design = STYLE_GUIDANCE.get(styles.get("upper_body"), "") + " " if any(kind == "upper_body" for kind, _ in stage) else ""
     waist = ""
-    if any(kind in LOWER_KINDS | {"upper_body"} for kind, _ in stage):
+    if any(kind in LOWER_KINDS for kind, _ in stage):
         waist = (
-            "Keep the visible waist overlap. An outside hem remains a continuous outer layer over the waistband. "
-            "A tucked hem stays behind the visible waistband. "
+            "Keep the unselected top and its visible waist overlap unchanged. "
+            "An outside hem remains over the waistband, and a tucked hem stays behind it. "
+        )
+    if any(kind == "upper_body" for kind, _ in stage):
+        waist = (
+            "Keep the reference top's hem length and wearing style. If the reference shows only a product, "
+            "let the entire hem hang outside the waistband. Do not invent a partial tuck. "
         )
     return (
-        "Edit photo 1 using the numbered product references. " + edits +
-        " Keep the original person's face, pose, hands, body proportions, shoes, framing and background. "
+        "Edit photo 1 using the numbered product references. " + edits + " " + design +
+        "Keep the original person's face, pose, elbow and wrist positions, hands, body proportions, shoes, framing and background. "
         "Leave every unselected area, item and occlusion in photo 1 unchanged. " + waist +
-        "Copy only the referenced item's visible design, color and construction. "
-        "Add only the selected items."
+        "Use the reference as the only source for each replacement garment's cut, looseness, color and visible details. "
+        "If the reference has straight, loose sides, keep them loose and straight at the waist. Remove the original garment's design "
+        "and layers completely within each selected region. Do not blend old and new garment details. "
+        "Add only the selected items and only the design elements visible on the reference garments."
     )
 
 
-def load_flux(weights: Path):
+def generate_stages(person, stages, deadline, infer_photos, parser=None):
+    size = output_size(person)
+    with ExitStack() as images:
+        original = person
+        if parser is not None:
+            check_deadline(deadline)
+            original = images.enter_context(person.resize(size, Image.Resampling.LANCZOS))
+            segmentation = images.enter_context(parser(original))
+            identity = images.enter_context(protected_identity(segmentation, parser.labels))
+        current = original
+        try:
+            for references, prompt in stages:
+                with ExitStack() as stage:
+                    conditioned = current
+                    source_area = None
+                    kinds = tuple(kind for kind, _ in references)
+                    if parser is not None:
+                        source_area = stage.enter_context(clothing_area(segmentation, parser.labels, kinds))
+                        if source_area.getbbox():
+                            conditioned = stage.enter_context(neutralize_clothes(current, source_area, identity))
+                    result = infer_photos([conditioned, *(image for _, image in references)], prompt, size, deadline)
+                    if parser is not None:
+                        with result:
+                            generated = result
+                            if source_area.getbbox():
+                                check_deadline(deadline)
+                                target_labels = stage.enter_context(parser(result))
+                                target_area = stage.enter_context(clothing_area(target_labels, parser.labels, kinds))
+                                if target_area.getbbox():
+                                    generated = stage.enter_context(merge_clothing(current, result, source_area, target_area))
+                            result = Image.composite(original, generated, identity)
+                if current is not original:
+                    current.close()
+                current = result
+            return current
+        except BaseException:
+            if current is not original:
+                current.close()
+            raise
+
+
+def load_flux(weights: Path, parser_weights: Path | None = None):
     import torch
     from diffusers import Flux2KleinPipeline
 
@@ -240,6 +324,7 @@ def load_flux(weights: Path):
     started = time.monotonic()
     pipe = Flux2KleinPipeline.from_pretrained(str(weights), torch_dtype=torch.bfloat16, local_files_only=True).to(device)
     pipe.set_progress_bar_config(disable=True)
+    parser = PersonParser(parser_weights, device) if parser_weights is not None else None
     torch.cuda.synchronize(device)
     LOGGER.info("model=%s load_seconds=%.3f", MODEL_ID, time.monotonic() - started)
 
@@ -262,23 +347,13 @@ def load_flux(weights: Path):
             torch.cuda.synchronize(device)
             LOGGER.info("peak_allocated_mib=%.1f", torch.cuda.max_memory_allocated(device) / 2**20)
 
-    def infer(person: Image.Image, garment: Image.Image, deadline: float) -> Image.Image:
-        return infer_photos([person, garment], PROMPT, output_size(person), deadline)
+    def infer(person: Image.Image, garment: Image.Image, deadline: float, style: str | None) -> Image.Image:
+        prompt = STYLE_GUIDANCE.get(style, "") + " " + PROMPT if style in STYLE_GUIDANCE else PROMPT
+        return generate_stages(person, [([("upper_body", garment)], prompt)], deadline, infer_photos, parser)
 
-    def infer_outfit(person, references, deadline):
-        size = output_size(person)
-        current = person
-        try:
-            for stage in outfit_stages(references):
-                updated = infer_photos([current] + [image for _, image in stage], outfit_prompt(stage), size, deadline)
-                if current is not person:
-                    current.close()
-                current = updated
-            return current
-        except BaseException:
-            if current is not person:
-                current.close()
-            raise
+    def infer_outfit(person, references, deadline, styles):
+        stages = [(stage, outfit_prompt(stage, styles)) for stage in outfit_stages(references)]
+        return generate_stages(person, stages, deadline, infer_photos, parser)
 
     return infer, infer_outfit
 
@@ -288,15 +363,18 @@ def main():
 
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--weights", type=Path, required=True)
+    parser.add_argument("--person-parser", type=Path)
     parser.add_argument("--port", type=int, default=8787)
     args = parser.parse_args()
     if not (args.weights / "model_index.json").is_file():
         parser.error("Expected the verified local FLUX weights directory")
+    if args.person_parser is not None and not (args.person_parser / "model.safetensors").is_file():
+        parser.error("Expected the verified local person parsing weights directory")
     os.environ["HF_HUB_OFFLINE"] = "1"
     os.environ["TRANSFORMERS_OFFLINE"] = "1"
     logging.basicConfig(level=logging.INFO)
     uvicorn.run(
-        create_app(*load_flux(args.weights)), host="127.0.0.1", port=args.port,
+        create_app(*load_flux(args.weights, args.person_parser)), host="127.0.0.1", port=args.port,
         workers=1, access_log=False, proxy_headers=False, http="h11", server_header=False,
     )
 

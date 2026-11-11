@@ -10,6 +10,7 @@ import android.graphics.Color
 import android.net.Uri
 import android.text.Editable
 import android.text.TextWatcher
+import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
@@ -75,7 +76,19 @@ internal class GarmentBrowser(private val context: Context, private val controll
     init {
         root.setPadding(dp(16), dp(12), dp(16), dp(12))
         root.setBackgroundColor(Color.rgb(242,246,249))
-        root.addView(text("浏览衣柜", 22f))
+        root.addView(LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            addView(text("浏览衣柜", 22f), LinearLayout.LayoutParams(0, -2, 1f))
+            addView(Button(context, null, android.R.attr.borderlessButtonStyle).apply {
+                text = "×"
+                textSize = 26f
+                tag = "catalog.close"
+                contentDescription = "关闭衣柜，返回试衣"
+                setPadding(0, 0, 0, 0)
+                setOnClickListener { dismiss() }
+            }, LinearLayout.LayoutParams(dp(48), dp(48)))
+        })
         root.addView(HorizontalScrollView(context).apply {
             isHorizontalScrollBarEnabled = false
             addView(LinearLayout(context).apply {
@@ -87,8 +100,7 @@ internal class GarmentBrowser(private val context: Context, private val controll
         root.addView(cardScroll, LinearLayout.LayoutParams(-1, 0, 1f))
         val actions = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
         val refresh = Button(context).apply { text = "刷新衣柜"; setOnClickListener { controller.refreshCatalog() } }
-        val back = Button(context).apply { text = "返回试衣"; tag = "catalog.back"; setOnClickListener { dismiss() } }
-        for (action in listOf(add,refresh,back)) actions.addView(action,LinearLayout.LayoutParams(0,-2,1f))
+        for (action in listOf(add,refresh)) actions.addView(action,LinearLayout.LayoutParams(0,-2,1f))
         root.addView(actions)
         search.addTextChangedListener(object : TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
@@ -273,7 +285,7 @@ internal class GarmentBrowser(private val context: Context, private val controll
                 .setNegativeButton("保留",null).setPositiveButton("移除") { _,_ -> controller.deleteGarment(item.garmentId); details?.dismiss() }.show()
         } })
         details = AlertDialog.Builder(context).setTitle(item.name).setView(ScrollView(context).apply { addView(content) })
-            .setNegativeButton("返回",null).setPositiveButton("试穿这件") { _,_ -> controller.select(item.garmentId); dismiss() }.create()
+            .setNegativeButton("返回",null).setPositiveButton("试穿这件") { _,_ -> controller.select(item.garmentId) }.create()
         details!!.setOnDismissListener { detailImage?.close(); detailImage = null }
         details!!.show()
     }

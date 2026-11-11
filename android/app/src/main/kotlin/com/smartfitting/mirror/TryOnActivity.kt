@@ -263,12 +263,6 @@ class TryOnActivity : ComponentActivity() {
         assetStatus = label("连接服务后加载透明服装", 12f).apply { tag = "fitting.asset" }
         tail.addView(assetStatus)
         tail.addView(button("重载服装", "fitting.reload") { loadOutfit(true) })
-        tail.addView(Switch(this).apply {
-            text = "OBJ 网格实验（二维关键点驱动，无真实体深度）"; tag = "fitting.mesh"; isChecked = model.meshMode
-            setOnCheckedChangeListener { _, value ->
-                model.meshMode = value; preview.mode = if (value) TryOnView.Mode.OBJ_MESH else TryOnView.Mode.PHOTO
-            }
-        })
         controls = SyntheticControls(this, mock) { settings ->
             pendingPermission = false; stopVision(); model.synthetic = settings; mock.configure(settings)
             if (model.running) beginVision()
@@ -325,6 +319,12 @@ class TryOnActivity : ComponentActivity() {
             catch (_: android.content.ActivityNotFoundException) { visionStatus.text = "设备未开放主屏幕设置，请联系管理员配置开机入口。" }
         }.apply { if (guestRoute) visibility = View.GONE })
         tail.addView(label("上衣头部保护仅在双耳可靠时近似生效，侧脸或缺点时不启用；无人体分割、深度测距或精细遮挡。放大只改变显示，不增加相机细节。合成样例非真人。", 11f))
+        tail.addView(Switch(this).apply {
+            text = "OBJ 网格实验（二维关键点驱动，无真实体深度）"; tag = "fitting.mesh"; isChecked = model.meshMode
+            setOnCheckedChangeListener { _, value ->
+                model.meshMode = value; preview.mode = if (value) TryOnView.Mode.OBJ_MESH else TryOnView.Mode.PHOTO
+            }
+        })
         previewPanel = PreviewPanel(this,root,preview,tail, cancelCountdown = { setPreviewFullscreen(false) }, toggleInput = {
             if (model.running) {
                 pendingPermission = false; model.running = false; model.visionFailure = null; stopVision()
