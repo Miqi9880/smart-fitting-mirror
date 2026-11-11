@@ -1,7 +1,9 @@
 package com.smartfitting.mirror.network
 
 import com.smartfitting.mirror.contracts.*
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import okhttp3.*
@@ -71,7 +73,8 @@ class HttpFittingApi internal constructor(baseUrl: String, private val client: O
         require(photo.mimeType in setOf("image/png", "image/jpeg") && photo.bytes.size <= 10 * 1024 * 1024)
         // Comparing results can outlast the server's keep-alive. Start an explicit
         // new upload without those idle sockets; active calls are not evicted.
-        transport.connectionPool.evictAll()
+        // Closing an idle TLS socket can write a close notification.
+        withContext(Dispatchers.IO) { transport.connectionPool.evictAll() }
         // Call cancellation resumes the caller before the socket writer necessarily finishes.
         // Keep an independent array until OkHttp invokes its terminal callback.
         val owned = photo.bytes.copyOf()
@@ -90,7 +93,7 @@ class HttpFittingApi internal constructor(baseUrl: String, private val client: O
         // After a long preview the server may have closed several idle asset
         // sockets. Do not spend every bounded cleanup retry on those old sockets.
         // This client/pool belongs to this session; active calls are not evicted.
-        transport.connectionPool.evictAll()
+        withContext(Dispatchers.IO) { transport.connectionPool.evictAll() }
         exchange(request("sessions/current", sessionToken).delete().build(), 1024).fill(0)
     }
     override suspend fun download(sessionToken: String, url: String): ByteArray {
