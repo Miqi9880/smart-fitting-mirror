@@ -313,7 +313,7 @@ class TryOnActivity : ComponentActivity() {
             else { controller.generate(photo, outfit); updateCaptureActions(); true }
         }) { updateCaptureActions() }
         tail.addView(staticImage)
-        mockLabel = label("尚无生成结果", 13f).apply { tag = "fitting.result.kind" }
+        mockLabel = label("", 13f).apply { tag = "fitting.result.kind"; visibility = View.GONE }
         tail.addView(mockLabel)
         comparison = ResultComparisonPanel(this, lifecycleScope,
             { model.resultComparisonMode = it }, { status.text = it })
@@ -577,9 +577,10 @@ class TryOnActivity : ComponentActivity() {
         mockLabel.text = when (value.job?.isMock) {
             true -> "MOCK · 模拟结果，非真实 AI 换装"
             false -> if (value.job?.outfit != null) "真实搭配生成任务" else "真实单件生成任务"
-            null -> "尚无生成结果"
+            null -> ""
         }
-        comparison.render(value.original, value.result, model.resultComparisonMode)
+        mockLabel.visibility = if (value.job == null) View.GONE else View.VISIBLE
+        comparison.render(value.original, value.result, model.resultComparisonMode, value.generationInProgress)
         if (value.phase in setOf(FittingPhase.ENDING, FittingPhase.CLOSED)) {
             staticImage.clear()
             if (model.previewFullscreen) setPreviewFullscreen(false)

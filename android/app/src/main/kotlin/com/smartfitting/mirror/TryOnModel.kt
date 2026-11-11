@@ -96,7 +96,12 @@ class TryOnModel(application: Application) : AndroidViewModel(application) {
         baseUrl = url.trim()
         val next = FittingSession(api, viewModelScope)
         controller = next
-        bridge = viewModelScope.launch { next.state.collect { mutable.value = it } }
+        bridge = viewModelScope.launch {
+            next.state.collect {
+                experienceClock.setGenerating(it.generationInProgress, android.os.SystemClock.elapsedRealtime())
+                mutable.value = it
+            }
+        }
         next.connect()
     }
 

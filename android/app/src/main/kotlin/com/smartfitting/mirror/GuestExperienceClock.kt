@@ -8,7 +8,7 @@ internal data class GuestTimeouts(val idleMs: Long = 5 * 60_000L, val absentMs: 
     init { require(idleMs > 0 && absentMs > 0 && sessionMs >= idleMs && frameFreshMs > 0) }
 }
 
-/** Monotonic elapsed time; only user interaction refreshes inactivity, never frames/polling. */
+/** Monotonic deadlines. Waiting for generation pauses the unattended timers. */
 internal class GuestExperienceClock(val policy: GuestTimeouts = GuestTimeouts()) {
     var active = false
         private set
@@ -16,14 +16,21 @@ internal class GuestExperienceClock(val policy: GuestTimeouts = GuestTimeouts())
     private var lastInteraction = 0L
     private var lastFrame: Long? = null
     private var absentSince: Long? = null
+    private var generating = false
 
     fun start(nowMs: Long) {
         require(nowMs >= 0)
-        active = true; started = nowMs; lastInteraction = nowMs; sourceStopped()
+        active = true; started = nowMs; lastInteraction = nowMs; generating = false; sourceStopped()
     }
     fun interact(nowMs: Long) { if (active) lastInteraction = maxOf(lastInteraction, nowMs) }
+    fun setGenerating(value: Boolean, nowMs: Long) {
+        if (!active || value == generating) return
+        generating = value
+        sourceStopped()
+        if (!generating) interact(nowMs)
+    }
     fun observe(presence: BodyPresence, nowMs: Long) {
-        if (!active) return
+        if (!active || generating) return
         val previous = lastFrame
         if (previous != null && (nowMs < previous || nowMs - previous > policy.frameFreshMs)) absentSince = null
         lastFrame = nowMs
@@ -34,6 +41,7 @@ internal class GuestExperienceClock(val policy: GuestTimeouts = GuestTimeouts())
     fun expired(nowMs: Long): GuestEndReason? {
         if (!active) return null
         if (nowMs - started >= policy.sessionMs) return GuestEndReason.SESSION_LIMIT
+        if (generating) return null
         if (nowMs - lastInteraction >= policy.idleMs) return GuestEndReason.INACTIVITY
         val frame = lastFrame
         if (frame == null || nowMs < frame || nowMs - frame > policy.frameFreshMs) { sourceStopped(); return null }

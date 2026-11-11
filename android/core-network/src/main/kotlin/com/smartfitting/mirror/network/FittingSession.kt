@@ -19,6 +19,10 @@ data class FittingState(
     val outfitAvailable: Boolean = false, val accessories: List<OutfitAccessory> = emptyList(),
 ) {
     val selected get() = garments.firstOrNull { it.garmentId == selectedId }
+    val generationInProgress: Boolean get() = when (phase) {
+        FittingPhase.UPLOADING, FittingPhase.CREATING, FittingPhase.WAITING, FittingPhase.DOWNLOADING -> true
+        else -> false
+    }
     val canSelect get() = connected && phase in setOf(FittingPhase.READY, FittingPhase.SUCCEEDED, FittingPhase.FAILED, FittingPhase.CANCELLED)
     val canCancel get() = job?.status?.terminal == false && phase !in setOf(FittingPhase.ENDING, FittingPhase.CREATING)
     fun canGenerate(outfit: OutfitRequest?): Boolean {
