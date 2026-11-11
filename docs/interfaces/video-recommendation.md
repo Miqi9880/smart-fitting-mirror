@@ -21,7 +21,7 @@
 
 首轮按**维度＋值精确匹配**，大小写敏感。category使用现有服饰枚举，如upper_body、lower_body、dress；颜色沿用目录`details.colors`的规范值。style／scene只取明确维护的元数据或用户选择，不从photo、official-studio等素材标记猜风格。不做隐式中英文转换；确需别名表时由后端维护并给双方相同选项。
 
-只召回上架、来源合格且有已确认播放资料的候选；去重后，至少category／style／color／scene中的一个维度相关。关联服装ID是辅助线索，不能代替四个维度的可解释相关性。首轮排序规则由后端确定并保持稳定，建议匹配维度数降序、video_id升序作为同分顺序，不在这个接口引入训练推荐模型或收费重排。
+只召回上架、来源合格且有已确认播放资料的候选。去重后至少匹配品类、风格、颜色或场景中的一个维度。用户主动选择的标签优先，其后按匹配维度数降序、`video_id` 升序排序。当前搭配匹配仍参与召回。App 的「风格偏好」提供不限、休闲、简约、优雅，仅保存在当前游客会话内。实测覆盖与验收方法见[视频推荐验收](../reports/video-acceptance-2026-11-11.md)。
 
 请求完整样例：[video-request.json](../../contracts/examples/video-request.json)。
 
