@@ -83,6 +83,12 @@ class TryOnDrawingTest {
                 BitmapPixels(bitmap, AlignedDepthPixels(depth, ByteArray(bytes.size)))) { }
             view.submit(invalid,garment); invalid.release(); view.draw(Canvas(output))
             assertEquals(Color.RED,output.getPixel(40,50))
+            val longSleeve = garment.copy(garmentId = "guest_long_top",
+                previewImage = garment.previewImage.copy(url = "http://localhost/studio_oxford_shirt_06.png"))
+            view.setOutfit(listOf(longSleeve))
+            view.setLayerAsset(longSleeve, Bitmap.createBitmap(100,100,Bitmap.Config.ARGB_8888).apply { eraseColor(Color.RED) })
+            view.submit(frame,longSleeve); view.draw(Canvas(output))
+            assertEquals(Color.RED,output.getPixel(40,50))
             view.clear(); frame.release(); output.recycle()
         }
     }
@@ -101,7 +107,7 @@ class TryOnDrawingTest {
             view.setAsset(top, Bitmap.createBitmap(100, 100, Bitmap.Config.ARGB_8888).apply { eraseColor(Color.RED) })
             val output = Bitmap.createBitmap(100, 100, Bitmap.Config.ARGB_8888)
 
-            fun render(frameId: Long, hintFrame: Long, armZ: Float) {
+            fun render(frameId: Long, hintFrame: Long, armZ: Float, garment: Garment = top) {
                 val hints = points.asMap().mapNotNull { (name, p) -> p?.let {
                     val z = if (name == KeypointName.RIGHT_ELBOW || name == KeypointName.RIGHT_WRIST) armZ else 0f
                     name to ImagePosePoint(it.x, it.y, z, it.confidence)
@@ -110,7 +116,7 @@ class TryOnDrawingTest {
                 val frame = FrameLease(VisionFrame(sessionId = "arms", frameId = frameId, timestampMs = frameId,
                     image = ImageMetadata("arms-$frameId", 100, 100), trackingState = points.state(), keypoints = points),
                     BitmapPixels(bitmap, imagePose = ImagePoseHints("arms", hintFrame, hints))) { it.bitmap.recycle() }
-                view.submit(frame, top)
+                view.submit(frame, garment)
                 frame.release()
                 view.draw(Canvas(output))
             }
@@ -125,6 +131,13 @@ class TryOnDrawingTest {
             assertEquals(Color.RED, output.getPixel(44, 49))
             render(3, 1, -.2f)
             assertEquals(Color.RED, output.getPixel(44, 49))
+            for (style in listOf("oxford_shirt_01", "crew_sweatshirt_09")) {
+                val longSleeve = top.copy(garmentId = "guest_$style",
+                    previewImage = top.previewImage.copy(url = "http://localhost/studio_$style.png?rev=4"))
+                view.setAsset(longSleeve, Bitmap.createBitmap(100,100,Bitmap.Config.ARGB_8888).apply { eraseColor(Color.RED) })
+                render(4, 4, -.2f, longSleeve)
+                assertEquals(Color.RED, output.getPixel(44, 49))
+            }
             view.clear()
             output.recycle()
         }

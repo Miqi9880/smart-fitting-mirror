@@ -184,9 +184,13 @@ class TryOnView(context: Context) : View(context), TryOnRenderer<BitmapPixels> {
         val saved = canvas.save()
         try {
             if (protectHead && item.category == GarmentCategory.UPPER_BODY) clipHead(canvas,frame)
-            val torsoLayer = item.category == GarmentCategory.UPPER_BODY || item.category == GarmentCategory.DRESS
-            val mask = if (torsoLayer) prepareDepthMask(lease) else null
-            if (torsoLayer && mask == null) clipArms(canvas, lease)
+            val occludeTorso = when (item.category) {
+                GarmentCategory.DRESS -> true
+                GarmentCategory.UPPER_BODY -> !isLongSleeve(item)
+                else -> false
+            }
+            val mask = if (occludeTorso) prepareDepthMask(lease) else null
+            if (occludeTorso && mask == null) clipArms(canvas, lease)
             if (mask != null) canvas.saveLayer(0f,0f,frame.image.width.toFloat(),frame.image.height.toFloat(),null)
             for (patch in OutfitPlacement.patches(frame,item,outfitFits[item.category] ?: OutfitFit.defaultFor(item.category))) {
                 val count = patch.source.size/2
@@ -204,6 +208,11 @@ class TryOnView(context: Context) : View(context), TryOnRenderer<BitmapPixels> {
             }
             if (mask != null) canvas.drawBitmap(mask,0f,0f,maskPaint)
         } finally { canvas.restoreToCount(saved) }
+    }
+    private fun isLongSleeve(item: Garment): Boolean {
+        // Guest copies reuse the preview asset with a different garment ID.
+        val asset = item.previewImage.url.substringBefore('?').substringAfterLast('/')
+        return asset.startsWith("studio_oxford_shirt_") || asset.startsWith("studio_crew_sweatshirt_")
     }
     private fun clipHead(canvas: Canvas, frame: VisionFrame) {
         HeadProtection.region(frame)?.let { head ->

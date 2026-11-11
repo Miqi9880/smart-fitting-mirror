@@ -63,4 +63,6 @@ RGB 输出在当前帧模型点通过有效性检查后，使用 `PoseStabilizer
 
 实时叠加可以使用当前帧的 ML Kit 相对 Z，按前臂与躯干的前后关系露出前景手臂。关键点置信度不足或帧号不符时跳过遮挡。合成模式的「手臂挡胸」可以在无摄像头时回归。相对 Z 不用于毫米距离或站位提示。参见 [ML Kit 姿态检测](https://developers.google.com/ml-kit/vision/pose-detection)。
 
+目录中的长袖牛津纺衬衫和圆领卫衣在实时预览中关闭衣身遮挡，包含姿态遮挡与对齐深度遮挡。使用同一预览素材的游客复制款沿用该行为。其他上衣和连衣裙继续使用遮挡。
+
 本地 BitmapPixels 可附 AlignedDepthPixels，其 metadata 必须匹配同一个 VisionFrame.depth，使用相同画幅下的 uint16 小端毫米。提供者负责 RGB 与深度的同步和配准。上衣和连衣裙可用 `distance_m` 或同帧有效躯干样本的中位数估计衣服平面，再用场景深度遮挡较近物体。深度 0 表示未知。此路径已用合成毫米深度做绘制回归。Gemini 2 的 Android 深度取流与配准仍需接入和真机验证。
