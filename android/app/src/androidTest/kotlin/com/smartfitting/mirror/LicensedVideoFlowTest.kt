@@ -1,5 +1,6 @@
 package com.smartfitting.mirror
 
+import android.accessibilityservice.AccessibilityServiceInfo
 import android.content.pm.ActivityInfo
 import android.graphics.Bitmap
 import android.graphics.Color
@@ -7,7 +8,6 @@ import android.graphics.Rect
 import android.os.SystemClock
 import android.view.MotionEvent
 import android.view.View
-import android.view.accessibility.AccessibilityNodeInfo
 import android.widget.Button
 import android.widget.SeekBar
 import android.widget.TextView
@@ -123,15 +123,28 @@ class LicensedVideoFlowTest {
     }
 
     @Test fun selectedStyleUpdatesTheCurrentGuestRecommendationsAndClearsAtEnd() {
-        launch(host()).use { s ->
+        val address = host()
+        val automation = instrumentation.uiAutomation
+        val info = automation.serviceInfo
+        info.flags = info.flags or AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS
+        automation.serviceInfo = info
+        launch(address).use { s ->
             open(s)
             fun selectStyle(label: String) {
                 click(s, "video.style.list")
+                val bounds = Rect()
                 await {
-                    val option = instrumentation.uiAutomation.rootInActiveWindow
-                        ?.findAccessibilityNodeInfosByText(label)
-                        ?.firstOrNull { it.text?.toString() == label }
-                    option?.performAction(AccessibilityNodeInfo.ACTION_CLICK) == true
+                    val option = automation.windows.asSequence().mapNotNull { it.root }
+                        .flatMap { it.findAccessibilityNodeInfosByText(label).asSequence() }
+                        .firstOrNull { it.isVisibleToUser && it.text?.toString() == label }
+                    option?.getBoundsInScreen(bounds)
+                    !bounds.isEmpty
+                }
+                val now = SystemClock.uptimeMillis()
+                for (action in listOf(MotionEvent.ACTION_DOWN, MotionEvent.ACTION_UP)) {
+                    val event = MotionEvent.obtain(now, SystemClock.uptimeMillis(), action,
+                        bounds.exactCenterX(), bounds.exactCenterY(), 0)
+                    try { instrumentation.sendPointerSync(event) } finally { event.recycle() }
                 }
             }
             selectStyle("优雅")
