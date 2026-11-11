@@ -100,12 +100,38 @@ class SyntheticVisionSource : VisionSource<BitmapPixels> {
         paint.color = Color.rgb(110, 160, 180)
         canvas.drawCircle(70f, 70f, 22f, paint)
         val frameId = ++current.frameId
+        val imagePose = if (settings.scenario == SyntheticScenario.ARM_CROSS)
+            drawArmSample(canvas, current.sessionId, frameId, points) else null
         val metadata = VisionFrame(sessionId = current.sessionId, frameId = frameId,
             timestampMs = SystemClock.elapsedRealtime(), image = ImageMetadata("synthetic_${current.ticket}_$frameId", width, height),
             trackingState = points.state(), keypoints = points)
-        val frame = FrameLease(metadata, BitmapPixels(bitmap)) { it.bitmap.recycle() }
+        val frame = FrameLease(metadata, BitmapPixels(bitmap, imagePose = imagePose)) { it.bitmap.recycle() }
         latest.offer(frame)
         try { current.onFrame(frame) } finally { frame.release() }
+    }
+    private fun drawArmSample(canvas: Canvas, sessionId: String, frameId: Long, points: Keypoints): ImagePoseHints {
+        val shoulder = requireNotNull(points.rightShoulder)
+        val elbow = requireNotNull(points.rightElbow)
+        val wrist = requireNotNull(points.rightWrist)
+        val dx = wrist.x - elbow.x
+        val dy = wrist.y - elbow.y
+        val span = (requireNotNull(points.leftShoulder).x - shoulder.x) * canvas.width
+        val arm = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.rgb(245, 193, 151)
+            strokeCap = Paint.Cap.ROUND
+            strokeWidth = span * .20f
+        }
+        canvas.drawLine(shoulder.x * canvas.width, shoulder.y * canvas.height,
+            elbow.x * canvas.width, elbow.y * canvas.height, arm)
+        canvas.drawLine(elbow.x * canvas.width, elbow.y * canvas.height,
+            (wrist.x + dx * .15f) * canvas.width, (wrist.y + dy * .15f) * canvas.height, arm)
+        val hints = points.asMap().mapNotNull { (name, point) ->
+            point?.let {
+                val front = name == KeypointName.RIGHT_ELBOW || name == KeypointName.RIGHT_WRIST
+                name to ImagePosePoint(it.x, it.y, if (front) -.16f else 0f, it.confidence)
+            }
+        }.toMap()
+        return ImagePoseHints(sessionId, frameId, hints)
     }
     override fun captureOriginal(callback: (Result<CapturedPhoto>) -> Unit) {
         checkMain()

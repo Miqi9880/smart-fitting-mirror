@@ -2,7 +2,7 @@ package com.smartfitting.mirror.vision
 
 import com.smartfitting.mirror.contracts.KeypointName
 
-/** Experimental ML Kit image coordinates, NOT metric world points or Gemini depth.
+/** ML Kit image-relative coordinates, NOT metric world points or Gemini depth.
  * x/y are normalized by image width/height; z is normalized by image width.
  * Negative z points toward the camera. Kept outside the public VisionFrame contract.
  */

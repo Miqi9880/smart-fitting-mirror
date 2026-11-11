@@ -30,6 +30,13 @@ class TryOnView(context: Context) : View(context), TryOnRenderer<BitmapPixels> {
     private val headPath = Path()
     private val allowedHeadPath = Path()
     private val headTransform = Matrix()
+    private val armPath = Path()
+    private val armLine = Path()
+    private val armShape = Path()
+    private val armOutline = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        strokeCap = Paint.Cap.ROUND
+    }
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
     private val warp = Matrix()
     private val meshDriver = context.assets.open("reference/tshirt.obj").bufferedReader().use {
@@ -39,6 +46,7 @@ class TryOnView(context: Context) : View(context), TryOnRenderer<BitmapPixels> {
     private val meshPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val maskPaint = Paint().apply { xfermode = PorterDuffXfermode(PorterDuff.Mode.DST_IN) }
     private var depthMask: Bitmap? = null
+    private var depthMaskPixels = IntArray(0)
     private var depthMaskFrame: VisionFrame? = null
     var mode: Mode = Mode.PHOTO
         set(value) { field = value; invalidate() }
@@ -157,27 +165,33 @@ class TryOnView(context: Context) : View(context), TryOnRenderer<BitmapPixels> {
                 canvas.drawBitmap(frame.pixels.bitmap, 0f, 0f, paint)
                 val selected = garment
                 val bitmap = asset
-                val mask = if (outfit?.any { it.category != GarmentCategory.UPPER_BODY } == true) null else prepareDepthMask(frame)
-                if (mask != null) canvas.saveLayer(0f,0f,metadata.image.width.toFloat(),metadata.image.height.toFloat(),null)
                 val currentOutfit = outfit
                 if (currentOutfit != null) {
                     val order = listOf(GarmentCategory.LOWER_BODY,GarmentCategory.SHORTS,GarmentCategory.SKIRT,
                         GarmentCategory.UPPER_BODY,GarmentCategory.DRESS,GarmentCategory.HEADWEAR)
                     for (category in order) currentOutfit.firstOrNull { it.category == category }?.let { item ->
                         if (mode == Mode.OBJ_MESH && category == GarmentCategory.UPPER_BODY) drawMesh(canvas,metadata)
-                        else layers[item.garmentId]?.let { drawPhoto(canvas,metadata,item,it.bitmap) }
+                        else layers[item.garmentId]?.let { drawPhoto(canvas,frame,item,it.bitmap) }
                     }
                 } else if (mode == Mode.OBJ_MESH) drawMesh(canvas, metadata)
-                else if (selected != null && bitmap != null && assetId == selected.garmentId) drawPhoto(canvas,metadata,selected,bitmap)
-                if (mask != null) { canvas.drawBitmap(mask,0f,0f,maskPaint); canvas.restore() }
+                else if (selected != null && bitmap != null && assetId == selected.garmentId) drawPhoto(canvas,frame,selected,bitmap)
                 if (showLandmarks && fit.scale > 0) drawLandmarks(canvas, metadata, fit.scale * view.zoom)
             } finally { canvas.restore() }
         } finally { frame.release() }
     }
-    private fun drawPhoto(canvas: Canvas, frame: VisionFrame, item: Garment, bitmap: Bitmap) {
-        canvas.save()
+    private fun drawPhoto(canvas: Canvas, lease: FrameLease<BitmapPixels>, item: Garment, bitmap: Bitmap) {
+        val frame = lease.metadata
+        val saved = canvas.save()
         try {
             if (protectHead && item.category == GarmentCategory.UPPER_BODY) clipHead(canvas,frame)
+            val occludeTorso = when (item.category) {
+                GarmentCategory.DRESS -> true
+                GarmentCategory.UPPER_BODY -> !isLongSleeve(item)
+                else -> false
+            }
+            val mask = if (occludeTorso) prepareDepthMask(lease) else null
+            if (occludeTorso && mask == null) clipArms(canvas, lease)
+            if (mask != null) canvas.saveLayer(0f,0f,frame.image.width.toFloat(),frame.image.height.toFloat(),null)
             for (patch in OutfitPlacement.patches(frame,item,outfitFits[item.category] ?: OutfitFit.defaultFor(item.category))) {
                 val count = patch.source.size/2
                 if (!warp.setPolyToPoly(patch.source,0,patch.destination,0,count)) continue
@@ -192,7 +206,13 @@ class TryOnView(context: Context) : View(context), TryOnRenderer<BitmapPixels> {
                     canvas.drawBitmap(bitmap,warp,paint)
                 } finally { canvas.restore() }
             }
-        } finally { canvas.restore() }
+            if (mask != null) canvas.drawBitmap(mask,0f,0f,maskPaint)
+        } finally { canvas.restoreToCount(saved) }
+    }
+    private fun isLongSleeve(item: Garment): Boolean {
+        // Guest copies reuse the preview asset with a different garment ID.
+        val asset = item.previewImage.url.substringBefore('?').substringAfterLast('/')
+        return asset.startsWith("studio_oxford_shirt_") || asset.startsWith("studio_crew_sweatshirt_")
     }
     private fun clipHead(canvas: Canvas, frame: VisionFrame) {
         HeadProtection.region(frame)?.let { head ->
@@ -206,20 +226,42 @@ class TryOnView(context: Context) : View(context), TryOnRenderer<BitmapPixels> {
             if (allowedHeadPath.op(headPath,Path.Op.DIFFERENCE)) canvas.clipPath(allowedHeadPath)
         }
     }
-    private fun prepareDepthMask(frame: FrameLease<BitmapPixels>): Bitmap? {
-        val depth = frame.pixels.alignedDepth
-        val distance = frame.metadata.distanceM
-        if (depth == null || distance == null || mode != Mode.PHOTO) return null
-        val mm = (distance*1000-20).toInt()
-        if (mm !in 1..65535) return null
-        if (depthMaskFrame !== frame.metadata) {
-            val d = depth.metadata
-            val alpha = DepthOcclusion.alpha(depth.bytes,d.width,d.height,d.rowStrideBytes,mm)
-            val pixels = IntArray(alpha.size) { (alpha[it].toInt() and 255) shl 24 or 0x00FFFFFF }
-            depthMask?.recycle()
-            depthMask = Bitmap.createBitmap(pixels,d.width,d.height,Bitmap.Config.ARGB_8888)
-            depthMaskFrame = frame.metadata
+    private fun clipArms(canvas: Canvas, frame: FrameLease<BitmapPixels>) {
+        val segments = ForegroundArms.segments(frame.metadata, frame.pixels.imagePose)
+        if (segments.isEmpty()) return
+        armPath.reset()
+        for (span in segments) {
+            armLine.reset()
+            armLine.moveTo(span.x1, span.y1)
+            armLine.lineTo(span.x2, span.y2)
+            armOutline.strokeWidth = span.radius * 2f
+            armShape.reset()
+            armOutline.getFillPath(armLine, armShape)
+            armPath.op(armShape, Path.Op.UNION)
         }
+        val image = frame.metadata.image
+        allowedHeadPath.reset()
+        allowedHeadPath.addRect(0f, 0f, image.width.toFloat(), image.height.toFloat(), Path.Direction.CW)
+        if (allowedHeadPath.op(armPath, Path.Op.DIFFERENCE)) canvas.clipPath(allowedHeadPath)
+    }
+    private fun prepareDepthMask(frame: FrameLease<BitmapPixels>): Bitmap? {
+        val depth = frame.pixels.alignedDepth ?: return null
+        if (mode != Mode.PHOTO || frame.metadata.trackingState != TrackingState.TRACKING) return null
+        if (depthMaskFrame === frame.metadata) return depthMask
+        val distance = frame.metadata.distanceM?.let { (it * 1000).toInt() }
+            ?: DepthOcclusion.torsoMillimeters(frame.metadata, depth) ?: return null
+        val mm = distance - 20
+        if (mm !in 1..65535) return null
+        val d = depth.metadata
+        val prior = depthMask
+        if (prior == null || prior.width != d.width || prior.height != d.height) {
+            depthMask?.recycle()
+            depthMask = Bitmap.createBitmap(d.width,d.height,Bitmap.Config.ARGB_8888)
+            depthMaskPixels = IntArray(Math.multiplyExact(d.width, d.height))
+        }
+        DepthOcclusion.fillMask(depth, mm, depthMaskPixels)
+        depthMask?.setPixels(depthMaskPixels,0,d.width,0,0,d.width,d.height)
+        depthMaskFrame = frame.metadata
         return depthMask
     }
     private fun drawMesh(canvas: Canvas, frame: VisionFrame) {
@@ -264,7 +306,10 @@ class TryOnView(context: Context) : View(context), TryOnRenderer<BitmapPixels> {
     override fun clear() {
         latest.clear()
         clearLayers(); outfit = null
-        depthMask?.recycle(); depthMask = null; depthMaskFrame = null
+        depthMask?.recycle()
+        depthMask = null
+        depthMaskPixels = IntArray(0)
+        depthMaskFrame = null
         garment = null
         setAsset(null, null)
         invalidate()
