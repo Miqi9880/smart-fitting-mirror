@@ -9,7 +9,6 @@ import android.widget.Button
 import android.widget.EditText
 import android.widget.SeekBar
 import android.widget.Spinner
-import android.widget.Switch
 import android.widget.TextView
 import androidx.lifecycle.ViewModelProvider
 import androidx.test.core.app.ActivityScenario
@@ -24,7 +23,7 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class FitControlsTest {
-    @Test fun visibleLandmarkSwitchAndIndependentFitSettingsSurviveRotationAndReset() {
+    @Test fun independentFitSettingsSurviveRotationAndReset() {
         val host=InstrumentationRegistry.getArguments().getString("studio_test_host")
         assumeTrue(host!=null)
         require(host in listOf("http://10.0.2.2:8010","http://127.0.0.1:8010"))
@@ -44,12 +43,6 @@ class FitControlsTest {
             }
             scenario.onActivity { activity ->
                 val root=activity.window.decorView
-                val toggle=root.findViewWithTag<Switch>("fitting.landmarks")
-                assertTrue(toggle.isChecked)
-                val togglePosition=IntArray(2); val previewPosition=IntArray(2)
-                toggle.getLocationInWindow(togglePosition)
-                root.findViewWithTag<View>("fitting.preview").getLocationInWindow(previewPosition)
-                assertTrue("Landmark switch must precede the tall preview",togglePosition[1]<previewPosition[1])
                 root.findViewWithTag<EditText>("fitting.address").setText(host)
                 root.findViewWithTag<Button>("fitting.connect").performClick()
             }
@@ -68,12 +61,10 @@ class FitControlsTest {
                 assertEquals(1.35f,OutfitFit.defaultFor(GarmentCategory.HEADWEAR).width,.001f)
                 assertFalse(model(it).outfitFits.containsKey(GarmentCategory.HEADWEAR))
                 assertEquals(1.6f,model(it).outfitFits.getValue(GarmentCategory.SHORTS).width,.001f)
-                it.window.decorView.findViewWithTag<Switch>("fitting.landmarks").isChecked=false
             }
             scenario.recreate()
             await { model(it).state.value.canSelect }
             scenario.onActivity {
-                assertFalse(it.window.decorView.findViewWithTag<Switch>("fitting.landmarks").isChecked)
                 assertEquals(1.6f,model(it).outfitFits.getValue(GarmentCategory.SHORTS).width,.001f)
             }
             select("studio_chino_shorts_32")

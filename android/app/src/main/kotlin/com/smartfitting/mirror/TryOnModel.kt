@@ -34,8 +34,9 @@ class TryOnModel(application: Application) : AndroidViewModel(application) {
     var mirrored = true
     var synthetic = SyntheticSettings()
     var playing = true
-    var showLandmarks = true
+    var showLandmarks = false
     var protectHead = true
+    var captureDelaySeconds = 0
     var previewFullscreen = false
     var previewViewport = PreviewViewport()
     internal var resultComparisonMode = ResultComparisonMode.SIDE_BY_SIDE

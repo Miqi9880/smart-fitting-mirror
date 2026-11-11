@@ -8,8 +8,10 @@ import android.graphics.Bitmap
 import android.graphics.Color
 import android.net.Uri
 import android.os.Bundle
+import android.os.CountDownTimer
 import android.os.SystemClock
 import android.provider.Settings
+import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.widget.*
@@ -74,6 +76,7 @@ class TryOnActivity : ComponentActivity() {
     private var hasFrame = false
     private var latestTracking: TrackingState? = null
     private var captureBusy = false
+    private var captureCountdown: CountDownTimer? = null
     private var visible = false
     private var pendingPermission = false
     private var cameraDialog: AlertDialog? = null
@@ -211,14 +214,10 @@ class TryOnActivity : ComponentActivity() {
             protectHead = model.protectHead; viewport = model.previewViewport
         }
         preview.mode = if (model.meshMode) TryOnView.Mode.OBJ_MESH else TryOnView.Mode.PHOTO
-        // Keep both switches before the tall preview so landmarks are discoverable.
-        root.addView(row(Switch(this).apply {
+        root.addView(Switch(this).apply {
             text = "镜面显示"; isChecked = model.mirrored
             setOnCheckedChangeListener { _, value -> model.mirrored = value; preview.mirrored = value }
-        }, Switch(this).apply {
-            text = "显示关键点"; tag = "fitting.landmarks"; isChecked = model.showLandmarks
-            setOnCheckedChangeListener { _, value -> model.showLandmarks = value; preview.showLandmarks = value }
-        }))
+        })
         root.addView(Switch(this).apply {
             text = "上衣避开头部（近似）"; tag = "fitting.head.protection"; isChecked = model.protectHead
             setOnCheckedChangeListener { _, value -> model.protectHead = value; preview.protectHead = value }
@@ -240,6 +239,27 @@ class TryOnActivity : ComponentActivity() {
         standingPanel = StandingGuidePanel(this)
         root.addView(standingPanel)
         val tail = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        val landmarks = Switch(this).apply {
+            text = "显示关键点"
+            tag = "fitting.landmarks"
+            visibility = View.GONE
+            isChecked = model.showLandmarks
+            setOnCheckedChangeListener { _, value ->
+                model.showLandmarks = value
+                preview.showLandmarks = value
+            }
+        }
+        tail.addView(Button(this, null, android.R.attr.borderlessButtonStyle).apply {
+            text = "预览调试"
+            tag = "fitting.preview.debug"
+            gravity = Gravity.START or Gravity.CENTER_VERTICAL
+            setOnClickListener {
+                val expand = landmarks.visibility == View.GONE
+                landmarks.visibility = if (expand) View.VISIBLE else View.GONE
+                text = if (expand) "收起预览调试" else "预览调试"
+            }
+        })
+        tail.addView(landmarks)
         assetStatus = label("连接服务后加载透明服装", 12f).apply { tag = "fitting.asset" }
         tail.addView(assetStatus)
         tail.addView(button("重载服装", "fitting.reload") { loadOutfit(true) })
@@ -263,16 +283,33 @@ class TryOnActivity : ComponentActivity() {
         generationSummary = label("", 12f).apply { tag = "fitting.generation.summary" }
         tail.addView(outfitMode)
         tail.addView(generationSummary)
-        generate = button("拍摄并上传生成", "fitting.generate") { capture() }
+        generate = button("拍摄并上传生成", "fitting.generate") { requestCapture() }
+        val delays = listOf(0, 3, 5, 10)
+        val delayChoice = Spinner(this).apply {
+            tag = "fitting.capture.delay"
+            contentDescription = "拍摄倒计时"
+            minimumHeight = dp(48)
+            adapter = ArrayAdapter(this@TryOnActivity, android.R.layout.simple_spinner_item,
+                delays.map { if (it == 0) "拍摄倒计时 · 关闭" else "拍摄倒计时 · ${it} 秒" }).apply {
+                setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+            }
+            setSelection(delays.indexOf(model.captureDelaySeconds))
+            onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+                override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
+                    model.captureDelaySeconds = delays[position]
+                }
+                override fun onNothingSelected(parent: AdapterView<*>?) = Unit
+            }
+        }
         cancel = button("取消生成", "fitting.cancel") { model.controller?.cancel() }
         retry = button("重试请求", "fitting.retry") { model.controller?.retry() }
-        tail.addView(generate); tail.addView(row(cancel, retry))
+        tail.addView(row(generate, delayChoice)); tail.addView(row(cancel, retry))
         staticImage = StaticImagePanel(this, lifecycleScope, {
             imagePicker.launch(arrayOf("image/jpeg", "image/png"))
         }, { photo ->
             val controller = model.controller
             val outfit = generationRequest()
-            if (!visible || captureBusy || controller?.state?.value?.canGenerate(outfit) != true) false
+            if (!visible || captureBusy || captureCountdown != null || controller?.state?.value?.canGenerate(outfit) != true) false
             else { controller.generate(photo, outfit); updateCaptureActions(); true }
         }) { updateCaptureActions() }
         tail.addView(staticImage)
@@ -288,7 +325,7 @@ class TryOnActivity : ComponentActivity() {
             catch (_: android.content.ActivityNotFoundException) { visionStatus.text = "设备未开放主屏幕设置，请联系管理员配置开机入口。" }
         }.apply { if (guestRoute) visibility = View.GONE })
         tail.addView(label("上衣头部保护仅在双耳可靠时近似生效，侧脸或缺点时不启用；无人体分割、深度测距或精细遮挡。放大只改变显示，不增加相机细节。合成样例非真人。", 11f))
-        previewPanel = PreviewPanel(this,root,preview,tail, {
+        previewPanel = PreviewPanel(this,root,preview,tail, cancelCountdown = { setPreviewFullscreen(false) }, toggleInput = {
             if (model.running) {
                 pendingPermission = false; model.running = false; model.visionFailure = null; stopVision()
             } else requestPreview(model.rgb)
@@ -353,6 +390,10 @@ class TryOnActivity : ComponentActivity() {
             if (model.running && !model.videoExperience.open) beginVision()
         }
     }
+    override fun onPause() {
+        if (captureCountdown != null) setPreviewFullscreen(false)
+        super.onPause()
+    }
     override fun onStop() {
         videos.onStop()
         cameraDialog?.dismiss(); cameraDialog = null
@@ -402,6 +443,12 @@ class TryOnActivity : ComponentActivity() {
     }
 
     private fun setPreviewFullscreen(value: Boolean) {
+        if (!value && captureCountdown != null) {
+            captureCountdown?.cancel()
+            captureCountdown = null
+            previewPanel.renderCountdown(null)
+            updateCaptureActions()
+        }
         if (value && !model.previewFullscreen) normalScrollY = pageScroll.scrollY
         model.previewFullscreen = value; fullscreenBack.isEnabled = value
         previewPanel.setFullscreen(value)
@@ -456,6 +503,7 @@ class TryOnActivity : ComponentActivity() {
     private fun stopVision() {
         model.sourceStopped()
         activeVision = null; hasFrame = false; latestTracking = null; captureBusy = false
+        if (captureCountdown != null) setPreviewFullscreen(false)
         assetJobs.values.forEach { it.cancel() }; assetJobs.clear(); assetKeys.clear(); loadedAssets.clear(); assetErrors.clear()
         mock.stop(); rgb.stop(); preview.clear(); generate.isEnabled = false
         visionStatus.text = model.visionFailure ?: "采集已停止，临时预览帧已清理"
@@ -464,11 +512,36 @@ class TryOnActivity : ComponentActivity() {
         updateCaptureActions()
         controls.render(!model.rgb, false)
     }
+    private fun requestCapture() {
+        if (!generate.isEnabled || captureCountdown != null) return
+        val seconds = model.captureDelaySeconds
+        if (seconds == 0) {
+            capture()
+            return
+        }
+        val timer = object : CountDownTimer(seconds * 1_000L, 1_000L) {
+            override fun onTick(millisUntilFinished: Long) {
+                previewPanel.renderCountdown(((millisUntilFinished + 999L) / 1_000L).toInt())
+            }
+
+            override fun onFinish() {
+                if (captureCountdown !== this) return
+                setPreviewFullscreen(false)
+                capture()
+            }
+        }
+        captureCountdown = timer
+        previewPanel.renderCountdown(seconds)
+        setPreviewFullscreen(true)
+        updateCaptureActions()
+        timer.start()
+    }
+
     private fun capture() {
         val controller = model.controller ?: return
         val id = activeVision ?: return
         val outfit = generationRequest()
-        if (!controller.state.value.canGenerate(outfit) || captureBusy || staticImage.busy) return
+        if (!visible || !hasFrame || !controller.state.value.canGenerate(outfit) || captureBusy || staticImage.busy) return
         captureBusy = true; updateCaptureActions()
         source.captureOriginal { outcome ->
             val photo = outcome.getOrNull()
@@ -537,11 +610,12 @@ class TryOnActivity : ComponentActivity() {
 
     private fun updateCaptureActions() {
         val value = model.controller?.state?.value ?: model.state.value
-        val allow = visible && value.canGenerate(generationRequest()) && !captureBusy
+        val capturing = captureBusy || captureCountdown != null
+        val allow = visible && value.canGenerate(generationRequest()) && !capturing
         val importing = ::staticImage.isInitialized && staticImage.busy
         if (::generationSummary.isInitialized) {
             outfitMode.visibility = if (value.outfitAvailable) View.VISIBLE else View.GONE
-            outfitMode.isEnabled = value.canSelect && !captureBusy && !importing
+            outfitMode.isEnabled = value.canSelect && !capturing && !importing
             if (outfitMode.isChecked != model.generateOutfit) outfitMode.isChecked = model.generateOutfit
             generationSummary.text = if (model.generateOutfit) {
                 val names = model.outfit.values.map { it.name } + model.outfitAccessories.values.map { it.name }
@@ -551,9 +625,9 @@ class TryOnActivity : ComponentActivity() {
         generate.text = if (generationRequest() == null) "拍摄并上传生成" else "拍摄并生成当前搭配"
         generate.isEnabled = allow && hasFrame && !importing
         if (::staticImage.isInitialized) staticImage.render(allow)
-        garments.isEnabled = value.canSelect && !captureBusy && !importing
-        catalog.isEnabled = value.canSelect && !captureBusy && !importing
-        videoButton.isEnabled = value.canSelect && !captureBusy && !importing
+        garments.isEnabled = value.canSelect && !capturing && !importing
+        catalog.isEnabled = value.canSelect && !capturing && !importing
+        videoButton.isEnabled = value.canSelect && !capturing && !importing
     }
     private fun renderOutfit() {
         val labels = model.outfit.values.map { "${it.category.label}：${it.name}" } +

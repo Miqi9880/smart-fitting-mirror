@@ -8,8 +8,8 @@ android {
         applicationId = "com.smartfitting.mirror"
         minSdk = 23
         targetSdk = 35
-        versionCode = 19
-        versionName = "0.5.3"
+        versionCode = 20
+        versionName = "0.5.4"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
