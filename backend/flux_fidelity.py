@@ -11,7 +11,7 @@ _GARMENT_LABELS = {
     "skirt": _BOTTOM_LABELS,
     "dress": {"top", "dress", *_BOTTOM_LABELS},
 }
-_PROTECTED_LABELS = {"face", "glasses"}
+_PROTECTED_LABELS = {"face", "glasses", "hands"}
 
 
 class PersonParser:
@@ -42,15 +42,28 @@ def _mask(segmentation: Image.Image, labels: dict[int, str], names: set[str]) ->
     return segmentation.point([255 if labels.get(index) in names else 0 for index in range(256)])
 
 
-def protected_face(segmentation: Image.Image, labels: dict[int, str]) -> Image.Image:
+def protected_identity(segmentation: Image.Image, labels: dict[int, str]) -> Image.Image:
     with _mask(segmentation, labels, _PROTECTED_LABELS) as core:
         with core.filter(ImageFilter.GaussianBlur(2)) as edge:
             return ImageChops.lighter(core, edge)
 
 
-def neutralize_clothes(person: Image.Image, segmentation: Image.Image, labels: dict[int, str], kinds) -> Image.Image:
+def clothing_area(segmentation: Image.Image, labels: dict[int, str], kinds) -> Image.Image:
     names = set().union(*(_GARMENT_LABELS.get(kind, ()) for kind in kinds))
-    with _mask(segmentation, labels, names) as core:
-        with core.filter(ImageFilter.GaussianBlur(2)) as edge:
-            with Image.new("RGB", person.size, (140, 140, 140)) as neutral:
-                return Image.composite(neutral, person, edge)
+    return _mask(segmentation, labels, names)
+
+
+def neutralize_clothes(person: Image.Image, area: Image.Image, identity: Image.Image) -> Image.Image:
+    with area.filter(ImageFilter.MaxFilter(13)) as expanded:
+        with expanded.filter(ImageFilter.GaussianBlur(3)) as edge:
+            with ImageChops.subtract(edge, identity) as mask, Image.new("RGB", person.size, (140, 140, 140)) as neutral:
+                return Image.composite(neutral, person, mask)
+
+
+def merge_clothing(current: Image.Image, result: Image.Image, source_area: Image.Image, target_area: Image.Image) -> Image.Image:
+    # The union permits a different cut or sleeve length without regenerating
+    # unselected regions or the original pose outside the replacement area.
+    with ImageChops.lighter(source_area, target_area) as union:
+        with union.filter(ImageFilter.MaxFilter(5)) as expanded:
+            with expanded.filter(ImageFilter.GaussianBlur(2)) as mask:
+                return Image.composite(result, current, mask)
