@@ -169,7 +169,9 @@ class FitControlsTest {
                 val target=it.window.decorView.findViewWithTag<Spinner>("fitting.fit.target")
                 assertEquals(2,target.adapter.count)
             }
-            scenario.onActivity { it.window.decorView.findViewWithTag<Button>("fitting.outfit.remove").performClick() }
+            scenario.onActivity {
+                it.window.decorView.findViewWithTag<Button>("fitting.outfit.remove.garment.studio_cotton_t_dress_09").performClick()
+            }
             await { model(it).fitTarget==GarmentCategory.HEADWEAR }
             scenario.onActivity { it.window.decorView.findViewWithTag<Button>("fitting.outfit.clear").performClick() }
             scenario.onActivity {

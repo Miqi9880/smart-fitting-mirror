@@ -61,7 +61,7 @@ class TryOnActivity : ComponentActivity() {
     private lateinit var visionStatus: TextView
     private lateinit var standingPanel: StandingGuidePanel
     private lateinit var assetStatus: TextView
-    private lateinit var outfitStatus: TextView
+    private lateinit var outfitPanel: OutfitPanel
     private lateinit var mockLabel: TextView
     private lateinit var address: EditText
     private lateinit var connect: Button
@@ -190,8 +190,25 @@ class TryOnActivity : ComponentActivity() {
             browser!!.show()
         }
         root.addView(catalog)
-        outfitStatus = label("当前搭配为空；选择单品后自动加入对应品类。",12f).apply { tag = "fitting.outfit" }
-        root.addView(outfitStatus)
+        outfitPanel = OutfitPanel(this,
+            removeGarment = { item ->
+                if (model.outfit[item.category]?.garmentId == item.garmentId) {
+                    model.outfit = model.outfit - item.category
+                    renderOutfit()
+                }
+            },
+            removeAccessory = { item ->
+                if (model.outfitAccessories[item.category]?.accessoryId == item.accessoryId) {
+                    model.outfitAccessories = model.outfitAccessories - item.category
+                    renderOutfit()
+                }
+            },
+            clearOutfit = {
+                model.outfit = emptyMap()
+                model.outfitAccessories = emptyMap()
+                renderOutfit()
+            })
+        root.addView(outfitPanel)
         videoButton = button("查看当前搭配的相关视频", "fitting.videos") { videos.show() }
         root.addView(videoButton)
         root.addView(button("3D 人台样件（实验，不开启摄像头）", "fitting.garment3d") {
@@ -199,11 +216,6 @@ class TryOnActivity : ComponentActivity() {
             if (model.previewFullscreen) setPreviewFullscreen(false)
             startActivity(Intent(this, com.smartfitting.mirror.garment3d.Garment3dActivity::class.java))
         }.apply { if (guestRoute) visibility = View.GONE })
-        root.addView(row(button("移除本类","fitting.outfit.remove") {
-            model.state.value.selected?.let { model.outfit = model.outfit - it.category }; renderOutfit()
-        },button("清空搭配","fitting.outfit.clear") {
-            model.outfit = emptyMap(); model.outfitAccessories = emptyMap(); renderOutfit()
-        }))
         root.addView(row(button("合成样例", "fitting.mock") {
             requestPreview(false)
         }, button("RGB 摄像头", "fitting.rgb") {
@@ -671,7 +683,8 @@ class TryOnActivity : ComponentActivity() {
             model.catalogAssets = emptyList(); model.catalogQuery = ""; model.outfit = emptyMap()
             model.outfitAccessories = emptyMap(); model.generateOutfit = false
             model.fitTarget = null; model.fitTargetExplicit = false; model.lastOutfitSelection = null
-            outfitStatus.text = "当前搭配已清空"; browser?.dismiss(); browser = null
+            outfitPanel.render(emptyList(), emptyList())
+            browser?.dismiss(); browser = null
             fitControls.render(emptyList(),null,OutfitFit())
             assetStatus.text = "会话结束，服装与本地图像已清理"
         } else {
@@ -708,14 +721,14 @@ class TryOnActivity : ComponentActivity() {
         generate.text = if (generationRequest() == null) "拍摄并上传生成" else "拍摄并生成当前搭配"
         generate.isEnabled = allow && hasFrame && !importing
         if (::staticImage.isInitialized) staticImage.render(allow)
-        garments.isEnabled = value.canSelect && !capturing && !importing
-        catalog.isEnabled = value.canSelect && !capturing && !importing
-        videoButton.isEnabled = value.canSelect && !capturing && !importing
+        val canEdit = value.canSelect && !capturing && !importing
+        garments.isEnabled = canEdit
+        catalog.isEnabled = canEdit
+        videoButton.isEnabled = canEdit
+        outfitPanel.setEditingEnabled(canEdit)
     }
     private fun renderOutfit() {
-        val labels = model.outfit.values.map { "${it.category.label}：${it.name}" } +
-            model.outfitAccessories.values.map { it.name }
-        outfitStatus.text = "当前搭配：" + labels.joinToString(" ＋ ").ifBlank { "无" }
+        outfitPanel.render(model.outfit.values.toList(), model.outfitAccessories.values.toList())
         renderFitControls()
         loadOutfit()
         updateCaptureActions()
