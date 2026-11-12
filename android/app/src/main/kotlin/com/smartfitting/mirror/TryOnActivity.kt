@@ -169,6 +169,16 @@ class TryOnActivity : ComponentActivity() {
             browser = GarmentBrowser(
                 this, controller, lifecycleScope, model.catalogAssets, model.catalogQuery,
                 rememberQuery = { model.catalogQuery = it },
+                tryOnGarment = { id ->
+                    val current = controller.state.value
+                    val selected = current.selected
+                    if (current.canSelect && selected != null && selected.garmentId == id) {
+                        if (model.outfit[selected.category] != selected) {
+                            model.outfit = OutfitSelection.add(model.outfit, selected)
+                            renderOutfit()
+                        }
+                    } else controller.select(id)
+                },
                 selectedAccessories = { model.outfitAccessories },
                 selectAccessory = { category, item ->
                     model.outfitAccessories = if (item == null) model.outfitAccessories - category
@@ -189,9 +199,7 @@ class TryOnActivity : ComponentActivity() {
             if (model.previewFullscreen) setPreviewFullscreen(false)
             startActivity(Intent(this, com.smartfitting.mirror.garment3d.Garment3dActivity::class.java))
         }.apply { if (guestRoute) visibility = View.GONE })
-        root.addView(row(button("加入搭配","fitting.outfit.add") {
-            model.state.value.selected?.let { model.outfit = OutfitSelection.add(model.outfit,it) }; renderOutfit()
-        },button("移除本类","fitting.outfit.remove") {
+        root.addView(row(button("移除本类","fitting.outfit.remove") {
             model.state.value.selected?.let { model.outfit = model.outfit - it.category }; renderOutfit()
         },button("清空搭配","fitting.outfit.clear") {
             model.outfit = emptyMap(); model.outfitAccessories = emptyMap(); renderOutfit()
@@ -733,7 +741,7 @@ class TryOnActivity : ComponentActivity() {
         if (force) preview.setOutfit(emptyList())
         preview.setOutfit(items)
         refreshPreviewSummary()
-        if (items.isEmpty()) { assetStatus.text = "搭配已清空；选择单品或点击加入搭配"; return }
+        if (items.isEmpty()) { assetStatus.text = "搭配已清空，请在衣柜选择要试穿的单品"; return }
         for (garment in items) {
             val key = wanted.getValue(garment.garmentId)
             if (assetKeys[garment.garmentId] == key) continue
