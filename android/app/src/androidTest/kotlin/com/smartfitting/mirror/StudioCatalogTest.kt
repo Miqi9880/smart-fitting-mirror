@@ -73,6 +73,7 @@ class StudioCatalogTest {
                 assertEquals("浏览衣柜", catalog.text.toString())
                 assertNull(root.findViewWithTag<View>("fitting.generation.accessories"))
                 assertNull(root.findViewWithTag<View>("fitting.outfit.add"))
+                assertNull(root.findViewWithTag<View>("fitting.outfit.remove"))
                 val mesh = root.findViewWithTag<View>("fitting.mesh")
                 val tail = mesh.parent as ViewGroup
                 assertSame(mesh, tail.getChildAt(tail.childCount - 1))
@@ -98,9 +99,12 @@ class StudioCatalogTest {
             scenario.onActivity {
                 assertTrue(button("catalog.tab.bottoms").isSelected)
                 button("catalog.close").performClick()
-                button("fitting.outfit.remove").performClick()
+                button("fitting.outfit.remove.garment.$top").performClick()
                 assertEquals(jeans, model(it).state.value.selectedId)
-                assertEquals(listOf(top), model(it).outfit.values.map { item -> item.garmentId })
+                assertEquals(listOf(jeans), model(it).outfit.values.map { item -> item.garmentId })
+                button("fitting.outfit.remove.garment.$jeans").performClick()
+                assertEquals(jeans, model(it).state.value.selectedId)
+                assertTrue(model(it).outfit.isEmpty())
             }
             scenario.onActivity {
                 button("fitting.catalog").performClick()
@@ -108,6 +112,13 @@ class StudioCatalogTest {
                 select(it, jeans)
             }
             await("Trying on the same jeans restores them to the outfit") {
+                model(it).outfit.values.map { item -> item.garmentId } == listOf(jeans)
+            }
+            scenario.onActivity {
+                button("catalog.tab.tops").performClick()
+                select(it, top)
+            }
+            await("Top and jeans are back in the outfit") {
                 model(it).outfit.values.map { item -> item.garmentId }.toSet() == setOf(top, jeans)
             }
             scenario.onActivity {
@@ -129,6 +140,15 @@ class StudioCatalogTest {
                 studs.performClick()
                 assertFalse(studs.isSelected)
                 studs.performClick()
+                button("catalog.close").performClick()
+            }
+            scenario.onActivity {
+                button("fitting.outfit.remove.accessory.silver_studs").performClick()
+                assertTrue(model(it).outfitAccessories.isEmpty())
+                assertEquals(setOf(top, jeans), model(it).outfit.values.map { item -> item.garmentId }.toSet())
+                button("fitting.catalog").performClick()
+                button("catalog.tab.accessories").performClick()
+                button("fitting.accessory.silver_studs").performClick()
                 button("catalog.close").performClick()
             }
             scenario.onActivity {
