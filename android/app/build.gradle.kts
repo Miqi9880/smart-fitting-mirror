@@ -17,8 +17,8 @@ android {
         applicationId = "com.smartfitting.mirror"
         minSdk = if (orbbecSdk == null) 23 else 24
         targetSdk = 35
-        versionCode = 29
-        versionName = "0.6.3"
+        versionCode = 30
+        versionName = "0.6.4"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }

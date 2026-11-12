@@ -10,6 +10,7 @@ import androidx.core.content.ContextCompat
 import com.google.android.gms.tasks.Tasks
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.pose.PoseDetection
+import com.google.mlkit.vision.pose.PoseLandmark
 import com.google.mlkit.vision.pose.defaults.PoseDetectorOptions
 import com.google.mlkit.vision.segmentation.Segmentation
 import com.google.mlkit.vision.segmentation.SegmentationMask
@@ -99,6 +100,16 @@ class RgbdVisionSource(context: Context, private val reader: RgbdReader) : Visio
                     }.toMap()
                     val points = stabilizer.update(PoseMapper.map(rawPoints, rgb.width, rgb.height),
                         sample.timestampMs, rgb.width, rgb.height)
+                    fun fingers(vararg types: Int) = types.asList().mapNotNull { type ->
+                        pose.getPoseLandmark(type)?.let {
+                            PoseMapper.normalized(PoseMapper.PixelPoint(it.position.x, it.position.y, it.inFrameLikelihood),
+                                rgb.width, rgb.height)
+                        }
+                    }
+                    val hands = if (points.state() == TrackingState.TRACKING) HandLandmarks(
+                        fingers(PoseLandmark.LEFT_THUMB, PoseLandmark.LEFT_INDEX, PoseLandmark.LEFT_PINKY),
+                        fingers(PoseLandmark.RIGHT_THUMB, PoseLandmark.RIGHT_INDEX, PoseLandmark.RIGHT_PINKY)
+                    ) else null
                     val id = ++frameId
                     val mask = if (points.state() != TrackingState.LOST && active()) try {
                         segmenter?.let { maskPixels("mask_${current.ticket}_$id", Tasks.await(it.process(input))) }
@@ -112,7 +123,7 @@ class RgbdVisionSource(context: Context, private val reader: RgbdReader) : Visio
                         standingHint = PoseMapper.standingHint(rawPoints, rgb.width, rgb.height),
                         distanceM = DepthGeometry.torsoDistanceM(depth, points, mask),
                         mask = mask?.metadata, depth = depth.metadata)
-                    val frame = FrameLease(metadata, BitmapPixels(rgb, depth, personMask = mask)) {
+                    val frame = FrameLease(metadata, BitmapPixels(rgb, depth, personMask = mask, handLandmarks = hands)) {
                         it.bitmap.recycle()
                         it.alignedDepth?.bytes?.fill(0)
                         it.personMask?.bytes?.fill(0)

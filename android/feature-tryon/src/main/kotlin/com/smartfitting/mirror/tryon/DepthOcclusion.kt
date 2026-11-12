@@ -1,13 +1,20 @@
 package com.smartfitting.mirror.tryon
 
+import com.smartfitting.mirror.contracts.Landmark
 import com.smartfitting.mirror.contracts.VisionFrame
 import com.smartfitting.mirror.vision.AlignedDepthPixels
+import com.smartfitting.mirror.vision.HandLandmarks
+import kotlin.math.ceil
+import kotlin.math.floor
+import kotlin.math.hypot
 import kotlin.math.roundToInt
 
 /** Adapts upstream garment_fs depth comparison to aligned metric millimeters.
  * No NDC/mm mixing and no synthetic default distance. Zero depth is unknown.
  */
 object DepthOcclusion {
+    private const val TORSO_TOLERANCE_MM = 40
+    private const val ARM_TOLERANCE_MM = 15
     internal fun torsoMillimeters(frame: VisionFrame, depth: AlignedDepthPixels): Int? {
         val k = frame.keypoints
         val leftShoulder = k.leftShoulder?.takeIf { it.confidence >= .65f } ?: return null
@@ -40,12 +47,72 @@ object DepthOcclusion {
 
     internal fun fillMask(depth: AlignedDepthPixels, garmentDepthMm: Int, pixels: IntArray) {
         val d = depth.metadata
-        val toleranceMm = 20
-        validate(depth.bytes, d.width, d.height, d.rowStrideBytes, garmentDepthMm, toleranceMm)
+        validate(depth.bytes, d.width, d.height, d.rowStrideBytes, garmentDepthMm, TORSO_TOLERANCE_MM)
         require(pixels.size == Math.multiplyExact(d.width, d.height))
-        forEachPixel(depth.bytes, d.width, d.height, d.rowStrideBytes, garmentDepthMm - toleranceMm) { index, occluded ->
+        forEachPixel(depth.bytes, d.width, d.height, d.rowStrideBytes, garmentDepthMm - TORSO_TOLERANCE_MM) { index, occluded ->
             pixels[index] = if (occluded) 0 else -1
         }
+    }
+
+    /** Refine only the tracked limb, using nearby raw depth as foreground evidence. */
+    internal fun refineArms(frame: VisionFrame, depth: AlignedDepthPixels, hands: HandLandmarks?,
+                            torsoMm: Int, pixels: IntArray) {
+        val d = depth.metadata
+        val k = frame.keypoints
+        val left = k.leftShoulder?.takeIf { it.confidence >= .65f } ?: return
+        val right = k.rightShoulder?.takeIf { it.confidence >= .65f } ?: return
+        fun x(p: Landmark) = p.x * (d.width - 1)
+        fun y(p: Landmark) = p.y * (d.height - 1)
+        val shoulderSpan = hypot(x(left) - x(right), y(left) - y(right))
+        if (shoulderSpan < 12f) return
+        val probe = (shoulderSpan * .015f).roundToInt().coerceIn(1, 3)
+        fun refine(from: Landmark, to: Landmark, radius: Float, maxLength: Float) {
+            if (from.confidence < .65f || to.confidence < .65f) return
+            val ax = x(from)
+            val ay = y(from)
+            val bx = x(to)
+            val by = y(to)
+            val dx = bx - ax
+            val dy = by - ay
+            val length = hypot(dx, dy)
+            if (length !in 2f..maxLength) return
+            val radiusSquared = radius * radius
+            val lengthSquared = length * length
+            val xRange = floor(minOf(ax, bx) - radius).toInt().coerceAtLeast(0)..
+                ceil(maxOf(ax, bx) + radius).toInt().coerceAtMost(d.width - 1)
+            val yRange = floor(minOf(ay, by) - radius).toInt().coerceAtLeast(0)..
+                ceil(maxOf(ay, by) + radius).toInt().coerceAtMost(d.height - 1)
+            for (row in yRange) for (column in xRange) {
+                val index = row * d.width + column
+                if (pixels[index] == 0) continue
+                val scene = depth.millimetersAt(column, row)
+                if (scene >= torsoMm - ARM_TOLERANCE_MM) continue
+                val t = (((column - ax) * dx + (row - ay) * dy) / lengthSquared).coerceIn(0f, 1f)
+                val offsetX = column - ax - dx * t
+                val offsetY = row - ay - dy * t
+                if (offsetX * offsetX + offsetY * offsetY > radiusSquared) continue
+                if (hasForegroundSupport(depth, column, row, probe, torsoMm - TORSO_TOLERANCE_MM)) pixels[index] = 0
+            }
+        }
+        fun arm(elbow: Landmark?, wrist: Landmark?, fingers: List<Landmark>?) {
+            if (wrist == null) return
+            elbow?.let { refine(it, wrist, shoulderSpan * .09f, shoulderSpan * 1.6f) }
+            fingers?.forEach { refine(wrist, it, shoulderSpan * .045f, shoulderSpan * .55f) }
+        }
+        arm(k.leftElbow, k.leftWrist, hands?.left)
+        arm(k.rightElbow, k.rightWrist, hands?.right)
+    }
+
+    private fun hasForegroundSupport(depth: AlignedDepthPixels, x: Int, y: Int, probe: Int, threshold: Int): Boolean {
+        val d = depth.metadata
+        var count = 0
+        for (row in (y - probe).coerceAtLeast(0)..(y + probe).coerceAtMost(d.height - 1)) {
+            for (column in (x - probe).coerceAtLeast(0)..(x + probe).coerceAtMost(d.width - 1)) {
+                val mm = depth.millimetersAt(column, row)
+                if (mm in 1 until threshold && ++count == 2) return true
+            }
+        }
+        return false
     }
 
     private fun validate(depth: ByteArray, width: Int, height: Int, stride: Int,
