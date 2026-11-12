@@ -72,6 +72,7 @@ class StudioCatalogTest {
                 val catalog = root.findViewWithTag<Button>("fitting.catalog")
                 assertEquals("浏览衣柜", catalog.text.toString())
                 assertNull(root.findViewWithTag<View>("fitting.generation.accessories"))
+                assertNull(root.findViewWithTag<View>("fitting.outfit.add"))
                 val mesh = root.findViewWithTag<View>("fitting.mesh")
                 val tail = mesh.parent as ViewGroup
                 assertSame(mesh, tail.getChildAt(tail.childCount - 1))
@@ -96,6 +97,20 @@ class StudioCatalogTest {
             }
             scenario.onActivity {
                 assertTrue(button("catalog.tab.bottoms").isSelected)
+                button("catalog.close").performClick()
+                button("fitting.outfit.remove").performClick()
+                assertEquals(jeans, model(it).state.value.selectedId)
+                assertEquals(listOf(top), model(it).outfit.values.map { item -> item.garmentId })
+            }
+            scenario.onActivity {
+                button("fitting.catalog").performClick()
+                button("catalog.tab.bottoms").performClick()
+                select(it, jeans)
+            }
+            await("Trying on the same jeans restores them to the outfit") {
+                model(it).outfit.values.map { item -> item.garmentId }.toSet() == setOf(top, jeans)
+            }
+            scenario.onActivity {
                 button("catalog.tab.accessories").performClick()
                 assertTrue(button("catalog.tab.accessories").isSelected)
                 assertTrue(images().isEmpty())

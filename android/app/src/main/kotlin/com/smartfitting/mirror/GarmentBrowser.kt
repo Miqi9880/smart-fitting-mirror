@@ -27,6 +27,7 @@ import kotlinx.coroutines.sync.withPermit
 internal class GarmentBrowser(private val context: Context, private val controller: FittingSession,
     private val scope: CoroutineScope, private val assets: List<Garment>,
     query: String, private val rememberQuery: (String) -> Unit,
+    private val tryOnGarment: (String) -> Unit,
     private val selectedAccessories: () -> Map<AccessoryCategory, OutfitAccessory>,
     private val selectAccessory: (AccessoryCategory, OutfitAccessory?) -> Unit) {
     private enum class Tab(val label: String, val garments: Set<GarmentCategory>) {
@@ -273,7 +274,7 @@ internal class GarmentBrowser(private val context: Context, private val controll
             if (d.description.isNotBlank()) add(d.description)
             if (d.careInstructions.isNotBlank()) add("护理：${d.careInstructions}")
             add(when {
-                item.generationReferenceUrl != null -> "可单件生成，也可加入搭配"
+                item.generationReferenceUrl != null -> "支持单件和搭配生成"
                 state.outfitAvailable -> "可通过当前搭配生成"
                 else -> "实时预览素材"
             })
@@ -285,7 +286,7 @@ internal class GarmentBrowser(private val context: Context, private val controll
                 .setNegativeButton("保留",null).setPositiveButton("移除") { _,_ -> controller.deleteGarment(item.garmentId); details?.dismiss() }.show()
         } })
         details = AlertDialog.Builder(context).setTitle(item.name).setView(ScrollView(context).apply { addView(content) })
-            .setNegativeButton("返回",null).setPositiveButton("试穿这件") { _,_ -> controller.select(item.garmentId) }.create()
+            .setNegativeButton("返回",null).setPositiveButton("试穿这件") { _,_ -> tryOnGarment(item.garmentId) }.create()
         details!!.setOnDismissListener { detailImage?.close(); detailImage = null }
         details!!.show()
     }
