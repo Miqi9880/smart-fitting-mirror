@@ -31,6 +31,15 @@ class OutfitPlacementTest {
         val crossed = good.keypoints.copy(leftAnkle=good.keypoints.rightAnkle,rightAnkle=good.keypoints.leftAnkle)
         assertTrue(OutfitPlacement.patches(frame(crossed),pants).isEmpty())
     }
+    @Test fun narrowPreviewSkipsPlacementWhenTheMeshColumnsCannotFit() {
+        val anchors = pants.previewImage.attachmentAnchors.mapValues { (name, anchor) ->
+            anchor.copy(x = if (name.startsWith("right_")) .1f else .9f)
+        }
+        val narrow = pants.copy(previewImage = pants.previewImage.copy(width = 6, attachmentAnchors = anchors))
+        assertTrue(OutfitPlacement.patches(frame(), narrow).isEmpty())
+        val minimum = narrow.copy(previewImage = narrow.previewImage.copy(width = 7))
+        assertEquals(48, OutfitPlacement.patches(frame(), minimum).size)
+    }
     @Test fun trouserEaseWidensEachLegAroundItsOwnAxisAndCrossesOverContinuouslyBetweenThem() {
         val base=frame().keypoints
         val spread=base.copy(rightKnee=base.rightKnee!!.copy(x=.28f),leftKnee=base.leftKnee!!.copy(x=.72f),

@@ -38,6 +38,9 @@ object OutfitPlacement {
         return listOf(Patch(floats(sr,sl),floats(tr,tl)))
     }
     private fun legs(frame: VisionFrame, item: Garment): List<Patch> {
+        val width = item.previewImage.width
+        // The seven-column mesh needs a centre and at least three pixels on either side.
+        if (width < 7) return emptyList()
         val names = listOf("right_hip","left_hip","right_knee","left_knee","right_ankle","left_ankle")
         val src = names.map { source(item,it) ?: return emptyList() }
         val k = frame.keypoints
@@ -54,8 +57,7 @@ object OutfitPlacement {
             (src[4].y+src[5].y)/2,item.previewImage.height-.5f)
         if ((0..3).any { y[it+1]-y[it] < 2 }) return emptyList()
         val s = mutableListOf<P>(); val d = mutableListOf<P>()
-        val middleX = item.previewImage.width/2f
-        val width = item.previewImage.width
+        val middleX = width/2f
         for (row in 0..4) {
             val joint = when (row) { 0,1 -> 0; 2 -> 2; else -> 4 }
             var right = dst[joint]; var left = dst[joint+1]
