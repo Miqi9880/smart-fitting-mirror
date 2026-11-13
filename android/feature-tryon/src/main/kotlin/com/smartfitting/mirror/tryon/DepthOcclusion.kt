@@ -66,6 +66,9 @@ object DepthOcclusion {
         val shoulderSpan = hypot(x(left) - x(right), y(left) - y(right))
         if (shoulderSpan < 12f) return
         val probe = (shoulderSpan * .015f).roundToInt().coerceIn(1, 3)
+        // Digit segments are drawn much thinner than a limb segment, so their
+        // radius is used as the marker for a thin structure.
+        val digitRadius = shoulderSpan * .045f
         fun refine(from: Landmark, to: Landmark, radius: Float, maxLength: Float) {
             if (from.confidence < .65f || to.confidence < .65f) return
             val ax = x(from)
@@ -76,6 +79,7 @@ object DepthOcclusion {
             val dy = by - ay
             val length = hypot(dx, dy)
             if (length !in 2f..maxLength) return
+            val thin = radius <= digitRadius + .001f
             val radiusSquared = radius * radius
             val lengthSquared = length * length
             val xRange = floor(minOf(ax, bx) - radius).toInt().coerceAtLeast(0)..
@@ -86,12 +90,25 @@ object DepthOcclusion {
                 val index = row * d.width + column
                 if (pixels[index] == 0) continue
                 val scene = depth.millimetersAt(column, row)
-                if (scene >= torsoMm - ARM_TOLERANCE_MM) continue
+                // Zero means the sensor produced no sample. It must not be read
+                // as background: along a thin finger the missing samples are the
+                // finger itself, and fillMask already left such a pixel drawn
+                // over. Only a positively measured background sample may veto.
+                val unknown = scene == 0
+                if (!unknown && scene >= torsoMm - ARM_TOLERANCE_MM) continue
                 val t = (((column - ax) * dx + (row - ay) * dy) / lengthSquared).coerceIn(0f, 1f)
                 val offsetX = column - ax - dx * t
                 val offsetY = row - ay - dy * t
                 if (offsetX * offsetX + offsetY * offsetY > radiusSquared) continue
-                if (hasForegroundSupport(depth, column, row, probe, torsoMm - TORSO_TOLERANCE_MM)) pixels[index] = 0
+                // Inside the tracked segment a measured sample must clear the
+                // hand's own depth band, while an unknown sample has no depth to
+                // compare. For a digit the segment geometry alone is evidence
+                // enough, because a finger is only a couple of pixels across and
+                // the ring around it already contains its shallow neighbours. A
+                // wider limb segment can sweep a patch of blank torso, so it still
+                // needs that ring to confirm foreground before carving.
+                if ((unknown && thin) || hasForegroundSupport(depth, column, row, probe, torsoMm - TORSO_TOLERANCE_MM))
+                    pixels[index] = 0
             }
         }
         fun arm(elbow: Landmark?, wrist: Landmark?, fingers: List<Landmark>?) {
