@@ -38,6 +38,9 @@ object OutfitPlacement {
         return listOf(Patch(floats(sr,sl),floats(tr,tl)))
     }
     private fun legs(frame: VisionFrame, item: Garment): List<Patch> {
+        val width = item.previewImage.width
+        // The seven-column mesh needs a centre and at least three pixels on either side.
+        if (width < 7) return emptyList()
         val names = listOf("right_hip","left_hip","right_knee","left_knee","right_ankle","left_ankle")
         val src = names.map { source(item,it) ?: return emptyList() }
         val k = frame.keypoints
@@ -54,6 +57,7 @@ object OutfitPlacement {
             (src[4].y+src[5].y)/2,item.previewImage.height-.5f)
         if ((0..3).any { y[it+1]-y[it] < 2 }) return emptyList()
         val s = mutableListOf<P>(); val d = mutableListOf<P>()
+        val middleX = width/2f
         for (row in 0..4) {
             val joint = when (row) { 0,1 -> 0; 2 -> 2; else -> 4 }
             var right = dst[joint]; var left = dst[joint+1]
@@ -64,17 +68,32 @@ object OutfitPlacement {
                 val t = (y[4]-y[3])/(y[3]-y[2])
                 right += (dst[4]-dst[2])*t; left += (dst[5]-dst[3])*t
             }
-            val middleX = item.previewImage.width/2f
             val ratio = (middleX-src[joint].x)/(src[joint+1].x-src[joint].x)
             if (!ratio.isFinite() || ratio !in .1f.. .9f) return emptyList()
-            s += listOf(P(.5f,y[row]),P(middleX,y[row]),P(item.previewImage.width-.5f,y[row]))
-            d += listOf(right-hip*((src[joint].x-.5f)/sourceHipWidth),
-                right+(left-right)*ratio,
-                left+hip*((item.previewImage.width-.5f-src[joint+1].x)/sourceHipWidth))
+            // Seven per-row columns: canvas edges, both leg axes, the .3
+            // crossover starts and the middle. The axis columns let
+            // FitPlacement widen each leg exactly around its own line, and
+            // the shared middle column keeps the crotch fabric single-valued.
+            val axisR = src[joint].x.coerceIn(1.5f,middleX-2f)
+            val axisL = src[joint+1].x.coerceIn(middleX+2f,width-1.5f)
+            val cols = listOf(.5f,axisR,
+                (axisR+.3f*(src[joint+1].x-src[joint].x)).coerceIn(axisR+1f,middleX-1f),
+                middleX,
+                (axisL-.3f*(src[joint+1].x-src[joint].x)).coerceIn(middleX+1f,axisL-1f),
+                axisL,width-.5f)
+            val outerR = right-hip*((src[joint].x-.5f)/sourceHipWidth)
+            val outerL = left+hip*((width-.5f-src[joint+1].x)/sourceHipWidth)
+            val middle = right+(left-right)*ratio
+            for (x in cols) {
+                val t: Float; val from: P; val to: P
+                if (x <= middleX) { t=(x-.5f)/(middleX-.5f); from=outerR; to=middle }
+                else { t=(x-middleX)/(width-.5f-middleX); from=middle; to=outerL }
+                s += P(x,y[row]); d += from+(to-from)*t
+            }
         }
         val patches = mutableListOf<Patch>()
-        for (row in 0..3) for (col in 0..1) {
-            val a=row*3+col; val b=a+1; val c=a+3; val e=c+1
+        for (row in 0..3) for (col in 0..5) {
+            val a=row*7+col; val b=a+1; val c=a+7; val e=c+1
             for (tri in listOf(intArrayOf(a,b,e),intArrayOf(a,e,c))) {
                 fun cross(p: List<P>) = (p[tri[1]].x-p[tri[0]].x)*(p[tri[2]].y-p[tri[0]].y)-
                     (p[tri[1]].y-p[tri[0]].y)*(p[tri[2]].x-p[tri[0]].x)

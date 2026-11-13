@@ -44,14 +44,31 @@ internal object FitPlacement {
         val legs = if (item.category == GarmentCategory.LOWER_BODY) legLines(frame,item) ?: return emptyList() else null
         val fitted = patches.map { patch ->
             val dst = patch.destination.copyOf()
-            // Each source half belongs to one trouser leg. Widen its fabric
-            // around that leg, not around the gap between the two legs.
-            val leftLeg = patch.source.indices.filter { it%2==0 }.any { patch.source[it] > item.previewImage.width/2f }
             for (i in dst.indices step 2) {
                 val dx = dst[i]-cx; val dy = dst[i+1]-cy
-                val centre = legs?.centre(patch.source[i+1],leftLeg)
-                val pivot = centre?.let { (it.first-cx)*ux+(it.second-cy)*uy } ?: 0f
-                val across = pivot+(dx*ux+dy*uy-pivot)*fit.width
+                val x = dx*ux+dy*uy
+                // Widen each leg's fabric around its own leg line. Between the
+                // two leg lines the mapping crosses over continuously from one
+                // line to the other, so both edges of every leg keep widening
+                // while the crotch fabric stays single-valued (no tear, no fold).
+                val across = if (legs == null) x*fit.width else {
+                    val rightAxis = legs.axis(patch.source[i+1],false).let { p -> (p.first-cx)*ux+(p.second-cy)*uy }
+                    val leftAxis = legs.axis(patch.source[i+1],true).let { p -> (p.first-cx)*ux+(p.second-cy)*uy }
+                    val d = leftAxis-rightAxis
+                    if (d < 8f) {
+                        val pivot = (rightAxis+leftAxis)*.5f
+                        pivot+(x-pivot)*fit.width
+                    } else {
+                        // Crossover half-width: wide enough to bridge the gap
+                        // between the legs at ease levels, shrunk for extreme
+                        // widths so the crossover stays strictly monotone.
+                        val h = minOf(.35f*d,.45f*d/fit.width)
+                        val t = ((x-(rightAxis+h))/(d-2*h)).coerceIn(0f,1f)
+                        val rightWide = rightAxis+(x-rightAxis)*fit.width
+                        val leftWide = leftAxis+(x-leftAxis)*fit.width
+                        (1-t)*rightWide+t*leftWide
+                    }
+                }
                 val down = (-dx*uy+dy*ux)*fit.length + fit.offset*span
                 dst[i] = cx+across*ux-down*uy
                 dst[i+1] = cy+across*uy+down*ux
@@ -68,7 +85,8 @@ internal object FitPlacement {
     }
 
     private class LegLines(val rows: List<Float>, val right: List<Pair<Float,Float>>, val left: List<Pair<Float,Float>>) {
-        fun centre(y: Float, leftLeg: Boolean): Pair<Float,Float> {
+        /** Leg line at source row [y], interpolated along hip-knee-ankle. */
+        fun axis(y: Float, leftLeg: Boolean): Pair<Float,Float> {
             val points = if (leftLeg) left else right
             val index = if (y<=rows[1]) 0 else 1
             val t = (y-rows[index])/(rows[index+1]-rows[index])
