@@ -250,8 +250,7 @@ class TryOnView(context: Context) : View(context), TryOnRenderer<BitmapPixels> {
         if (depthMaskFrame === frame.metadata) return depthMask
         val distance = frame.metadata.distanceM?.let { (it * 1000).toInt() }
             ?: DepthOcclusion.torsoMillimeters(frame.metadata, depth) ?: return null
-        val mm = distance - 20
-        if (mm !in 1..65535) return null
+        if (distance !in 41..65535) return null
         val d = depth.metadata
         val prior = depthMask
         if (prior == null || prior.width != d.width || prior.height != d.height) {
@@ -259,7 +258,8 @@ class TryOnView(context: Context) : View(context), TryOnRenderer<BitmapPixels> {
             depthMask = Bitmap.createBitmap(d.width,d.height,Bitmap.Config.ARGB_8888)
             depthMaskPixels = IntArray(Math.multiplyExact(d.width, d.height))
         }
-        DepthOcclusion.fillMask(depth, mm, depthMaskPixels)
+        DepthOcclusion.fillMask(depth, distance, depthMaskPixels)
+        DepthOcclusion.refineArms(frame.metadata, depth, frame.pixels.handLandmarks, distance, depthMaskPixels)
         depthMask?.setPixels(depthMaskPixels,0,d.width,0,0,d.width,d.height)
         depthMaskFrame = frame.metadata
         return depthMask

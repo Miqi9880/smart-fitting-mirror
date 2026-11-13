@@ -48,4 +48,41 @@ class GarmentMeshTest {
         assertThrows(IllegalArgumentException::class.java) { DepthOcclusion.alpha(depth,2,3,6,1000) }
         assertThrows(IllegalArgumentException::class.java) { DepthOcclusion.alpha(depth,2,2,6,0) }
     }
+
+    @Test fun nearbyFrontDepthPreservesForearmEdgesAndFingerGapsWithoutCuttingTheTorso() {
+        val size = 100
+        val depth = DepthMetadata("arm-depth", size, size, size * 2)
+        val bytes = ByteArray(size * size * 2)
+        fun setDepth(x: Int, y: Int, mm: Int) {
+            val index = (y * size + x) * 2
+            bytes[index] = mm.toByte()
+            bytes[index + 1] = (mm shr 8).toByte()
+        }
+        for (row in 0 until size) for (column in 0 until size) setDepth(column, row, 2000)
+        for (column in 25..55) setDepth(column, 45, 1850)
+        setDepth(35, 45, 1975)
+        setDepth(51, 45, 0)
+        setDepth(54, 45, 1995)
+        setDepth(61, 45, 0)
+        setDepth(60, 45, 1850)
+        setDepth(62, 45, 1850)
+        fun point(x: Int, y: Int) = Landmark(x / 99f, y / 99f, .9f)
+        val keypoints = Keypoints(leftShoulder = point(75, 22), rightShoulder = point(25, 22),
+            leftHip = point(70, 76), rightHip = point(30, 76),
+            rightElbow = point(25, 45), rightWrist = point(42, 45))
+        val frame = VisionFrame(sessionId = "arm-depth", frameId = 1, timestampMs = 1,
+            image = ImageMetadata("rgb", size, size), trackingState = keypoints.state(),
+            keypoints = keypoints, depth = depth)
+        val plane = AlignedDepthPixels(depth, bytes)
+        val mask = IntArray(size * size)
+        DepthOcclusion.fillMask(plane, 2000, mask)
+        assertEquals(-1, mask[45 * size + 35])
+        assertEquals(-1, mask[45 * size + 51])
+        val fingers = HandLandmarks(emptyList(), listOf(point(55, 45)))
+        DepthOcclusion.refineArms(frame, plane, fingers, 2000, mask)
+        assertEquals(0, mask[45 * size + 35])
+        assertEquals(0, mask[45 * size + 51])
+        assertEquals(-1, mask[45 * size + 54])
+        assertEquals(-1, mask[45 * size + 61])
+    }
 }

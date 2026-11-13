@@ -3,6 +3,7 @@ package com.smartfitting.mirror.vision
 import android.graphics.Bitmap
 import android.graphics.Matrix
 import com.smartfitting.mirror.contracts.DepthMetadata
+import com.smartfitting.mirror.contracts.Landmark
 import com.smartfitting.mirror.contracts.PlaneMetadata
 
 /** Pixels are upright, unmirrored ARGB_8888. Access only while owning a FrameLease reference. */
@@ -11,7 +12,11 @@ class BitmapPixels(
     val alignedDepth: AlignedDepthPixels? = null,
     val imagePose: ImagePoseHints? = null,
     val personMask: PersonMaskPixels? = null,
+    val handLandmarks: HandLandmarks? = null,
 )
+
+/** Finger landmarks belong only to the RGB pixels of this lease. */
+data class HandLandmarks(val left: List<Landmark>, val right: List<Landmark>)
 
 /** Optional provider-owned depth paired with the same RGB frame. Released with its FrameLease. */
 class AlignedDepthPixels(val metadata: DepthMetadata, val bytes: ByteArray) {
