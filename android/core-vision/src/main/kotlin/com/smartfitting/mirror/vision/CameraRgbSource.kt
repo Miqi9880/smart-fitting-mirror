@@ -36,6 +36,7 @@ class CameraRgbSource(
     private val frontFacing: Boolean = true,
     private val targetRotation: () -> Int = { Surface.ROTATION_0 },
     private val cameraId: () -> String? = { null },
+    private val onImagePose: ((ImagePoseHints) -> Unit)? = null,
 ) : VisionSource<BitmapPixels> {
     override val capabilities = VisionCapabilities(source = VisionSourceKind.RGB_CAMERA,
         rgb = true, pose = true, personMask = false, alignedDepth = false)
@@ -118,7 +119,7 @@ class CameraRgbSource(
                 val camera = cameraProvider.bindToLifecycle(lifecycleOwner, selector, analysis)
                 activeCameraId = Camera2CameraInfo.from(camera.cameraInfo).cameraId
                 Log.i("CameraRgbSource", "Bound Camera2 ID=$activeCameraId; requested=${requestedId ?: "auto"}")
-                onStatus(VisionStatus(SourceState.READY, message = "相机通道 $activeCameraId 已连接，等待首帧；深度与遮挡未启用"))
+                onStatus(VisionStatus(SourceState.READY, message = "相机通道 $activeCameraId 已连接，等待首帧"))
             } catch (_: Exception) {
                 fail(current, VisionError.CAMERA_UNAVAILABLE, if (requestedId == null)
                     "摄像头不可用，请确认设备连接或重试" else
@@ -157,12 +158,21 @@ class CameraRgbSource(
                         timestampMs, bitmap.width, bitmap.height)
                     val state = keypoints.state()
                     val frameId = ++current.frameCounter
+                    // Image-relative pose belongs to these pixels. It does not
+                    // populate the metric/aligned depth fields in VisionFrame.
+                    val imagePose = ImagePoseHints(current.sessionId, frameId, landmarkTypes.mapNotNull { (name,type) ->
+                        task.result.getPoseLandmark(type)?.let { landmark ->
+                            val p = landmark.position3D
+                            ImagePoseMapper.point(p.x,p.y,p.z,landmark.inFrameLikelihood,bitmap.width,bitmap.height)?.let { name to it }
+                        }
+                    }.toMap())
+                    onImagePose?.invoke(imagePose)
                     val metadata = VisionFrame(sessionId = current.sessionId, frameId = frameId,
                         timestampMs = timestampMs,
                         image = ImageMetadata("rgb_${current.ticket}_$frameId", bitmap.width, bitmap.height),
                         trackingState = state, keypoints = keypoints,
                         standingHint = PoseMapper.standingHint(points, bitmap.width, bitmap.height))
-                    val frame = FrameLease(metadata, BitmapPixels(bitmap)) { it.bitmap.recycle() }
+                    val frame = FrameLease(metadata, BitmapPixels(bitmap, imagePose = imagePose)) { it.bitmap.recycle() }
                     latest.offer(frame)
                     latestArrivalMs = SystemClock.elapsedRealtime()
                     watchdog.frameReceived()
@@ -237,8 +247,8 @@ class CameraRgbSource(
     }
     private fun checkMain() = check(Looper.myLooper() == Looper.getMainLooper()) { "Call lifecycle methods on main thread" }
 
-    private companion object {
-        val landmarkTypes = mapOf(KeypointName.LEFT_SHOULDER to PoseLandmark.LEFT_SHOULDER,
+    internal companion object {
+        internal val landmarkTypes = mapOf(KeypointName.LEFT_SHOULDER to PoseLandmark.LEFT_SHOULDER,
             KeypointName.RIGHT_SHOULDER to PoseLandmark.RIGHT_SHOULDER,
             KeypointName.LEFT_ELBOW to PoseLandmark.LEFT_ELBOW, KeypointName.RIGHT_ELBOW to PoseLandmark.RIGHT_ELBOW,
             KeypointName.LEFT_WRIST to PoseLandmark.LEFT_WRIST, KeypointName.RIGHT_WRIST to PoseLandmark.RIGHT_WRIST,

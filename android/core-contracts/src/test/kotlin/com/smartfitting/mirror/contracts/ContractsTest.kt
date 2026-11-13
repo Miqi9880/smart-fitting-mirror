@@ -7,6 +7,13 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class ContractsTest {
+    @Test fun outfitRequestCarriesAllSelectedMaterialsWithoutLegacyGarmentId() {
+        val request = roundTrip<CreateJob>("create-outfit-job.json")
+        assertNull(request.garmentId)
+        assertEquals(listOf("upper_demo_01", "lower_demo_01"), request.outfit!!.garmentIds)
+        assertEquals(listOf("silver_studs"), request.outfit.accessoryIds)
+    }
+
     @Test fun extendedCategoriesAndHemCalibrationRoundTripWithoutChangingVision() {
         val items=roundTrip<GarmentList>("extended-garments.json").items
         assertEquals(setOf(GarmentCategory.DRESS,GarmentCategory.SKIRT,GarmentCategory.SHORTS),items.map { it.category }.toSet())

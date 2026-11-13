@@ -1,7 +1,9 @@
 package com.smartfitting.mirror.network
 
 import com.smartfitting.mirror.contracts.*
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import okhttp3.*
@@ -36,21 +38,27 @@ class HttpFittingApi internal constructor(baseUrl: String, private val client: O
     // Apply security properties even when a caller supplies a client for timeout testing.
     private val transport = client.newBuilder().followRedirects(false).followSslRedirects(false)
         .retryOnConnectionFailure(false).cache(null).build()
+    private val semanticTransport = transport.newBuilder()
+        .readTimeout(40, TimeUnit.SECONDS).callTimeout(45, TimeUnit.SECONDS).build()
 
     override suspend fun createSession(): Session = json(request("sessions").post(emptyBody).build())
     override suspend fun garments(sessionToken: String): GarmentList = json(request("garments", sessionToken).get().build())
     override suspend fun recommendVideos(sessionToken: String, request: VideoRecommendationRequest): VideoRecommendationList {
         val result = json<VideoRecommendationList>(request("video-recommendations", sessionToken)
-            .post(ContractJson.encodeToString(request).toRequestBody(jsonType)).build())
+            .post(ContractJson.encodeToString(request).toRequestBody(jsonType)).build(),
+            http = if (request.semanticJobId == null) transport else semanticTransport)
         if (result.requestedLimit != request.limit) throw IOException("视频响应数量与请求不一致")
-        if (request.garmentIds.isEmpty() && request.makeupIds.isEmpty() && request.userTags.isEmpty() && result.availableCount != 0)
+        if (result.semantic?.jobId != request.semanticJobId) throw IOException("AI 标签与当前生成结果不一致")
+        val semanticTags = result.semantic?.tags.orEmpty()
+        if (request.garmentIds.isEmpty() && request.makeupIds.isEmpty() && request.userTags.isEmpty() &&
+            semanticTags.isEmpty() && result.availableCount != 0)
             throw IOException("视频响应与当前上下文不一致")
         for (item in result.items) for (match in item.matches) {
             val relevant = when (match.source) {
                 VideoMatchSource.GARMENT_METADATA -> match.relatedId in request.garmentIds
                 VideoMatchSource.MAKEUP_METADATA -> match.relatedId in request.makeupIds
                 VideoMatchSource.USER_SELECTION -> VideoTag(match.dimension, match.value) in request.userTags
-                VideoMatchSource.MODEL_SEMANTICS -> false // Reserved; no authorized semantic path in this increment.
+                VideoMatchSource.MODEL_SEMANTICS -> VideoTag(match.dimension, match.value) in semanticTags
             }
             if (!relevant) throw IOException("视频匹配依据与当前上下文不一致")
         }
@@ -71,7 +79,8 @@ class HttpFittingApi internal constructor(baseUrl: String, private val client: O
         require(photo.mimeType in setOf("image/png", "image/jpeg") && photo.bytes.size <= 10 * 1024 * 1024)
         // Comparing results can outlast the server's keep-alive. Start an explicit
         // new upload without those idle sockets; active calls are not evicted.
-        transport.connectionPool.evictAll()
+        // Closing an idle TLS socket can write a close notification.
+        withContext(Dispatchers.IO) { transport.connectionPool.evictAll() }
         // Call cancellation resumes the caller before the socket writer necessarily finishes.
         // Keep an independent array until OkHttp invokes its terminal callback.
         val owned = photo.bytes.copyOf()
@@ -90,7 +99,7 @@ class HttpFittingApi internal constructor(baseUrl: String, private val client: O
         // After a long preview the server may have closed several idle asset
         // sockets. Do not spend every bounded cleanup retry on those old sockets.
         // This client/pool belongs to this session; active calls are not evicted.
-        transport.connectionPool.evictAll()
+        withContext(Dispatchers.IO) { transport.connectionPool.evictAll() }
         exchange(request("sessions/current", sessionToken).delete().build(), 1024).fill(0)
     }
     override suspend fun download(sessionToken: String, url: String): ByteArray {
@@ -109,16 +118,16 @@ class HttpFittingApi internal constructor(baseUrl: String, private val client: O
             .apply { if (cancel) addPathSegment("cancel") }.build()
         return Request.Builder().url(url).header("Authorization", "Bearer $token")
     }
-    private suspend inline fun <reified T> json(request: Request, payload: ByteArray? = null): T {
-        val bytes = exchange(request, 1024 * 1024, payload)
+    private suspend inline fun <reified T> json(request: Request, payload: ByteArray? = null, http: OkHttpClient = transport): T {
+        val bytes = exchange(request, 1024 * 1024, payload, http = http)
         return try { ContractJson.decodeFromString(bytes.toString(Charsets.UTF_8)) }
         catch (failure: Exception) { throw IOException("服务响应与接口合同不一致", failure) }
         finally { bytes.fill(0) }
     }
 
     private suspend fun exchange(request: Request, limit: Int, payload: ByteArray? = null,
-                                 imageOnly: Boolean = false): ByteArray = suspendCancellableCoroutine { continuation ->
-        val call = transport.newCall(request)
+                                 imageOnly: Boolean = false, http: OkHttpClient = transport): ByteArray = suspendCancellableCoroutine { continuation ->
+        val call = http.newCall(request)
         continuation.invokeOnCancellation { call.cancel() }
         call.enqueue(object : Callback {
             override fun onFailure(call: Call, e: IOException) {

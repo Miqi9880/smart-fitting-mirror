@@ -47,7 +47,7 @@ onStatus：starting / ready / stopped / error。错误区分 PERMISSION_DENIED�
 
 ## 降级与验收
 
-各品类按当前帧独立降级：上衣要求四个躯干点，裤子要求双髋、双膝和双踝且腿部没有交叉退化，帽子要求双耳。缺少对应点就隐藏该品类，不沿用旧位置；躯干 tracking_state 为 partial 时，可靠双耳仍可用于帽子。无深度/mask 时允许基础叠加，在调试面板注明未启用遮挡。退出、会话变化、lost 时清理旧状态。
+各品类按当前帧独立降级。上衣要求四个躯干点，裤子要求双髋、双膝和双踝且腿部没有交叉退化，帽子要求双耳。缺少对应点就隐藏该品类。躯干 tracking_state 为 partial 时，可靠双耳仍可用于帽子。缺少对齐深度和可靠姿态时，上衣退回基础叠加。退出、会话变化、lost 时清理旧状态。
 
 联调验证：无深度样例可运行；镜像后三层一致且左右名称不变；横竖画幅不产生单层裁剪；tracking→partial/lost 隐藏衣服；旧会话帧被忽略；帧替换和退出无重复释放或泄漏。
 
@@ -57,8 +57,12 @@ core-contracts 已提供对应 Kotlin 类型；像素载体是 core-vision 的 B
 
 Canvas 绘制使用像素中心：归一化点映射为 0.5 + x*(width-1)，随后与 Bitmap 共用变换；因此镜像时仍符合 x→1-x，不产生一像素偏移。FitCenter 与诊断视图使用同一约定。
 
-当前实现只提供 RGB 和合成源，无深度或 mask。返回 partial 的原因可能是低置信度、遮挡或身体出框；站位提示应作为引导，不表示已经进行深度测距。具体构建和所有权示例见 [Android 说明](../../android/README.md)。
+当前提供 RGB 和合成源。RGB 不提供对齐深度或人体分割 mask。返回 partial 的原因可能是低置信度、遮挡或身体出框。站位提示用于引导。具体构建和所有权示例见 [Android 说明](../../android/README.md)。
 
 RGB 输出在当前帧模型点通过有效性检查后，使用 `PoseStabilizer` 做相邻帧坐标平滑（当前测量权重 0.6）；confidence、点是否存在和 tracking_state 仍依据当前测量。缺点立即 null，停止/会话切换、画幅变化或长间隔不混合旧历史；合成点不经此滤波。它不补造丢失点或距离，也不将其他帧的异步推理当作当前结果。来源及适配范围见 [参考迁移记录](../reference-reuse.md)。
 
-本地 BitmapPixels 可附 AlignedDepthPixels，metadata 必须与同一个 VisionFrame.depth 完全一致，行跨度/尺寸按既有 uint16 小端毫米合同校验；提供者负责真实配准与同帧。照片渲染可在真实 distance_m 可用时以 `distance_m*1000 - 20` 毫米作近似衣服平面，比较场景深度并使用 20 毫米容差；0 深度是未知。缺数据/距离时不启用，不推算假深度。该近似及软件绘制测试不证明真实手臂遮挡或设备管线已校准。当前 CameraX 源仍不提供深度。OBJ 模式只是二维骨骼驱动的三维网格投影，不使用这套近似深度作为人体三维坐标。
+实时叠加可以使用当前帧的 ML Kit 相对 Z，按前臂与躯干的前后关系露出前景手臂。关键点置信度不足或帧号不符时跳过遮挡。合成模式的「手臂挡胸」可以在无摄像头时回归。相对 Z 不用于毫米距离或站位提示。参见 [ML Kit 姿态检测](https://developers.google.com/ml-kit/vision/pose-detection)。
+
+目录中的长袖牛津纺衬衫和圆领卫衣在实时预览中关闭衣身遮挡，包含姿态遮挡与对齐深度遮挡。使用同一预览素材的游客复制款沿用该行为。其他上衣和连衣裙继续使用遮挡。
+
+本地 BitmapPixels 可附 AlignedDepthPixels，其 metadata 必须匹配同一个 VisionFrame.depth，使用相同画幅下的 uint16 小端毫米。提供者负责 RGB 与深度的同步和配准。上衣和连衣裙可用 `distance_m` 或同帧有效躯干样本的中位数估计衣服平面，再用场景深度遮挡较近物体。深度 0 表示未知。带 Orbbec SDK 的 Android 构建可选择 Gemini 2 深度预览，也会提供同一 RGB 画幅归一化坐标下的前景置信度 `personMask`，其 metadata 对应 `VisionFrame.mask`。实机取流、配准和距离仍待确认，见 [Gemini 2 记录](../reports/gemini-depth-2026-11-11.md)。

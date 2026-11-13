@@ -53,7 +53,7 @@ class TryOnDrawingTest {
             view.clear(); frame.release(); output.recycle()
         }
     }
-    @Test fun metricDepthClipsOnlyGarmentAndUnknownDistanceDoesNotInventOcclusion() {
+    @Test fun alignedDepthClipsUpperLayerInAnOutfitAndUsesTorsoSamplesWhenDistanceIsAbsent() {
         InstrumentationRegistry.getInstrumentation().runOnMainSync {
             val view = TryOnView(InstrumentationRegistry.getInstrumentation().targetContext)
             view.layout(0,0,100,100); view.mirrored = false
@@ -71,16 +71,78 @@ class TryOnDrawingTest {
             val frame = FrameLease(metadata,BitmapPixels(bitmap,AlignedDepthPixels(depth,bytes))) { it.bitmap.recycle(); bytes.fill(0) }
             val anchors = GarmentAnchors(Anchor(.75f,.15f),Anchor(.25f,.15f),Anchor(.7f,.85f),Anchor(.3f,.85f))
             val garment = Garment("red","red",GarmentCategory.UPPER_BODY,emptyList(),"http://localhost/red.png",PreviewImage("http://localhost/red.png",100,100,anchors),null)
-            view.setAsset(garment,Bitmap.createBitmap(100,100,Bitmap.Config.ARGB_8888).apply { eraseColor(Color.RED) })
+            view.setOutfit(listOf(garment, garment.copy(garmentId = "hat", category = GarmentCategory.HEADWEAR)))
+            view.setLayerAsset(garment,Bitmap.createBitmap(100,100,Bitmap.Config.ARGB_8888).apply { eraseColor(Color.RED) })
             view.submit(frame,garment); val output = Bitmap.createBitmap(100,100,Bitmap.Config.ARGB_8888)
             view.draw(Canvas(output)); assertEquals(Color.GREEN,output.getPixel(40,50)); assertEquals(Color.RED,output.getPixel(60,50))
             assertEquals(Color.GREEN,bitmap.getPixel(60,50))
             val unknown = FrameLease(metadata.copy(frameId=2,distanceM=null),frame.pixels) { }
             view.submit(unknown,garment); unknown.release(); view.draw(Canvas(output))
+            assertEquals(Color.GREEN,output.getPixel(40,50))
+            val invalid = FrameLease(metadata.copy(frameId=3,distanceM=null),
+                BitmapPixels(bitmap, AlignedDepthPixels(depth, ByteArray(bytes.size)))) { }
+            view.submit(invalid,garment); invalid.release(); view.draw(Canvas(output))
+            assertEquals(Color.RED,output.getPixel(40,50))
+            val longSleeve = garment.copy(garmentId = "guest_long_top",
+                previewImage = garment.previewImage.copy(url = "http://localhost/studio_oxford_shirt_06.png"))
+            view.setOutfit(listOf(longSleeve))
+            view.setLayerAsset(longSleeve, Bitmap.createBitmap(100,100,Bitmap.Config.ARGB_8888).apply { eraseColor(Color.RED) })
+            view.submit(frame,longSleeve); view.draw(Canvas(output))
             assertEquals(Color.RED,output.getPixel(40,50))
             view.clear(); frame.release(); output.recycle()
         }
     }
+
+    @Test fun frontForearmOccludesTopButRearOrStalePoseLeavesItVisible() {
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            val view = TryOnView(InstrumentationRegistry.getInstrumentation().targetContext)
+            view.layout(0, 0, 100, 100)
+            view.mirrored = false
+            val points = Keypoints(leftShoulder = Landmark(.8f, .2f, .9f), rightShoulder = Landmark(.2f, .2f, .9f),
+                leftHip = Landmark(.7f, .8f, .9f), rightHip = Landmark(.3f, .8f, .9f),
+                rightElbow = Landmark(.28f, .54f, .9f), rightWrist = Landmark(.58f, .45f, .9f))
+            val anchors = GarmentAnchors(Anchor(.75f, .15f), Anchor(.25f, .15f), Anchor(.7f, .85f), Anchor(.3f, .85f))
+            val url = "http://localhost/top.png"
+            val top = Garment("top", "Top", GarmentCategory.UPPER_BODY, emptyList(), url, PreviewImage(url, 100, 100, anchors), null)
+            view.setAsset(top, Bitmap.createBitmap(100, 100, Bitmap.Config.ARGB_8888).apply { eraseColor(Color.RED) })
+            val output = Bitmap.createBitmap(100, 100, Bitmap.Config.ARGB_8888)
+
+            fun render(frameId: Long, hintFrame: Long, armZ: Float, garment: Garment = top) {
+                val hints = points.asMap().mapNotNull { (name, p) -> p?.let {
+                    val z = if (name == KeypointName.RIGHT_ELBOW || name == KeypointName.RIGHT_WRIST) armZ else 0f
+                    name to ImagePosePoint(it.x, it.y, z, it.confidence)
+                } }.toMap()
+                val bitmap = Bitmap.createBitmap(100, 100, Bitmap.Config.ARGB_8888).apply { eraseColor(Color.GREEN) }
+                val frame = FrameLease(VisionFrame(sessionId = "arms", frameId = frameId, timestampMs = frameId,
+                    image = ImageMetadata("arms-$frameId", 100, 100), trackingState = points.state(), keypoints = points),
+                    BitmapPixels(bitmap, imagePose = ImagePoseHints("arms", hintFrame, hints))) { it.bitmap.recycle() }
+                view.submit(frame, garment)
+                frame.release()
+                view.draw(Canvas(output))
+            }
+            render(1, 1, -.2f)
+            assertEquals(Color.GREEN, output.getPixel(44, 49))
+            assertEquals(Color.RED, output.getPixel(44, 69))
+            view.mirrored = true
+            view.draw(Canvas(output))
+            assertEquals(Color.GREEN, output.getPixel(55, 49))
+            view.mirrored = false
+            render(2, 2, .2f)
+            assertEquals(Color.RED, output.getPixel(44, 49))
+            render(3, 1, -.2f)
+            assertEquals(Color.RED, output.getPixel(44, 49))
+            for (style in listOf("oxford_shirt_01", "crew_sweatshirt_09")) {
+                val longSleeve = top.copy(garmentId = "guest_$style",
+                    previewImage = top.previewImage.copy(url = "http://localhost/studio_$style.png?rev=4"))
+                view.setAsset(longSleeve, Bitmap.createBitmap(100,100,Bitmap.Config.ARGB_8888).apply { eraseColor(Color.RED) })
+                render(4, 4, -.2f, longSleeve)
+                assertEquals(Color.RED, output.getPixel(44, 49))
+            }
+            view.clear()
+            output.recycle()
+        }
+    }
+
     @Test fun drawsGarmentMirrorsWholeFrameHidesLostAndClearsLeases() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         instrumentation.runOnMainSync {

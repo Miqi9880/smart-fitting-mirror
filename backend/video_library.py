@@ -15,6 +15,7 @@ from .video_contracts import (
     VideoRecommendation,
     VideoRecommendationList,
     VideoRecommendationRequest,
+    VideoSemanticAnalysis,
     VideoTag,
 )
 
@@ -81,7 +82,7 @@ class VideoLibrary:
                 value['cover_url'] = origin + f'api/v1/video-covers/{ident}.jpg' if self._file(record.poster_file) else None
                 video = VideoContent.model_validate(value)
             items.append(VideoRecommendation(video=video, matches=item.matches))
-        return VideoRecommendationList(items=items, requested_limit=result.requested_limit, available_count=result.available_count)
+        return result.model_copy(update={"items": items})
 
     def eligible(self) -> tuple[VideoContent, ...]:
         result = []
@@ -101,6 +102,7 @@ class VideoLibrary:
         self,
         request: VideoRecommendationRequest,
         garments: dict[str, GarmentWrite],
+        semantic: VideoSemanticAnalysis | None = None,
     ) -> VideoRecommendationList:
         if request.makeup_ids:
             raise ValueError("makeup_ids is unavailable until the face-group catalog is connected")
@@ -129,6 +131,8 @@ class VideoLibrary:
                 add_context(tag, "garment_metadata", garment_id)
         for tag in request.user_tags:
             add_context(tag, "user_selection", None)
+        for tag in semantic.tags if semantic else ():
+            add_context(tag, "model_semantics", None)
 
         candidates: list[VideoRecommendation] = []
         for video in self.eligible():
@@ -156,20 +160,25 @@ class VideoLibrary:
                 )
             candidates.append(VideoRecommendation(video=video, matches=matches))
 
-        # A video matching several tags remains one candidate. Relevance is the
-        # number of distinct matched dimensions; video ID makes ties repeatable.
+        # A video matching several tags remains one candidate.
         by_id: dict[str, VideoRecommendation] = {}
         for candidate in candidates:
             previous = by_id.get(candidate.video.video_id)
             if previous is None or len({m.dimension for m in candidate.matches}) > len({m.dimension for m in previous.matches}):
                 by_id[candidate.video.video_id] = candidate
-        ordered = sorted(
-            by_id.values(),
-            key=lambda item: (-len({match.dimension for match in item.matches}), item.video.video_id),
-        )
+        preferred = {(tag.dimension, tag.value) for tag in request.user_tags}
+        inferred = {(tag.dimension, tag.value) for tag in semantic.tags} if semantic else set()
+
+        def rank(item: VideoRecommendation):
+            tags = {(tag.dimension, tag.value) for tag in item.video.tags}
+            return (not bool(tags & preferred), -len(tags & inferred),
+                    -len({match.dimension for match in item.matches}), item.video.video_id)
+
+        ordered = sorted(by_id.values(), key=rank)
         response = VideoRecommendationList(
             items=ordered[:request.limit],
             requested_limit=request.limit,
             available_count=len(ordered),
+            semantic=semantic,
         )
         return response

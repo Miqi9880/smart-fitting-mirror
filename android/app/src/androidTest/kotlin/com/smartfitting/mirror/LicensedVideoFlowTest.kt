@@ -1,5 +1,6 @@
 package com.smartfitting.mirror
 
+import android.accessibilityservice.AccessibilityServiceInfo
 import android.content.pm.ActivityInfo
 import android.graphics.Bitmap
 import android.graphics.Color
@@ -121,12 +122,129 @@ class LicensedVideoFlowTest {
         }
     }
 
+    @Test fun selectedStyleUpdatesTheCurrentGuestRecommendationsAndClearsAtEnd() {
+        val address = host()
+        val automation = instrumentation.uiAutomation
+        val info = automation.serviceInfo
+        info.flags = info.flags or AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS
+        automation.serviceInfo = info
+        launch(address).use { s ->
+            open(s)
+            fun selectStyle(label: String) {
+                click(s, "video.style.list")
+                val bounds = Rect()
+                await {
+                    val option = automation.windows.asSequence().mapNotNull { it.root }
+                        .flatMap { it.findAccessibilityNodeInfosByText(label).asSequence() }
+                        .firstOrNull { it.isVisibleToUser && it.text?.toString() == label }
+                    option?.getBoundsInScreen(bounds)
+                    !bounds.isEmpty
+                }
+                val now = SystemClock.uptimeMillis()
+                for (action in listOf(MotionEvent.ACTION_DOWN, MotionEvent.ACTION_UP)) {
+                    val event = MotionEvent.obtain(now, SystemClock.uptimeMillis(), action,
+                        bounds.exactCenterX(), bounds.exactCenterY(), 0)
+                    try { instrumentation.sendPointerSync(event) } finally { event.recycle() }
+                }
+            }
+            selectStyle("优雅")
+            await {
+                var ready = false
+                s.onActivity {
+                    val first = (model(it).videoExperience.result as? VideoResult.Items)?.videos?.firstOrNull()
+                    ready = first?.videoId == "pexels-9511253" && first.matchesText.contains("已选风格：优雅")
+                }
+                ready
+            }
+            assertEquals("风格偏好 · 优雅", text(s, "video.style.list"))
+            evidence(s,"style-preference")
+            click(s, "video.exit")
+            open(s)
+            assertEquals("风格偏好 · 优雅", text(s, "video.style.list"))
+            selectStyle("不限")
+            await {
+                var refreshed = false
+                s.onActivity {
+                    val memory = model(it).videoExperience
+                    val result = memory.result as? VideoResult.Items
+                    refreshed = memory.style == null &&
+                        result?.videos?.none { video -> video.matchesText.contains("已选风格") } == true
+                }
+                refreshed
+            }
+            selectStyle("休闲")
+            await {
+                var ready = false
+                s.onActivity {
+                    val result = model(it).videoExperience.result as? VideoResult.Items
+                    ready = result?.videos?.firstOrNull()?.matchesText?.contains("已选风格：休闲") == true
+                }
+                ready
+            }
+            click(s, "video.end.list")
+            await {
+                var ended = false
+                s.onActivity { ended = model(it).state.value.phase == FittingPhase.CLOSED }
+                ended
+            }
+            s.onActivity { assertNull(model(it).videoExperience.style) }
+        }
+    }
+
+    @Test fun realResultOffersExplicitSemanticRecallAndRetainsTheComparison() {
+        launch(host("video_semantic_host", 8025)).use { s ->
+            open(s)
+            assertNull(view<View>(s, "video.ai.list"))
+            click(s, "video.exit")
+            val image = Bitmap.createBitmap(200, 300, Bitmap.Config.ARGB_8888).apply { eraseColor(Color.CYAN) }
+            val bytes = ByteArrayOutputStream().apply { image.compress(Bitmap.CompressFormat.PNG, 100, this) }.toByteArray()
+            image.recycle()
+            s.onActivity { model(it).controller!!.generate(CapturedPhoto("semantic-test", 1, 200, 300, "image/png", bytes)) }
+            await {
+                var ready = false
+                s.onActivity { ready = model(it).state.value.phase == FittingPhase.SUCCEEDED }
+                ready
+            }
+            open(s)
+            assertTrue(text(s, "video.ai.summary").isEmpty())
+            click(s, "video.ai.list")
+            await(46_000) { text(s, "video.ai.summary").contains("AI 识别标签") }
+            s.onActivity {
+                val result = model(it).videoExperience.result as VideoResult.Items
+                assertTrue(result.videos.first().matchesText.contains("AI 识别"))
+                assertNotNull(model(it).state.value.result)
+            }
+            click(s, "video.end.list")
+            await {
+                var ended = false
+                s.onActivity { ended = model(it).state.value.phase == FittingPhase.CLOSED }
+                ended
+            }
+            s.onActivity { assertNull(model(it).videoExperience.semanticNote) }
+        }
+    }
+
     @Test fun pauseRotationBackgroundAndReturnPreserveOriginalAndOutfitWithoutAutoplay() {
         launch(host()).use { s ->
             val image=Bitmap.createBitmap(200,300,Bitmap.Config.ARGB_8888).apply { eraseColor(Color.CYAN) }
             val bytes=ByteArrayOutputStream().apply { image.compress(Bitmap.CompressFormat.PNG,100,this) }.toByteArray(); image.recycle()
             s.onActivity { model(it).controller!!.generate(CapturedPhoto("generated-test",1,200,300,"image/png",bytes)) }
             await { var ready=false; s.onActivity { ready=model(it).state.value.phase==FittingPhase.SUCCEEDED }; ready }
+            s.onActivity {
+                val m=model(it); val hat=m.state.value.garments.first { it.category==GarmentCategory.HEADWEAR }
+                m.controller!!.select(hat.garmentId)
+            }
+            await { var ready=false; s.onActivity { ready=model(it).outfit.containsKey(GarmentCategory.HEADWEAR) }; ready }
+            // A real user must expand the controls before selecting a target. A GONE
+            // Spinner need not dispatch its selection callback until its next layout.
+            click(s,"fitting.fit.toggle")
+            instrumentation.waitForIdleSync()
+            s.onActivity {
+                val target=it.window.decorView.findViewWithTag<Spinner>("fitting.fit.target")
+                target.setSelection((0 until target.adapter.count).first { index -> target.adapter.getItem(index)==GarmentCategory.UPPER_BODY.label })
+            }
+            await { var ready=false; s.onActivity { ready=model(it).fitTarget==GarmentCategory.UPPER_BODY }; ready }
+            s.onActivity { assertTrue(model(it).fitTargetExplicit) }
             var original=byteArrayOf(); var result=byteArrayOf(); var job=""; var garmentIds=emptySet<String>()
             s.onActivity { val m=model(it); original=m.state.value.original!!.copyOf(); result=m.state.value.result!!.copyOf(); job=m.state.value.job!!.jobId; garmentIds=m.outfit.values.map { v->v.garmentId }.toSet() }
             open(s); play(s)
@@ -148,6 +266,7 @@ class LicensedVideoFlowTest {
                 val m=model(it); assertEquals(job,m.state.value.job!!.jobId)
                 assertArrayEquals(original,m.state.value.original); assertArrayEquals(result,m.state.value.result)
                 assertEquals(garmentIds,m.outfit.values.map { v->v.garmentId }.toSet())
+                assertEquals(GarmentCategory.UPPER_BODY,m.fitTarget)
                 m.controller!!.end()
             }
         }

@@ -13,12 +13,15 @@ object PoseMapper {
     fun map(points: Map<KeypointName, PixelPoint>, width: Int, height: Int): Keypoints {
         require(width > 1 && height > 1)
         val mapped = KeypointName.entries.associateWith { name ->
-            points[name]?.takeIf {
-                it.x.isFinite() && it.y.isFinite() && it.confidence in .5f..1f &&
-                    it.x in 0f..(width - 1).toFloat() && it.y in 0f..(height - 1).toFloat()
-            }?.let { Landmark(it.x / (width - 1), it.y / (height - 1), it.confidence) }
+            points[name]?.let { normalized(it, width, height) }
         }
         val result = Keypoints.fromMap(mapped)
         return if (result.state() == TrackingState.LOST) Keypoints() else result
     }
+
+    internal fun normalized(point: PixelPoint, width: Int, height: Int): Landmark? =
+        point.takeIf {
+            it.x.isFinite() && it.y.isFinite() && it.confidence in .5f..1f &&
+                it.x in 0f..(width - 1).toFloat() && it.y in 0f..(height - 1).toFloat()
+        }?.let { Landmark(it.x / (width - 1), it.y / (height - 1), it.confidence) }
 }

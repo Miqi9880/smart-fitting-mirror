@@ -12,7 +12,7 @@ from typing import Callable
 
 FEATURE = "tryon"
 MODES = {"mock", "real"}
-PROVIDERS = {"mock", "aidge-cos", "unknown"}
+PROVIDERS = {"mock", "aidge-cos", "local-model", "unknown"}
 MODELS = {"mock-static", "unknown"}
 METRICS = {
     "task_created",
@@ -59,6 +59,7 @@ class UsageMetrics:
         if (mode, provider, model) not in {
             ("mock", "mock", "mock-static"),
             ("real", "aidge-cos", "unknown"),
+            ("real", "local-model", "unknown"),
             ("real", "unknown", "unknown"),
         }:
             raise ValueError("Inconsistent usage metric dimensions")

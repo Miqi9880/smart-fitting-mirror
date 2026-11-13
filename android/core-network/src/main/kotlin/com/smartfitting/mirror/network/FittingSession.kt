@@ -16,10 +16,21 @@ data class FittingState(
     val job: TryOnJob? = null, val original: ByteArray? = null, val result: ByteArray? = null,
     val message: String = "连接本地服务后开始试衣", val retry: RetryAction = RetryAction.NONE,
     val canCapture: Boolean = false, val connected: Boolean = false,
+    val outfitAvailable: Boolean = false, val accessories: List<OutfitAccessory> = emptyList(),
 ) {
     val selected get() = garments.firstOrNull { it.garmentId == selectedId }
+    val generationInProgress: Boolean get() = when (phase) {
+        FittingPhase.UPLOADING, FittingPhase.CREATING, FittingPhase.WAITING, FittingPhase.DOWNLOADING -> true
+        else -> false
+    }
     val canSelect get() = connected && phase in setOf(FittingPhase.READY, FittingPhase.SUCCEEDED, FittingPhase.FAILED, FittingPhase.CANCELLED)
     val canCancel get() = job?.status?.terminal == false && phase !in setOf(FittingPhase.ENDING, FittingPhase.CREATING)
+    fun canGenerate(outfit: OutfitRequest?): Boolean {
+        if (outfit == null) return canCapture
+        return canSelect && outfitAvailable && (outfit.garmentIds.isNotEmpty() || outfit.accessoryIds.isNotEmpty()) &&
+            outfit.garmentIds.all { id -> garments.any { it.garmentId == id } } &&
+            outfit.accessoryIds.all { id -> accessories.any { it.accessoryId == id } }
+    }
 }
 
 /** Call public methods on the supplied scope's UI dispatcher. The controller owns image bytes. */
@@ -29,7 +40,7 @@ class FittingSession(private val api: FittingTransport, private val scope: Corou
     private val mutable = MutableStateFlow(FittingState())
     val state: StateFlow<FittingState> = mutable.asStateFlow()
     private var session: Session? = null
-    private data class Attempt(val uploadId: String, val garmentId: String, val key: String = UUID.randomUUID().toString())
+    private data class Attempt(val request: CreateJob, val key: String = UUID.randomUUID().toString())
     private var attempt: Attempt? = null
     private var work: Job? = null
     private var poll: Job? = null
@@ -71,13 +82,15 @@ class FittingSession(private val api: FittingTransport, private val scope: Corou
             if (!current(ticket)) return@begin
             session = created
             mutable.value = state.value.copy(connected = true)
-            val garments = api.garments(created.sessionToken).items
+            val catalog = api.garments(created.sessionToken)
+            val garments = catalog.items
             if (!current(ticket)) return@begin
             val selected = garments.firstOrNull { "photo" in it.tags && it.generationReferenceUrl != null }
                 ?: garments.firstOrNull { it.generationReferenceUrl != null } ?: garments.firstOrNull()
             mutable.value = FittingState(FittingPhase.READY, garments, selected?.garmentId,
-                message = "选择上衣；拍摄生成会上传未镜像原图至当前服务", connected = true,
-                canCapture = selected?.generationReferenceUrl != null)
+                message = "选择服装；拍摄生成会上传未镜像原图至当前服务", connected = true,
+                canCapture = selected?.generationReferenceUrl != null,
+                outfitAvailable = catalog.outfitAvailable, accessories = catalog.accessories)
         }
     }
 
@@ -89,10 +102,19 @@ class FittingSession(private val api: FittingTransport, private val scope: Corou
 
     /** Catalog thumbnails share origin/auth and lifetime checks with preview downloads. */
     suspend fun thumbnail(garment: Garment): ByteArray {
+        return thumbnailBytes(garment.thumbnailUrl)
+    }
+
+    suspend fun accessoryThumbnail(accessory: OutfitAccessory): ByteArray {
+        require(accessory in state.value.accessories) { "配饰不在当前素材库" }
+        return thumbnailBytes(accessory.thumbnailUrl)
+    }
+
+    private suspend fun thumbnailBytes(url: String): ByteArray {
         val active = session ?: throw IllegalStateException("请先连接服务")
         val bytes = retryRequest {
             if (disposed || session !== active) throw CancellationException("会话已结束")
-            api.download(active.sessionToken, garment.thumbnailUrl)
+            api.download(active.sessionToken, url)
         }
         if (disposed || session !== active) { bytes.fill(0); throw CancellationException("会话已结束") }
         return bytes
@@ -124,11 +146,13 @@ class FittingSession(private val api: FittingTransport, private val scope: Corou
     private suspend fun reloadCatalog(ticket: Long, preferred: String?) {
         if (!current(ticket)) return
         val active = session ?: return
-        val items = api.garments(active.sessionToken).items
+        val catalog = api.garments(active.sessionToken)
+        val items = catalog.items
         if (!current(ticket) || session !== active) return
         val selected = items.firstOrNull { it.garmentId == preferred } ?: items.firstOrNull()
         mutable.value = state.value.copy(phase = FittingPhase.READY, garments = items, selectedId = selected?.garmentId,
-            canCapture = selected?.generationReferenceUrl != null, retry = RetryAction.NONE, message = "临时衣柜已更新；结束会话后恢复初始目录")
+            canCapture = selected?.generationReferenceUrl != null, retry = RetryAction.NONE, message = "临时衣柜已更新；结束会话后恢复初始目录",
+            outfitAvailable = catalog.outfitAvailable, accessories = catalog.accessories)
     }
 
     suspend fun preview(garment: Garment): ByteArray {
@@ -161,11 +185,15 @@ class FittingSession(private val api: FittingTransport, private val scope: Corou
     }
 
     /** Takes ownership even when the request is rejected or cancelled before it starts. */
-    fun generate(photo: CapturedPhoto) {
+    fun generate(photo: CapturedPhoto, outfit: OutfitRequest? = null) {
         val value = state.value
         val active = session
         val garment = value.selected
-        if (disposed || !value.canCapture || active == null || garment?.generationReferenceUrl == null) { photo.close(); return }
+        if (disposed || !value.canGenerate(outfit) || active == null ||
+            (outfit == null && garment?.generationReferenceUrl == null)
+        ) { photo.close(); return }
+        val snapshot = outfit?.let { OutfitRequest(it.garmentIds.toList(), it.accessoryIds.toList()) }
+        val garmentId = if (snapshot == null) garment?.garmentId else null
         clearImages()
         attempt = null
         mutable.value = state.value.copy(phase = FittingPhase.UPLOADING, original = photo.bytes.copyOf(), job = null,
@@ -173,7 +201,7 @@ class FittingSession(private val api: FittingTransport, private val scope: Corou
         val uploadWork = begin(RetryAction.NONE) { ticket ->
             val uploaded = api.upload(active.sessionToken, photo)
             if (!current(ticket)) return@begin
-            attempt = Attempt(uploaded.uploadId, garment.garmentId)
+            attempt = Attempt(CreateJob(uploaded.uploadId, garmentId, snapshot))
             create(ticket)
         }
         uploadWork?.invokeOnCompletion { photo.close() } ?: photo.close()
@@ -185,7 +213,7 @@ class FittingSession(private val api: FittingTransport, private val scope: Corou
         mutable.value = state.value.copy(phase = FittingPhase.CREATING, canCapture = false,
             message = "正在创建生成任务", retry = RetryAction.NONE)
         try {
-            val job = retryRequest { api.createJob(active.sessionToken, CreateJob(request.uploadId, request.garmentId), request.key) }
+            val job = retryRequest { api.createJob(active.sessionToken, request.request, request.key) }
             if (current(ticket)) accept(job, ticket)
         } catch (error: Exception) {
             if (error is CancellationException) throw error
@@ -199,12 +227,14 @@ class FittingSession(private val api: FittingTransport, private val scope: Corou
             RetryAction.CONNECT -> {
                 // Session creation may have succeeded before catalog retrieval failed.
                 if (session == null) connect() else begin(RetryAction.CONNECT) { ticket ->
-                    val items = retryRequest { api.garments(session!!.sessionToken).items }
+                    val catalog = retryRequest { api.garments(session!!.sessionToken) }
+                    val items = catalog.items
                     if (current(ticket)) {
                         val selected = items.firstOrNull { "photo" in it.tags && it.generationReferenceUrl != null }
                             ?: items.firstOrNull { it.generationReferenceUrl != null } ?: items.firstOrNull()
                         mutable.value = state.value.copy(phase = FittingPhase.READY, garments = items, selectedId = selected?.garmentId,
-                            retry = RetryAction.NONE, canCapture = selected?.generationReferenceUrl != null, message = "服务已连接")
+                            retry = RetryAction.NONE, canCapture = selected?.generationReferenceUrl != null, message = "服务已连接",
+                            outfitAvailable = catalog.outfitAvailable, accessories = catalog.accessories)
                     }
                 }
             }

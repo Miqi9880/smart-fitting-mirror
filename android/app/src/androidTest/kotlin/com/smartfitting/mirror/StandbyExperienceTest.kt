@@ -14,6 +14,9 @@ import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.smartfitting.mirror.network.FittingPhase
+import com.smartfitting.mirror.vision.BodyPresence
+import com.smartfitting.mirror.vision.StandingAssessment
+import com.smartfitting.mirror.vision.StandingCue
 import com.smartfitting.mirror.vision.SyntheticScenario
 import org.junit.Assert.*
 import org.junit.Assume.assumeTrue
@@ -70,7 +73,7 @@ class StandbyExperienceTest {
             ready
         }
     }
-    private fun generate(child: TryOnActivity) {
+    private fun submit(child: TryOnActivity) {
         val bitmap = Bitmap.createBitmap(100, 160, Bitmap.Config.ARGB_8888).apply { eraseColor(Color.CYAN) }
         val bytes = try { ByteArrayOutputStream().apply { bitmap.compress(Bitmap.CompressFormat.PNG, 100, this) }.toByteArray() }
         finally { bitmap.recycle() }
@@ -80,6 +83,12 @@ class StandbyExperienceTest {
             onChild(child) { ready = it.window.decorView.findViewWithTag<Button>("fitting.import.generate").isEnabled }; ready
         }
         onChild(child) { it.window.decorView.findViewWithTag<Button>("fitting.import.generate").performClick() }
+    }
+    private fun generate(child: TryOnActivity) {
+        submit(child)
+        awaitResult(child)
+    }
+    private fun awaitResult(child: TryOnActivity) {
         await {
             var ready = false
             onChild(child) { ready = model(it).state.value.phase == FittingPhase.SUCCEEDED &&
@@ -211,6 +220,45 @@ class StandbyExperienceTest {
             returned(scenario, "无操作")
             assertTrue(bytes.all { it == 0.toByte() }); assertTrue(child.isFinishing)
             evidence("inactivity-ended")
+        }
+    }
+
+    @Test fun waitingForGenerationShowsProgressAndKeepsGuestAfterThirtySecondsWithoutAPerson() {
+        val host = localHost()
+        ActivityScenario.launch(StandbyActivity::class.java).use { scenario ->
+            val child = start(scenario, host)
+            submit(child)
+            await {
+                var waiting = false
+                onChild(child) { waiting = model(it).state.value.phase == FittingPhase.WAITING }
+                waiting
+            }
+            onChild(child) {
+                val root = it.window.decorView
+                val model = model(it)
+                assertTrue(model.state.value.generationInProgress)
+                assertEquals("当前：原始照片，搭配生成中...",
+                    root.findViewWithTag<TextView>("fitting.comparison.status").text.toString())
+                val progress = root.findViewWithTag<ProgressBar>("fitting.comparison.progress")
+                assertTrue(progress.isShown)
+                assertTrue(progress.isIndeterminate)
+                val start = SystemClock.elapsedRealtime()
+                val absence = StandingAssessment(BodyPresence.ABSENT, StandingCue.NO_PERSON)
+                val timeout = model.experienceClock.policy.absentMs
+                for (elapsed in 0L..timeout step 1000) {
+                    model.observeBody(absence, start + elapsed)
+                    assertNull(model.checkExperienceTimeout(start + elapsed))
+                }
+                assertFalse(it.isFinishing)
+            }
+            awaitResult(child)
+            onChild(child) {
+                val root = it.window.decorView
+                assertFalse(root.findViewWithTag<ProgressBar>("fitting.comparison.progress").isShown)
+                assertTrue(root.findViewWithTag<TextView>("fitting.comparison.status").text.contains("并排对比"))
+                root.findViewWithTag<Button>("fitting.end").performClick()
+            }
+            returned(scenario, "已清理")
         }
     }
 

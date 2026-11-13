@@ -7,6 +7,8 @@ import com.smartfitting.mirror.network.*
 import com.smartfitting.mirror.vision.*
 import com.smartfitting.mirror.contracts.Garment
 import com.smartfitting.mirror.contracts.GarmentCategory
+import com.smartfitting.mirror.contracts.AccessoryCategory
+import com.smartfitting.mirror.contracts.OutfitAccessory
 import com.smartfitting.mirror.tryon.OutfitFit
 import com.smartfitting.mirror.tryon.PreviewViewport
 import kotlinx.coroutines.Job
@@ -26,14 +28,16 @@ class TryOnModel(application: Application) : AndroidViewModel(application) {
     private var bridge: Job? = null
     var baseUrl = "http://10.0.2.2:8000"
     var rgb = true
+    var rgbd = false
     var cameraId: String? = null
     var running = false
     var visionFailure: String? = null
     var mirrored = true
     var synthetic = SyntheticSettings()
     var playing = true
-    var showLandmarks = true
+    var showLandmarks = false
     var protectHead = true
+    var captureDelaySeconds = 0
     var previewFullscreen = false
     var previewViewport = PreviewViewport()
     internal var resultComparisonMode = ResultComparisonMode.SIDE_BY_SIDE
@@ -43,6 +47,10 @@ class TryOnModel(application: Application) : AndroidViewModel(application) {
     var catalogQuery = ""
     var catalogAssets = emptyList<com.smartfitting.mirror.contracts.Garment>()
     var outfit = emptyMap<GarmentCategory,Garment>()
+    internal var generateOutfit = false
+    internal var outfitAccessories = emptyMap<AccessoryCategory, OutfitAccessory>()
+    var fitTarget: GarmentCategory? = null
+    internal var fitTargetExplicit = false
     var lastOutfitSelection: Garment? = null
     val videoExperience = com.smartfitting.mirror.video.VideoExperienceMemory()
     internal val experienceClock = GuestExperienceClock()
@@ -83,12 +91,18 @@ class TryOnModel(application: Application) : AndroidViewModel(application) {
         experienceClock.end(); startExperience()
         bridge?.cancel()
         controller?.close()
-        outfit = emptyMap(); lastOutfitSelection = null
+        outfit = emptyMap(); fitTarget = null; fitTargetExplicit = false; lastOutfitSelection = null
+        generateOutfit = false; outfitAccessories = emptyMap()
         resultComparisonMode = ResultComparisonMode.SIDE_BY_SIDE
         baseUrl = url.trim()
         val next = FittingSession(api, viewModelScope)
         controller = next
-        bridge = viewModelScope.launch { next.state.collect { mutable.value = it } }
+        bridge = viewModelScope.launch {
+            next.state.collect {
+                experienceClock.setGenerating(it.generationInProgress, android.os.SystemClock.elapsedRealtime())
+                mutable.value = it
+            }
+        }
         next.connect()
     }
 

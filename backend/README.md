@@ -1,8 +1,18 @@
 # 智能穿衣镜后端服务
 
-实现 HTTP 合同 V0.4.1（兼容旧试衣路径），含会话、上传、生成任务、六品类初始衣柜及详情/增删改，当前下架连帽款后48件。SQLite 保存内置基础目录，游客的临时编辑隔离保存。默认仍为不联网的 MOCK。选择 `--provider aidge-cos` 但不加 `--enable-real-provider` 时，服务明确拒绝生成，不读云端配置、不创建假成功任务；只有同时提供启用开关才会构造 Aidge/COS 客户端。[当前商品素材与组合预览](../docs/studio-outfits.md)。
+实现 HTTP 合同 V0.5.0，含会话、上传、单件和整套照片生成、六品类初始衣柜（下架连帽款后 48 件）及配饰目录。SQLite 保存内置基础目录，游客的临时编辑隔离保存。默认仍为不联网的 MOCK。选择 `--provider aidge-cos` 但不加 `--enable-real-provider` 时，服务明确拒绝生成，不读云端配置、不创建假成功任务；只有同时提供启用开关才会构造 Aidge/COS 客户端。[当前商品素材与组合预览](../docs/studio-outfits.md)
 
 2026-10-29视频HTTP升级0.4.1，推荐JSON保持0.4.0兼容。`video_contracts.py`提供共享DTO；目录已有7条Pexels授权参考内容，按[安装说明](assets/videos/README.md)安装本地媒体后可播放。未装包不返回缺文件的候选。公共视频／封面支持GET、HEAD和字节Range，不携带游客凭证。按[正式视频接口](../docs/interfaces/video-recommendation.md)；实现边界与检查见[本地记录](../docs/reports/video-library-route-2026-10-29.md)。COS/Aidge仍按负责人当前决定暂停，不为视频接口启用付费服务。
+
+[`LocalModelProvider`](local_model_provider.py) 将通过校验的 PNG／JPEG 发送给私有回环模型服务，连接和推理共用任务时限。已通过 SSH 转发与真实 FLUX 工作者完成获准样例联调；公共 CLI 现在支持显式选择本地提供方，默认仍为 MOCK。服务启停和实测见 [FLUX 部署记录](../docs/reports/flux-worker-2026-11-06.md)。
+
+显式启动本地模型提供方（需在同一电脑运行模型服务，或先由负责人建立 SSH 本地转发）：
+
+```powershell
+.venv312\Scripts\python.exe -m backend --provider local-model --local-model-url http://127.0.0.1:8787
+```
+
+命令不读取 Aidge／COS 配置。使用支持 `/internal/outfit` 的 FLUX 工作者即可生成整套，旧工作者仍可生成单件上衣。默认不带参数时使用 MOCK，搭配任务返回带 MOCK 标识的原图。私有模型调用在匿名统计中标记为 `provider=local-model`、`mode=real`。
 
 ## 启动
 
@@ -63,7 +73,7 @@ macOS/Linux 将 `.venv\Scripts\python` 换成 `.venv/bin/python`。仅运行服�
 
 按 [HTTP 合同](../contracts/openapi.json) 和 [行为约定](../docs/interfaces/backend.md) 调用。创建会话后，在目录、上传、任务、素材图和结果图请求中都携带服务返回的 `Authorization: Bearer ...`。图片地址也受会话授权保护；不要把授权头转发到不同来源的 URL。
 
-默认目录为六品类51件官网商品，上衣15、长裤15、连衣裙3、半裙6、短裤3、帽子9，[元数据](assets/studio/manifest.json) 入Git，PNG从v3透明运行包安装。当前只有上衣可发起单件生成（默认MOCK，显式真实模式为Aidge），其他预览品类返回 `422 GARMENT_NOT_GENERATABLE`，不生成整套搭配。旧三件合成上衣及白T恤仅在显式 `--catalog-profile regression` 下出现，自动化回归使用独立数据库（如 `--catalog-db data/catalog-regression.sqlite3`），不要与正常演示目录混用。
+默认目录为六品类 48 件官网商品，上衣 12、长裤 15、连衣裙 3、半裙 6、短裤 3、帽子 9。[商品元数据](assets/studio/manifest.json) 入 Git，PNG 从 v3 透明运行包安装。[配饰](assets/accessories/README.md) 随代码提供。旧三件合成上衣及白 T 恤仅在显式 `--catalog-profile regression` 下出现，自动化回归使用独立数据库（如 `--catalog-db data/catalog-regression.sqlite3`）。
 
 上传限制为 JPEG/PNG、原始文件不超过 10 MiB、解码像素不超过 1600 万；读取 EXIF 方向后转成竖正像素并去除元数据。标准化 PNG 可能大于输入文件，按内存容量管理。资源上限：100 个会话、每会话 8 次保留上传/30 个任务、输入与结果总计 128 MiB（不含解码和框架临时内存）。每分钟同 IP 创建会话 20 次、每会话保存上传 10 次、创建新任务尝试 6 次；已成功绑定的幂等重放不消耗新建配额。
 

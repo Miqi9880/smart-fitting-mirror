@@ -5,10 +5,10 @@ import com.smartfitting.mirror.contracts.Landmark
 import kotlin.math.PI
 import kotlin.math.sin
 
-enum class SyntheticScenario { DEMO, STILL, TRANSLATE, SCALE, PARTIAL, LOST, RECOVERY }
+enum class SyntheticScenario { STILL, TRANSLATE, SCALE, PARTIAL, LOST, RECOVERY, ARM_CROSS }
 enum class SyntheticViewport(val width: Int, val height: Int) { PORTRAIT(480, 640), LANDSCAPE(640, 480) }
 data class SyntheticSettings(
-    val scenario: SyntheticScenario = SyntheticScenario.DEMO,
+    val scenario: SyntheticScenario = SyntheticScenario.STILL,
     val viewport: SyntheticViewport = SyntheticViewport.PORTRAIT,
 )
 
@@ -22,9 +22,8 @@ object SyntheticScene {
         require(step >= 0)
         val phase = step % CYCLE_STEPS
         if (scenario == SyntheticScenario.LOST ||
-            (scenario == SyntheticScenario.DEMO && phase in 60L..69L) ||
             (scenario == SyntheticScenario.RECOVERY && phase in 40L..59L)) return Keypoints()
-        val shift = if (scenario == SyntheticScenario.TRANSLATE || scenario == SyntheticScenario.DEMO)
+        val shift = if (scenario == SyntheticScenario.TRANSLATE)
             (.10 * sin(2 * PI * phase / CYCLE_STEPS)).toFloat() else 0f
         // Vary apparent body size only; this is not a depth or distance measurement.
         val scale = if (scenario == SyntheticScenario.SCALE)
@@ -37,9 +36,14 @@ object SyntheticScene {
             point(.6f, .5f), point(.4f, .5f),
             point(.6f, .7f), point(.4f, .7f), point(.6f, .87f), point(.4f, .87f),
             point(.57f, .14f), point(.43f, .14f))
-        val current = if (scenario == SyntheticScenario.PARTIAL ||
-            (scenario == SyntheticScenario.RECOVERY && phase in 20L..39L)) points.copy(leftShoulder = null)
-        else points
+        val current = when {
+            scenario == SyntheticScenario.PARTIAL ||
+                (scenario == SyntheticScenario.RECOVERY && phase in 20L..39L) -> points.copy(leftShoulder = null)
+            scenario == SyntheticScenario.ARM_CROSS -> points.copy(
+                rightElbow = point(.31f, .42f), rightWrist = point(.58f, .34f),
+            )
+            else -> points
+        }
         // Fit the same pixel-space body into each canvas before normalizing. V07:
         // equal normalized x/y on different aspect ratios would stretch the person.
         val scaleToFit = minOf((viewport.width - 1) / 479f, (viewport.height - 1) / 639f)

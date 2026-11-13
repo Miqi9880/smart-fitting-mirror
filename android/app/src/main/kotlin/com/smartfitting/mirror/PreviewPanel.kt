@@ -3,6 +3,7 @@ package com.smartfitting.mirror
 import android.content.Context
 import android.content.res.Configuration
 import android.graphics.Color
+import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
@@ -15,7 +16,7 @@ import kotlin.math.roundToInt
 
 /** Expands the existing, still attached renderer. No second camera, bitmap copy or reparenting. */
 internal class PreviewPanel(context: Context, private val header: View, val preview: TryOnView,
-                            private val footer: View, toggleInput: () -> Unit,
+                            private val footer: View, cancelCountdown: () -> Unit, toggleInput: () -> Unit,
                             private val toggleFullscreen: () -> Unit) : LinearLayout(context) {
     private val fullButton = button("全屏预览","fitting.preview.fullscreen") { toggleFullscreen() }
     private val minus = button("－","fitting.preview.minus") { preview.viewport = preview.viewport.zoomBy(1 / 1.25f) }
@@ -29,6 +30,27 @@ internal class PreviewPanel(context: Context, private val header: View, val prev
     val sourceStatus = TextView(context).apply {
         tag = "fitting.preview.source"; textSize = 12f; setTextColor(Color.DKGRAY)
         setPadding(dp(8),0,dp(8),dp(3)); text = "尚未开启预览"
+    }
+    private val countdownNumber = TextView(context).apply {
+        tag = "fitting.preview.countdown"
+        textSize = 56f
+        setTextColor(Color.BLACK)
+        gravity = Gravity.CENTER
+        minWidth = dp(88)
+    }
+    private val countdown = LinearLayout(context).apply {
+        orientation = HORIZONTAL
+        gravity = Gravity.CENTER_VERTICAL
+        visibility = GONE
+        setPadding(dp(12), 0, dp(12), 0)
+        addView(TextView(context).apply {
+            text = "请退后，让全身入镜"
+            textSize = 16f
+            setTextColor(Color.DKGRAY)
+        }, LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        addView(countdownNumber)
+        addView(button("取消拍摄", "fitting.preview.countdown.cancel", cancelCountdown),
+            LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
     }
     var fullscreen: Boolean = false
         private set
@@ -47,6 +69,7 @@ internal class PreviewPanel(context: Context, private val header: View, val prev
             }
         })
         addView(zoomText); addView(sourceStatus)
+        addView(countdown)
         addView(preview)
         addView(footer)
         setFullscreen(false)
@@ -76,9 +99,14 @@ internal class PreviewPanel(context: Context, private val header: View, val prev
         minus.isEnabled = zoom > 1f; plus.isEnabled = zoom < 3f
     }
 
-    fun renderInput(running: Boolean, failed: Boolean, rgb: Boolean) {
+    fun renderInput(running: Boolean, failed: Boolean, source: String) {
         input.text = when { running -> "停止预览"; failed -> "重试预览"; else -> "开始预览" }
-        input.contentDescription = "${input.text}：${if (rgb) "RGB 摄像头，保持已选相机通道" else "合成样例，非真人"}"
+        input.contentDescription = "${input.text}：$source"
+    }
+
+    fun renderCountdown(seconds: Int?) {
+        countdownNumber.text = seconds?.toString().orEmpty()
+        countdown.visibility = if (seconds == null) GONE else VISIBLE
     }
 
     private fun button(text: String, tag: String, action: () -> Unit) = Button(context).apply {

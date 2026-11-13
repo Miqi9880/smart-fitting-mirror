@@ -8,6 +8,7 @@ import android.view.ViewGroup
 import android.widget.Button
 import android.widget.ImageView
 import android.widget.LinearLayout
+import android.widget.ProgressBar
 import android.widget.TextView
 import kotlinx.coroutines.CoroutineScope
 
@@ -21,6 +22,7 @@ internal class ResultComparisonPanel(context: Context, scope: CoroutineScope,
     private var resultSource: ByteArray? = null
     private var originalFailed = false
     private var resultFailed = false
+    private var generating = false
     private var preferred = ResultComparisonMode.SIDE_BY_SIDE
     private val originalView = image("fitting.before", "原始照片，未镜像")
     private val resultView = image("fitting.after", "生成结果，原图方向")
@@ -35,6 +37,11 @@ internal class ResultComparisonPanel(context: Context, scope: CoroutineScope,
     private val pairButton = button("并排对比", "fitting.comparison.pair", ResultComparisonMode.SIDE_BY_SIDE)
     private val message = label("", 13f).apply {
         tag = "fitting.comparison.status"; accessibilityLiveRegion = ACCESSIBILITY_LIVE_REGION_POLITE
+    }
+    private val progress = ProgressBar(context).apply {
+        tag = "fitting.comparison.progress"
+        isIndeterminate = true
+        importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_NO
     }
     private val originalColumn = column("原始照片", originalView)
     private val resultColumn = column("生成结果", resultView)
@@ -53,15 +60,22 @@ internal class ResultComparisonPanel(context: Context, scope: CoroutineScope,
             addView(resultButton, LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         })
         addView(pairButton, LayoutParams(-1, ViewGroup.LayoutParams.WRAP_CONTENT))
-        addView(message); addView(images, LayoutParams(-1, dp(220)))
+        addView(LinearLayout(context).apply {
+            orientation = HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            addView(progress, LayoutParams(dp(24), dp(24)).apply { marginEnd = dp(8) })
+            addView(message, LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        })
+        addView(images, LayoutParams(-1, dp(220)))
         updateLayout()
     }
 
     /** Sources remain owned by FittingSession; OwnedImage holds only decoded/private copies. */
-    fun render(before: ByteArray?, after: ByteArray?, mode: ResultComparisonMode) {
+    fun render(before: ByteArray?, after: ByteArray?, mode: ResultComparisonMode, generating: Boolean = false) {
         if (originalSource !== before) originalFailed = false
         if (resultSource !== after) resultFailed = false
         originalSource = before; resultSource = after; preferred = mode
+        this.generating = generating
         original.update(before); result.update(after)
         updateLayout()
     }
@@ -70,6 +84,7 @@ internal class ResultComparisonPanel(context: Context, scope: CoroutineScope,
         original.clear(); result.clear()
         originalSource = null; resultSource = null
         originalFailed = false; resultFailed = false
+        generating = false
         preferred = ResultComparisonMode.SIDE_BY_SIDE
         updateLayout()
     }
@@ -105,16 +120,19 @@ internal class ResultComparisonPanel(context: Context, scope: CoroutineScope,
         val singleHeight = if (resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE) 260 else 360
         images.layoutParams?.height = dp(if (mode == ResultComparisonMode.SIDE_BY_SIDE) 220 else singleHeight)
         images.requestLayout()
-        message.text = when {
+        progress.visibility = if (generating) VISIBLE else GONE
+        val status = when {
             originalFailed || resultFailed -> listOfNotNull(
                 if (originalFailed) "原始照片无法读取" else null,
                 if (resultFailed) "生成结果无法读取" else null).joinToString("；")
+            generating && hasOriginal -> "当前：原始照片，搭配生成中..."
+            generating -> "搭配生成中..."
             mode == null -> "尚无对比图片，生成后可一键切换查看"
-            !hasResult -> "当前：原始照片 · 生成结果尚未就绪"
             mode == ResultComparisonMode.ORIGINAL -> "当前：原始照片"
             mode == ResultComparisonMode.RESULT -> "当前：生成结果"
             else -> "当前：并排对比 · 左侧原图，右侧结果"
         }
+        if (message.text.toString() != status) message.text = status
     }
 
     private fun column(title: String, view: ImageView) = LinearLayout(context).apply {
