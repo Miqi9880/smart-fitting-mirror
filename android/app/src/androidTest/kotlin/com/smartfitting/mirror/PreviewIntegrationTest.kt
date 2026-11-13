@@ -1,6 +1,7 @@
 package com.smartfitting.mirror
 
 import android.graphics.Bitmap
+import android.graphics.Canvas
 import android.os.SystemClock
 import android.widget.Button
 import android.widget.EditText
@@ -12,6 +13,8 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.smartfitting.mirror.network.FittingPhase
 import com.smartfitting.mirror.tryon.PreviewViewport
+import com.smartfitting.mirror.tryon.TryOnView
+import com.smartfitting.mirror.vision.SyntheticScenario
 import org.junit.Assert.*
 import org.junit.Assume.assumeTrue
 import org.junit.Test
@@ -21,6 +24,54 @@ import java.io.File
 /** Opt-in local MOCK catalog only. Never opens a camera or uploads a photo. */
 @RunWith(AndroidJUnit4::class)
 class PreviewIntegrationTest {
+    @Test fun renderChestOcclusionWithTheCatalogTee() {
+        val args = InstrumentationRegistry.getArguments()
+        assumeTrue(args.getString("arm_evidence") == "true")
+        val host = args.getString("studio_test_host")
+        require(host in listOf("http://10.0.2.2:8010", "http://127.0.0.1:8010"))
+        ActivityScenario.launch(TryOnActivity::class.java).use { scenario ->
+            fun await(check: (TryOnActivity) -> Boolean) {
+                val deadline = SystemClock.elapsedRealtime() + 20_000
+                do {
+                    var done = false
+                    scenario.onActivity { done = check(it) }
+                    if (done) return
+                    SystemClock.sleep(75)
+                } while (SystemClock.elapsedRealtime() < deadline)
+                fail("Expected preview and catalog asset to be ready")
+            }
+            fun evidence(name: String) {
+                scenario.onActivity {
+                    val view = it.window.decorView.findViewWithTag<TryOnView>("fitting.preview")
+                    val image = Bitmap.createBitmap(view.width, view.height, Bitmap.Config.ARGB_8888)
+                    try {
+                        view.draw(Canvas(image))
+                        val file = File(it.getExternalFilesDir(null), "evidence/$name.png")
+                        file.parentFile!!.mkdirs()
+                        file.outputStream().use { output -> image.compress(Bitmap.CompressFormat.PNG, 100, output) }
+                    } finally { image.recycle() }
+                }
+            }
+            scenario.onActivity {
+                ViewModelProvider(it)[TryOnModel::class.java].connect(host!!)
+                it.window.decorView.findViewWithTag<Button>("fitting.mock").performClick()
+            }
+            await { ViewModelProvider(it)[TryOnModel::class.java].state.value.canSelect }
+            scenario.onActivity {
+                ViewModelProvider(it)[TryOnModel::class.java].controller!!.select("studio_blue_tee")
+                val root = it.window.decorView
+                root.findViewWithTag<Button>("synthetic.play").performClick()
+                root.findViewWithTag<Spinner>("synthetic.scenario").setSelection(SyntheticScenario.ARM_CROSS.ordinal)
+            }
+            await {
+                val root = it.window.decorView
+                root.findViewWithTag<TextView>("fitting.asset").text.contains("已加载 1/1") &&
+                    root.findViewWithTag<TextView>("fitting.vision").text.contains("姿态辅助遮挡")
+            }
+            evidence("arm-cross")
+        }
+    }
+
     @Test fun syntheticThreePiecePreviewCanExpandZoomResetAndEnd() {
         val instrumentation=InstrumentationRegistry.getInstrumentation()
         val host=InstrumentationRegistry.getArguments().getString("studio_test_host")
@@ -61,7 +112,7 @@ class PreviewIntegrationTest {
                 root.findViewWithTag<EditText>("fitting.address").setText(host)
                 root.findViewWithTag<Button>("fitting.connect").performClick()
                 root.findViewWithTag<Button>("fitting.mock").performClick()
-                root.findViewWithTag<Spinner>("synthetic.scenario").setSelection(1)
+                root.findViewWithTag<Spinner>("synthetic.scenario").setSelection(SyntheticScenario.STILL.ordinal)
                 root.findViewWithTag<Spinner>("synthetic.viewport").setSelection(1)
             }
             await { model(it).state.value.canSelect }

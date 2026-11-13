@@ -93,7 +93,7 @@ def test_empty_wardrobe_and_expiry_reset(wardrobe):
     c, session, now = wardrobe; h = session()
     for item in c.get('/api/v1/garments', headers=h).json()['items']:
         assert c.delete('/api/v1/garments/'+item['garment_id'],headers=h).status_code == 204
-    assert c.get('/api/v1/garments',headers=h).json() == {'items':[]}
+    assert c.get('/api/v1/garments',headers=h).json()['items'] == []
     assert c.post('/api/v1/garments',headers=h,json=entry()).status_code == 201
     now[0] += 1801
     assert c.get('/api/v1/garments',headers=h).status_code == 401

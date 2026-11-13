@@ -56,7 +56,27 @@ internal object DrapedPlacement {
                 .5f+a.rightShoulder.x*(item.previewImage.width-1),.5f+a.leftShoulder.x*(item.previewImage.width-1),shoulderR,shoulderL)
         }
         rows += Row((sr.y+sl.y)*.5f,sr.x,sl.x,tr,tl)
-        rows += Row((er.y+el.y)*.5f,er.x,el.x,centre-half,centre+half)
+        // Intermediate control rows let the drape follow the hip-knee-ankle
+        // chain, so the hem can swing asymmetrically with the legs instead of
+        // hanging as a rigid trapezoid. Both edges of every row still share one
+        // width, so the skirt never splits into moving legs.
+        val hipY=(sr.y+sl.y)*.5f; val hemY=(er.y+el.y)*.5f
+        // Width follows the source trapezoid exactly: every intermediate row is
+        // a plain linear blend between the hip row and the hem row. The rows
+        // exist only so the drape can bend along the hip-knee-ankle chain; they
+        // deliberately add no sideways swell, because widening a flat 2-D panel
+        // reads as an inflated balloon rather than as volume.
+        if (hemY-hipY>=8) for (step in 1..3) {
+            val t=step/4f
+            val kr=hem(frame,false,ratio*t) ?: return emptyList()
+            val kl=hem(frame,true,ratio*t) ?: return emptyList()
+            val c=(kr+kl)*.5f
+            // Half-width at this row: straight blend from the hip row to the
+            // hem row, so the silhouette stays the source trapezoid.
+            val rhalf=span*.5f+(half-span*.5f)*t
+            rows += Row(hipY+(hemY-hipY)*t,sr.x+(er.x-sr.x)*t,sl.x+(el.x-sl.x)*t,c-rhalf,c+rhalf)
+        }
+        rows += Row(hemY,er.x,el.x,centre-half,centre+half)
         return panels(item,rows,false,span)
     }
     fun shorts(frame: VisionFrame, item: Garment): List<OutfitPlacement.Patch> {
@@ -103,20 +123,51 @@ internal object DrapedPlacement {
             }
         }
         val result=mutableListOf<OutfitPlacement.Patch>()
+        // Adjacent strips share their horizontal edges. Clipping each strip to
+        // its own quad leaves a hairline of half-covered pixels along every
+        // shared edge: the antialiased coverage of the two strips does not add
+        // up to one, so the background shows through as a dense set of vertical
+        // seams. Each strip is therefore pushed [pad] pixels past its interior
+        // top and bottom edges, so neighbours overlap and the hairline is
+        // painted with fabric on both sides instead of blending with the photo.
+        // The pad is measured along the strip's own normal, so a strongly eased
+        // or angled skirt still overlaps by a real number of pixels instead of
+        // by a distance that shrinks with the transform.
+        val pad=3f
+        fun edged(row: Int, outward: Float): Pair<P,P> {
+            val base=row*columns
+            val l=P(d[base].x,d[base].y); val r=P(d[base+columns-1].x,d[base+columns-1].y)
+            if (outward==0f) return l to r
+            // Unit normal of the row, oriented towards the hem (canvas +y)
+            // whichever way the row happens to run. Column 0 is the image's
+            // right anchor, so a row can run right-to-left; flipping ny to be
+            // positive keeps the direction meaningful in every case.
+            val ex=r.x-l.x; val ey=r.y-l.y
+            val len=hypot(ex,ey)
+            if (len<.01f) return P(l.x,l.y+outward) to P(r.x,r.y+outward)
+            var nx=ey/len; var ny=-ex/len
+            if (ny<0) { nx=-nx; ny=-ny }
+            val sign=if (outward>0f) 1f else -1f
+            val dy=ny*pad*sign; val dx=nx*pad*sign
+            return P(l.x+dx,l.y+dy) to P(r.x+dx,r.y+dy)
+        }
         for (row in 0 until rows.size-1) for (col in 0 until columns-1) {
             val a=row*columns+col; val b=a+1; val c=a+columns; val e=c+1
+            val (topL,topR)=edged(row,if (row>0) -1f else 0f)
+            val (bottomL,bottomR)=edged(row+1,if (row<rows.size-2) 1f else 0f)
+            val quadD=listOf(topL,topR,bottomR,bottomL)
             if (!split) {
-                val quad=intArrayOf(a,b,e,c)
                 // A projective strip preserves fabric lines across the whole skirt;
                 // two large affine triangles introduce an artificial diagonal crease.
                 for (i in 0..3) {
-                    val u=d[quad[(i+1)%4]]-d[quad[i]]
-                    val v=d[quad[(i+2)%4]]-d[quad[(i+1)%4]]
+                    val u=quadD[(i+1)%4]-quadD[i]
+                    val v=quadD[(i+2)%4]-quadD[(i+1)%4]
                     val cross=u.x*v.y-u.y*v.x
                     if (!cross.isFinite() || cross<1) return emptyList()
                 }
-                fun flatten(p: List<P>)=quad.flatMap { listOf(p[it].x,p[it].y) }.toFloatArray()
-                result+=OutfitPlacement.Patch(flatten(s),flatten(d),clipToDestination=true)
+                val quadS=listOf(s[a],s[b],s[e],s[c])
+                fun flatten(p: List<P>)=p.flatMap { listOf(it.x,it.y) }.toFloatArray()
+                result+=OutfitPlacement.Patch(flatten(quadS),flatten(quadD),clipToDestination=true)
                 continue
             }
             for (indices in listOf(intArrayOf(a,b,e),intArrayOf(a,e,c))) {

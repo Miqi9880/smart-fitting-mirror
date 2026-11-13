@@ -1,0 +1,8 @@
+{
+  "items": [
+    {"accessory_id": "brown_belt", "name": "棕色皮带 · 黄铜方扣", "category": "belt"},
+    {"accessory_id": "black_belt", "name": "黑色皮带 · 银色方扣", "category": "belt"},
+    {"accessory_id": "silver_studs", "name": "银色圆珠耳钉", "category": "earrings"},
+    {"accessory_id": "gold_hoops", "name": "金色细圈耳饰", "category": "earrings"}
+  ]
+}

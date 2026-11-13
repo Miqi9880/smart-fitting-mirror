@@ -6,8 +6,8 @@
 
 | 人员／长期 Issue | 下周主要交付 | 提前完成后 |
 | --- | --- | --- |
-| Miqi9880／[#3](https://github.com/Miqi9880/smart-fitting-mirror/issues/3)、[#26](https://github.com/Miqi9880/smart-fitting-mirror/issues/26) | FLUX 回环推理服务，与后端用获准样例联调，测端到端时间和超时资源状态 | 按老师反馈安排 3D 单件与实机检查 |
-| haiyangniu191-design／[#5](https://github.com/Miqi9880/smart-fitting-mirror/issues/5) | 复用 #55，显式接入生成任务并验证成功与失败路径；先用本机 stub | 实际联通后盘点授权视频目录 |
+| Miqi9880／[#3](https://github.com/Miqi9880/smart-fitting-mirror/issues/3)、[#26](https://github.com/Miqi9880/smart-fitting-mirror/issues/26) | FLUX 回环服务已部署并通过获准样例联调，接着验 App 生成流程和镜子现场 | 二维贴合复审及素材支持 |
+| haiyangniu191-design／[#5](https://github.com/Miqi9880/smart-fitting-mirror/issues/5) | 本地提供方 CLI、生成任务接线、匿名统计分类及 stub 成功／失败／超时／会话清理验证已完成，待审分支见[接入验证报告](reports/local-model-integration-2026-11-06.md) | 实际端到端由负责人用获准样例联测后，盘点授权视频目录 |
 | lyf-bee／[#6](https://github.com/Miqi9880/smart-fitting-mirror/issues/6) | #60 由负责人复审；从合成输入确认并改善一款半裙的贴合，或交归因报告 | 按复审结果收尾，明确其他贴合问题所缺输入 |
 | yyyrrrxxx／[#7](https://github.com/Miqi9880/smart-fitting-mirror/issues/7) | 视频页读屏、焦点和大字号查漏；模拟器受阻时先交静态修复与待跑清单 | 用现有 MOCK 回归生成等待、失败、结果切换 |
 
@@ -15,7 +15,8 @@
 
 - [#55](https://github.com/Miqi9880/smart-fitting-mirror/pull/55) 已合并独立适配器，后端全量 193 通过、1 跳过；默认 MOCK，COS/Aidge 保持暂停。
 - FLUX.2 klein 4B 固定权重已在老师服务器用 5 组获准上衣样例做过扩展验证，两轮共出 10 张图。模型已加载后的推理约 3.1–3.8 秒，尚待测 App 端到端；纽扣、细字和手部接触仍会有偏差。
-- [#69](https://github.com/Miqi9880/smart-fitting-mirror/pull/69)／[#70](https://github.com/Miqi9880/smart-fitting-mirror/pull/70) 已交付单件 3D 真人驱动并按反馈修正。负责人已初看镜子效果；正式贴合、完整转身和连续运行仍待实测。3D 与 FLUX 静态生成独立。
+- [FLUX 部署](reports/flux-worker-2026-11-06.md)已验证真实 PNG、忙碌、超时、断开恢复及停服显存释放。已完成获准 CG 的后端会话闭环，公共 CLI 和 App 现场复测继续。
+- 老师认为 3D 样件实机效果未达预期，负责人暂停该路线。实时侧继续改进二维贴合。
 - 原图／生成结果切换、贴合目标选择、视频接口和播放器均已有实现。只补尚缺的验证和已复现问题。
 
 每人一个主要任务。周一 11/9 确认输入和分工，周三 11/11 回填首个结果或阻塞，周五 11/13 争取可审阅 PR／报告。周末视条件联调，提前完成可立即接下一项。日期是进度检查点，按企业滚动交付。

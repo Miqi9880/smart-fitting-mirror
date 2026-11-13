@@ -27,6 +27,26 @@ class GuestExperienceClockTest {
         clock.observe(BodyPresence.ABSENT, 300)
         assertEquals(GuestEndReason.NO_PERSON, clock.expired(300))
     }
+    @Test fun waitingForGenerationResetsAbsenceAndRestartsInactivityAfterward() {
+        val clock = clock()
+        for (time in 0L..250L step 50) clock.observe(BodyPresence.ABSENT, time)
+        clock.setGenerating(true, 250)
+        for (time in 300L..1200L step 50) {
+            clock.observe(BodyPresence.ABSENT, time)
+            assertNull(clock.expired(time))
+        }
+        clock.setGenerating(false, 1200)
+        for (time in 1200L..1450L step 50) clock.observe(BodyPresence.ABSENT, time)
+        assertNull(clock.expired(1499))
+        clock.observe(BodyPresence.ABSENT, 1500)
+        assertEquals(GuestEndReason.NO_PERSON, clock.expired(1500))
+    }
+    @Test fun generationStillHonorsTheSessionLimit() {
+        val clock = clock()
+        clock.setGenerating(true, 250)
+        assertNull(clock.expired(1999))
+        assertEquals(GuestEndReason.SESSION_LIMIT, clock.expired(2000))
+    }
     @Test fun uncertainOrPresentEvidenceBreaksAbsenceStreak() {
         for (presence in listOf(BodyPresence.PRESENT, BodyPresence.UNCERTAIN)) {
             val clock = clock()

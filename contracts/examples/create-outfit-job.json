@@ -1,0 +1,7 @@
+{
+  "upload_id": "upload_mock_01",
+  "outfit": {
+    "garment_ids": ["upper_demo_01", "lower_demo_01"],
+    "accessory_ids": ["silver_studs"]
+  }
+}

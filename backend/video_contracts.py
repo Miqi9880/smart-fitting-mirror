@@ -28,6 +28,7 @@ class VideoRecommendationRequest(VideoModel):
     makeup_ids: list[Identifier] = Field(default_factory=list, max_length=8)
     user_tags: list[VideoTag] = Field(default_factory=list, max_length=20)
     limit: int = Field(default=5, ge=1, le=20)
+    semantic_job_id: Identifier | None = Field(default=None, exclude_if=lambda value: value is None)
 
     @model_validator(mode="after")
     def unique_context(self):
@@ -106,10 +107,25 @@ class VideoRecommendation(VideoModel):
         return self
 
 
+class VideoSemanticAnalysis(VideoModel):
+    job_id: Identifier
+    status: Literal["used", "no_tags", "unavailable"]
+    tags: list[VideoTag] = Field(max_length=4)
+
+    @model_validator(mode="after")
+    def status_and_tags(self):
+        keys = {(tag.dimension, tag.value) for tag in self.tags}
+        if ((self.status == "used") != bool(self.tags) or len(keys) != len(self.tags) or
+                any(tag.dimension == "category" for tag in self.tags)):
+            raise ValueError("Inconsistent semantic analysis")
+        return self
+
+
 class VideoRecommendationList(VideoModel):
     items: list[VideoRecommendation] = Field(max_length=20)
     requested_limit: int = Field(ge=1, le=20)
     available_count: int = Field(ge=0, le=100000)
+    semantic: VideoSemanticAnalysis | None = Field(default=None, exclude_if=lambda value: value is None)
 
     @model_validator(mode="after")
     def counts_and_unique_ids(self):
@@ -121,17 +137,21 @@ class VideoRecommendationList(VideoModel):
         return self
 
     def validate_context(self, request: VideoRecommendationRequest):
-        """Call before returning from the future route; validate request/response linkage."""
+        """Validate request/response linkage before returning from the route."""
         if self.requested_limit != request.limit:
             raise ValueError("Response limit differs from request")
-        if not (request.garment_ids or request.makeup_ids or request.user_tags) and self.available_count:
+        if (self.semantic.job_id if self.semantic else None) != request.semantic_job_id:
+            raise ValueError("Semantic analysis differs from the requested job")
+        tags = self.semantic.tags if self.semantic else []
+        if not (request.garment_ids or request.makeup_ids or request.user_tags or tags) and self.available_count:
             raise ValueError("Empty context must not yield generic recommendations")
         for item in self.items:
             for match in item.matches:
                 valid = (
                     match.source == 'garment_metadata' and match.related_id in request.garment_ids or
                     match.source == 'makeup_metadata' and match.related_id in request.makeup_ids or
-                    match.source == 'user_selection' and VideoTag(dimension=match.dimension, value=match.value) in request.user_tags
+                    match.source == 'user_selection' and VideoTag(dimension=match.dimension, value=match.value) in request.user_tags or
+                    match.source == 'model_semantics' and VideoTag(dimension=match.dimension, value=match.value) in tags
                 )
                 if not valid:
                     raise ValueError("Unsupported source or match not justified by the request context")

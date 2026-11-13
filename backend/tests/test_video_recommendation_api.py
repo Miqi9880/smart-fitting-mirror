@@ -1,11 +1,15 @@
 """HTTP integration tests use synthetic metadata and never fetch video media."""
 
+from uuid import uuid4
+
 from fastapi.testclient import TestClient
 import pytest
 
 from backend.service import create_app
 from backend.video_contracts import VideoContent, VideoRecommendationList, VideoTag
 from backend.video_library import VideoCatalogRecord, VideoLibrary
+from backend.video_semantics import SemanticUnavailable
+from test_tryon_provider import FakeProvider, session_and_upload, wait_terminal
 
 
 def record(video_id, tags, *, published=True, playable=True, source_kind="synthetic_test", authorized=False):
@@ -98,6 +102,74 @@ def test_candidate_is_returned_once_with_only_context_supported_match_evidence()
     result = response.json()
     assert result["available_count"] == 1 and len(result["items"]) == 1
     assert {match["dimension"] for match in result["items"][0]["matches"]} == {"category", "color"}
+
+
+def test_explicit_style_leads_outfit_matches_and_keeps_context_fallback():
+    style = {"dimension": "style", "value": "casual"}
+    outfit = record("outfit-first-by-dimensions", [
+        {"dimension": "category", "value": "upper_body"},
+        {"dimension": "color", "value": "blue"},
+    ])
+    preferred = record("style-first-by-choice", [style])
+    with client_with([outfit, preferred]) as client:
+        headers = open_session(client)
+        garment_ids = ["upper_blue"]
+        default = post_recommendations(client, headers, {"garment_ids": garment_ids})
+        selected = post_recommendations(client, headers, {"garment_ids": garment_ids, "user_tags": [style]})
+        preference_only = post_recommendations(client, headers, {"user_tags": [style]})
+    assert [item["video"]["video_id"] for item in default.json()["items"]] == [outfit.content.video_id]
+    assert [item["video"]["video_id"] for item in selected.json()["items"]] == [
+        preferred.content.video_id, outfit.content.video_id
+    ]
+    assert [item["video"]["video_id"] for item in preference_only.json()["items"]] == [preferred.content.video_id]
+    assert selected.json()["items"][0]["matches"] == [{**style, "source": "user_selection", "related_id": None}]
+
+
+@pytest.mark.parametrize("available", [True, False])
+def test_only_an_explicit_owned_real_result_can_contribute_model_tags(available):
+    class Tagger:
+        calls = 0
+
+        def tags(self, image):
+            assert image.startswith(b"\x89PNG")
+            self.calls += 1
+            if not available:
+                raise SemanticUnavailable()
+            return [VideoTag(dimension="style", value="minimal")]
+
+    tagger = Tagger()
+    video = record("model-style", [{"dimension": "style", "value": "minimal"}])
+    fallback = record("fallback", [{"dimension": "category", "value": "upper_body"}])
+    library = VideoLibrary([video, fallback], allow_synthetic_for_tests=True)
+    with TestClient(create_app(provider=FakeProvider(), catalog_profile="regression",
+                               video_library=library, outfit_tagger=tagger)) as client:
+        owner, upload_id = session_and_upload(client)
+        created = client.post("/api/v1/tryon-jobs", headers={**owner, "Idempotency-Key": str(uuid4())},
+                              json={"upload_id": upload_id, "garment_id": "upper_blue"})
+        assert created.status_code == 202
+        job_id = created.json()["job_id"]
+        assert wait_terminal(client, owner, job_id)["status"] == "succeeded"
+        request = {"garment_ids": ["upper_blue"]}
+        ordinary = post_recommendations(client, owner, request).json()
+        assert "semantic" not in ordinary and tagger.calls == 0
+        assert ordinary["items"][0]["video"]["video_id"] == "fallback"
+        request["semantic_job_id"] = job_id
+        assert post_recommendations(client, open_session(client), request).status_code == 404
+        assert tagger.calls == 0
+        selected = post_recommendations(client, owner, request).json()
+        assert selected["semantic"]["job_id"] == job_id
+        assert tagger.calls == 1
+        if available:
+            assert selected["semantic"]["status"] == "used"
+            assert selected["items"][0]["video"]["video_id"] == "model-style"
+            assert selected["items"][0]["matches"][0]["source"] == "model_semantics"
+            assert post_recommendations(client, owner, request).json() == selected
+            assert tagger.calls == 1
+        else:
+            assert selected["semantic"]["status"] == "unavailable"
+            assert selected["items"] == ordinary["items"]
+        assert client.delete("/api/v1/sessions/current", headers=owner).status_code == 204
+        assert post_recommendations(client, owner, request).status_code == 401
 
 
 def test_empty_context_and_default_library_return_empty_without_generic_recommendations():

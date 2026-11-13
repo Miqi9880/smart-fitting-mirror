@@ -8,8 +8,10 @@ import android.graphics.Bitmap
 import android.graphics.Color
 import android.net.Uri
 import android.os.Bundle
+import android.os.CountDownTimer
 import android.os.SystemClock
 import android.provider.Settings
+import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.widget.*
@@ -39,7 +41,15 @@ class TryOnActivity : ComponentActivity() {
     private val model: TryOnModel by viewModels()
     private val mock = SyntheticVisionSource()
     private lateinit var rgb: CameraRgbSource
-    private val source: VisionSource<BitmapPixels> get() = if (model.rgb) rgb else mock
+    private val rgbd by lazy { geminiDepthSource(this) }
+    private val source: VisionSource<BitmapPixels> get() = when {
+        !model.rgb -> mock
+        model.rgbd -> requireNotNull(rgbd)
+        else -> rgb
+    }
+    private var pendingRgbd = false
+    private val depthSettings by lazy { getSharedPreferences("depth-standing", MODE_PRIVATE) }
+    private var depthRange: StandingRange? = null
     private lateinit var preview: TryOnView
     private lateinit var previewPanel: PreviewPanel
     private lateinit var pageScroll: ScrollView
@@ -51,11 +61,13 @@ class TryOnActivity : ComponentActivity() {
     private lateinit var visionStatus: TextView
     private lateinit var standingPanel: StandingGuidePanel
     private lateinit var assetStatus: TextView
-    private lateinit var outfitStatus: TextView
+    private lateinit var outfitPanel: OutfitPanel
     private lateinit var mockLabel: TextView
     private lateinit var address: EditText
     private lateinit var connect: Button
     private lateinit var generate: Button
+    private lateinit var outfitMode: Switch
+    private lateinit var generationSummary: TextView
     private lateinit var staticImage: StaticImagePanel
     private lateinit var retry: Button
     private lateinit var cancel: Button
@@ -72,6 +84,7 @@ class TryOnActivity : ComponentActivity() {
     private var hasFrame = false
     private var latestTracking: TrackingState? = null
     private var captureBusy = false
+    private var captureCountdown: CountDownTimer? = null
     private var visible = false
     private var pendingPermission = false
     private var cameraDialog: AlertDialog? = null
@@ -93,7 +106,10 @@ class TryOnActivity : ComponentActivity() {
     private val permission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         if (!pendingPermission) return@registerForActivityResult
         pendingPermission = false
-        if (granted) { model.rgb = true; model.running = true; model.visionFailure = null; if (visible) beginVision() }
+        if (granted) {
+            model.rgb = true; model.rgbd = pendingRgbd; model.running = true; model.visionFailure = null
+            if (visible) beginVision()
+        }
         else {
             val message = "摄像头未授权，可重试或打开权限设置；合成样例可继续使用。"
             if (!model.running) { model.visionFailure = message; stopVision() }
@@ -114,6 +130,8 @@ class TryOnActivity : ComponentActivity() {
             })
         }
         pendingPermission = savedInstanceState?.getBoolean("pending_permission") ?: false
+        pendingRgbd = savedInstanceState?.getBoolean("pending_rgbd") ?: false
+        depthRange = calibratedRange(depthSettings.getFloat("near", 0f), depthSettings.getFloat("far", 0f))
         rgb = CameraRgbSource(this, this,
             targetRotation = { @Suppress("DEPRECATION") windowManager.defaultDisplay.rotation },
             cameraId = { model.cameraId })
@@ -145,15 +163,52 @@ class TryOnActivity : ComponentActivity() {
             override fun onNothingSelected(parent: AdapterView<*>?) = Unit
         }
         root.addView(garments)
-        catalog = button("浏览衣柜与服装详情", "fitting.catalog") {
+        catalog = button("浏览衣柜", "fitting.catalog") {
             val controller = model.controller ?: return@button
             browser?.dismiss()
-            browser = GarmentBrowser(this,controller,lifecycleScope,model.catalogAssets,model.catalogQuery) { model.catalogQuery = it }
+            browser = GarmentBrowser(
+                this, controller, lifecycleScope, model.catalogAssets, model.catalogQuery,
+                rememberQuery = { model.catalogQuery = it },
+                tryOnGarment = { id ->
+                    val current = controller.state.value
+                    val selected = current.selected
+                    if (current.canSelect && selected != null && selected.garmentId == id) {
+                        if (model.outfit[selected.category] != selected) {
+                            model.outfit = OutfitSelection.add(model.outfit, selected)
+                            renderOutfit()
+                        }
+                    } else controller.select(id)
+                },
+                selectedAccessories = { model.outfitAccessories },
+                selectAccessory = { category, item ->
+                    model.outfitAccessories = if (item == null) model.outfitAccessories - category
+                    else model.outfitAccessories + (category to item)
+                    model.generateOutfit = true
+                    renderOutfit()
+                },
+            )
             browser!!.show()
         }
         root.addView(catalog)
-        outfitStatus = label("当前搭配为空；选择单品后自动加入对应品类。",12f).apply { tag = "fitting.outfit" }
-        root.addView(outfitStatus)
+        outfitPanel = OutfitPanel(this,
+            removeGarment = { item ->
+                if (model.outfit[item.category]?.garmentId == item.garmentId) {
+                    model.outfit = model.outfit - item.category
+                    renderOutfit()
+                }
+            },
+            removeAccessory = { item ->
+                if (model.outfitAccessories[item.category]?.accessoryId == item.accessoryId) {
+                    model.outfitAccessories = model.outfitAccessories - item.category
+                    renderOutfit()
+                }
+            },
+            clearOutfit = {
+                model.outfit = emptyMap()
+                model.outfitAccessories = emptyMap()
+                renderOutfit()
+            })
+        root.addView(outfitPanel)
         videoButton = button("查看当前搭配的相关视频", "fitting.videos") { videos.show() }
         root.addView(videoButton)
         root.addView(button("3D 人台样件（实验，不开启摄像头）", "fitting.garment3d") {
@@ -161,11 +216,6 @@ class TryOnActivity : ComponentActivity() {
             if (model.previewFullscreen) setPreviewFullscreen(false)
             startActivity(Intent(this, com.smartfitting.mirror.garment3d.Garment3dActivity::class.java))
         }.apply { if (guestRoute) visibility = View.GONE })
-        root.addView(row(button("加入搭配","fitting.outfit.add") {
-            model.state.value.selected?.let { model.outfit = OutfitSelection.add(model.outfit,it) }; renderOutfit()
-        },button("移除本类","fitting.outfit.remove") {
-            model.state.value.selected?.let { model.outfit = model.outfit - it.category }; renderOutfit()
-        },button("清空搭配","fitting.outfit.clear") { model.outfit = emptyMap(); renderOutfit() }))
         root.addView(row(button("合成样例", "fitting.mock") {
             requestPreview(false)
         }, button("RGB 摄像头", "fitting.rgb") {
@@ -179,16 +229,19 @@ class TryOnActivity : ComponentActivity() {
                     pendingPermission = false
                     model.visionFailure = null
                     model.cameraId = id; cameraChoice.text = CameraChooser.label(id)
-                    if (model.running && model.rgb) beginVision()
-                    else {
+                    if (!model.running) {
                         visionStatus.text = "${CameraChooser.label(id)}；点击 RGB 摄像头启动"
                         previewPanel.sourceStatus.text = visionStatus.text
-                        previewPanel.renderInput(model.running,false,model.rgb)
-                    }
+                        previewPanel.renderInput(false, false, sourceDescription())
+                    } else if (model.rgb && !model.rgbd) beginVision()
                 }
             }
         }
         root.addView(cameraChoice)
+        if (rgbd != null) {
+            root.addView(row(button("Gemini 2 深度预览", "fitting.rgbd") { requestPreview(true, depth = true) },
+                button("站位标定", "fitting.depth.calibrate") { showDepthCalibration() }))
+        }
         visionStatus = label("点击 RGB 摄像头开始真人预览；合成样例用于开发检查。", 12f).apply { tag = "fitting.vision" }
         root.addView(visionStatus)
         preview = TryOnView(this).apply {
@@ -197,14 +250,10 @@ class TryOnActivity : ComponentActivity() {
             protectHead = model.protectHead; viewport = model.previewViewport
         }
         preview.mode = if (model.meshMode) TryOnView.Mode.OBJ_MESH else TryOnView.Mode.PHOTO
-        // Keep both switches before the tall preview so landmarks are discoverable.
-        root.addView(row(Switch(this).apply {
+        root.addView(Switch(this).apply {
             text = "镜面显示"; isChecked = model.mirrored
             setOnCheckedChangeListener { _, value -> model.mirrored = value; preview.mirrored = value }
-        }, Switch(this).apply {
-            text = "显示关键点"; tag = "fitting.landmarks"; isChecked = model.showLandmarks
-            setOnCheckedChangeListener { _, value -> model.showLandmarks = value; preview.showLandmarks = value }
-        }))
+        })
         root.addView(Switch(this).apply {
             text = "上衣避开头部（近似）"; tag = "fitting.head.protection"; isChecked = model.protectHead
             setOnCheckedChangeListener { _, value -> model.protectHead = value; preview.protectHead = value }
@@ -226,15 +275,30 @@ class TryOnActivity : ComponentActivity() {
         standingPanel = StandingGuidePanel(this)
         root.addView(standingPanel)
         val tail = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        val landmarks = Switch(this).apply {
+            text = "显示关键点"
+            tag = "fitting.landmarks"
+            visibility = View.GONE
+            isChecked = model.showLandmarks
+            setOnCheckedChangeListener { _, value ->
+                model.showLandmarks = value
+                preview.showLandmarks = value
+            }
+        }
+        tail.addView(Button(this, null, android.R.attr.borderlessButtonStyle).apply {
+            text = "预览调试"
+            tag = "fitting.preview.debug"
+            gravity = Gravity.START or Gravity.CENTER_VERTICAL
+            setOnClickListener {
+                val expand = landmarks.visibility == View.GONE
+                landmarks.visibility = if (expand) View.VISIBLE else View.GONE
+                text = if (expand) "收起预览调试" else "预览调试"
+            }
+        })
+        tail.addView(landmarks)
         assetStatus = label("连接服务后加载透明服装", 12f).apply { tag = "fitting.asset" }
         tail.addView(assetStatus)
         tail.addView(button("重载服装", "fitting.reload") { loadOutfit(true) })
-        tail.addView(Switch(this).apply {
-            text = "OBJ 网格实验（二维关键点驱动，无真实体深度）"; tag = "fitting.mesh"; isChecked = model.meshMode
-            setOnCheckedChangeListener { _, value ->
-                model.meshMode = value; preview.mode = if (value) TryOnView.Mode.OBJ_MESH else TryOnView.Mode.PHOTO
-            }
-        })
         controls = SyntheticControls(this, mock) { settings ->
             pendingPermission = false; stopVision(); model.synthetic = settings; mock.configure(settings)
             if (model.running) beginVision()
@@ -242,19 +306,44 @@ class TryOnActivity : ComponentActivity() {
         tail.addView(controls)
         controls.render(!model.rgb,model.running)
         tail.addView(label("点击下方按钮会将未镜像的原始照片上传到上面的服务；实时预览不会逐帧上传。", 12f))
-        generate = button("拍摄并上传生成", "fitting.generate") { capture() }
+        outfitMode = Switch(this).apply {
+            text = "生成当前搭配"; tag = "fitting.generation.outfit"; isChecked = model.generateOutfit
+            setOnCheckedChangeListener { _, checked -> model.generateOutfit = checked; updateCaptureActions() }
+        }
+        generationSummary = label("", 12f).apply { tag = "fitting.generation.summary" }
+        tail.addView(outfitMode)
+        tail.addView(generationSummary)
+        generate = button("拍摄并上传生成", "fitting.generate") { requestCapture() }
+        val delays = listOf(0, 3, 5, 10)
+        val delayChoice = Spinner(this).apply {
+            tag = "fitting.capture.delay"
+            contentDescription = "拍摄倒计时"
+            minimumHeight = dp(48)
+            adapter = ArrayAdapter(this@TryOnActivity, android.R.layout.simple_spinner_item,
+                delays.map { if (it == 0) "拍摄倒计时 · 关闭" else "拍摄倒计时 · ${it} 秒" }).apply {
+                setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+            }
+            setSelection(delays.indexOf(model.captureDelaySeconds))
+            onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+                override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
+                    model.captureDelaySeconds = delays[position]
+                }
+                override fun onNothingSelected(parent: AdapterView<*>?) = Unit
+            }
+        }
         cancel = button("取消生成", "fitting.cancel") { model.controller?.cancel() }
         retry = button("重试请求", "fitting.retry") { model.controller?.retry() }
-        tail.addView(generate); tail.addView(row(cancel, retry))
+        tail.addView(row(generate, delayChoice)); tail.addView(row(cancel, retry))
         staticImage = StaticImagePanel(this, lifecycleScope, {
             imagePicker.launch(arrayOf("image/jpeg", "image/png"))
         }, { photo ->
             val controller = model.controller
-            if (!visible || captureBusy || controller?.state?.value?.canCapture != true) false
-            else { controller.generate(photo); updateCaptureActions(); true }
+            val outfit = generationRequest()
+            if (!visible || captureBusy || captureCountdown != null || controller?.state?.value?.canGenerate(outfit) != true) false
+            else { controller.generate(photo, outfit); updateCaptureActions(); true }
         }) { updateCaptureActions() }
         tail.addView(staticImage)
-        mockLabel = label("尚无生成结果", 13f).apply { tag = "fitting.result.kind" }
+        mockLabel = label("", 13f).apply { tag = "fitting.result.kind"; visibility = View.GONE }
         tail.addView(mockLabel)
         comparison = ResultComparisonPanel(this, lifecycleScope,
             { model.resultComparisonMode = it }, { status.text = it })
@@ -265,13 +354,19 @@ class TryOnActivity : ComponentActivity() {
             try { startActivity(Intent(Settings.ACTION_HOME_SETTINGS)) }
             catch (_: android.content.ActivityNotFoundException) { visionStatus.text = "设备未开放主屏幕设置，请联系管理员配置开机入口。" }
         }.apply { if (guestRoute) visibility = View.GONE })
-        tail.addView(label("上衣头部保护仅在双耳可靠时近似生效，侧脸或缺点时不启用；无人体分割、深度测距或精细遮挡。放大只改变显示，不增加相机细节。合成样例非真人。", 11f))
-        previewPanel = PreviewPanel(this,root,preview,tail, {
+        tail.addView(label("RGB 预览用人体姿态估计手臂前后。毫米深度依赖已配准的相机帧。", 11f))
+        tail.addView(Switch(this).apply {
+            text = "OBJ 网格实验（二维关键点驱动，无真实体深度）"; tag = "fitting.mesh"; isChecked = model.meshMode
+            setOnCheckedChangeListener { _, value ->
+                model.meshMode = value; preview.mode = if (value) TryOnView.Mode.OBJ_MESH else TryOnView.Mode.PHOTO
+            }
+        })
+        previewPanel = PreviewPanel(this,root,preview,tail, cancelCountdown = { setPreviewFullscreen(false) }, toggleInput = {
             if (model.running) {
                 pendingPermission = false; model.running = false; model.visionFailure = null; stopVision()
-            } else requestPreview(model.rgb)
+            } else requestPreview(model.rgb, depth = model.rgbd)
         }) { setPreviewFullscreen(!model.previewFullscreen) }
-        previewPanel.renderInput(model.running,model.visionFailure != null,model.rgb)
+        previewPanel.renderInput(model.running, model.visionFailure != null, sourceDescription())
         model.visionFailure?.let { visionStatus.text = it; previewPanel.sourceStatus.text = it }
         preview.viewportChanged = { model.previewViewport = it; previewPanel.renderZoom() }
         pageScroll = ScrollView(this).apply {
@@ -301,7 +396,7 @@ class TryOnActivity : ComponentActivity() {
         setPreviewFullscreen(model.previewFullscreen)
         lifecycleScope.launch { repeatOnLifecycle(Lifecycle.State.STARTED) { model.state.collect { render(it) } } }
         lifecycleScope.launch { repeatOnLifecycle(Lifecycle.State.STARTED) { model.standing.collect {
-            standingPanel.render(it, !model.rgb); refreshPreviewSummary()
+            standingPanel.render(it, !model.rgb, model.rgbd && depthRange != null); refreshPreviewSummary()
         } } }
         lifecycleScope.launch { model.exitRequests.collect { if (it != null) endExperience(it) } }
         lifecycleScope.launch { model.state.collect {
@@ -331,6 +426,10 @@ class TryOnActivity : ComponentActivity() {
             if (model.running && !model.videoExperience.open) beginVision()
         }
     }
+    override fun onPause() {
+        if (captureCountdown != null) setPreviewFullscreen(false)
+        super.onPause()
+    }
     override fun onStop() {
         videos.onStop()
         cameraDialog?.dismiss(); cameraDialog = null
@@ -341,9 +440,10 @@ class TryOnActivity : ComponentActivity() {
     }
     override fun onSaveInstanceState(outState: Bundle) {
         outState.putBoolean("pending_permission", pendingPermission)
+        outState.putBoolean("pending_rgbd", pendingRgbd)
         super.onSaveInstanceState(outState)
     }
-    override fun onDestroy() { videos.dispose(); rgb.close(); mock.close(); super.onDestroy() }
+    override fun onDestroy() { videos.dispose(); rgb.close(); rgbd?.close(); mock.close(); super.onDestroy() }
     override fun onUserInteraction() { super.onUserInteraction(); model.interact() }
 
     private fun endExperience(reason: GuestEndReason) {
@@ -354,6 +454,7 @@ class TryOnActivity : ComponentActivity() {
         pendingPermission = false; model.running = false; model.visionFailure = null; stopVision()
         staticImage.clear(); comparison.clear(); model.resultComparisonMode = ResultComparisonMode.SIDE_BY_SIDE
         browser?.dismiss(); browser = null; cameraDialog?.dismiss(); cameraDialog = null
+        model.outfitAccessories = emptyMap(); model.generateOutfit = false
         model.outfit = emptyMap(); model.fitTarget = null; model.fitTargetExplicit = false; model.lastOutfitSelection = null
         model.catalogAssets = emptyList(); model.catalogQuery = ""
         if (model.controller?.state?.value?.phase != FittingPhase.CLOSED) model.controller?.end()
@@ -379,6 +480,12 @@ class TryOnActivity : ComponentActivity() {
     }
 
     private fun setPreviewFullscreen(value: Boolean) {
+        if (!value && captureCountdown != null) {
+            captureCountdown?.cancel()
+            captureCountdown = null
+            previewPanel.renderCountdown(null)
+            updateCaptureActions()
+        }
         if (value && !model.previewFullscreen) normalScrollY = pageScroll.scrollY
         model.previewFullscreen = value; fullscreenBack.isEnabled = value
         previewPanel.setFullscreen(value)
@@ -393,15 +500,64 @@ class TryOnActivity : ComponentActivity() {
         pageScroll.post { pageScroll.scrollTo(0,if (value) 0 else normalScrollY) }
     }
 
-    private fun requestPreview(rgbInput: Boolean) {
+    private fun requestPreview(rgbInput: Boolean, depth: Boolean = false) {
         model.startExperience(); model.interact()
         pendingPermission = false
         if (rgbInput && ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
+            pendingRgbd = depth
             pendingPermission = true; permission.launch(Manifest.permission.CAMERA)
             return
         }
-        model.rgb = rgbInput; model.running = true; model.visionFailure = null
+        model.rgb = rgbInput; model.rgbd = depth; model.running = true; model.visionFailure = null
         beginVision()
+    }
+
+    private fun sourceLabel() = when {
+        !model.rgb -> "合成输入（非真人）"
+        model.rgbd -> "Gemini 2 彩色与深度"
+        else -> "RGB 摄像头"
+    }
+
+    private fun sourceDescription() =
+        if (model.rgb && !model.rgbd) "${sourceLabel()}，保持已选相机通道" else sourceLabel()
+
+    private fun calibratedRange(near: Float, far: Float): StandingRange? =
+        if (near in .25f..8f && far in .25f..8f && near < far) StandingRange(near, far) else null
+
+    private fun showDepthCalibration() {
+        val fields = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(24), 0, dp(24), 0)
+        }
+        fun field(title: String, value: Float?) = EditText(this).apply {
+            hint = title
+            inputType = android.text.InputType.TYPE_CLASS_NUMBER or android.text.InputType.TYPE_NUMBER_FLAG_DECIMAL
+            setText(value?.toString().orEmpty())
+            fields.addView(this)
+        }
+        val near = field("最近距离（米）", depthRange?.nearM)
+        val far = field("最远距离（米）", depthRange?.farM)
+        val dialog = AlertDialog.Builder(this).setTitle("站位标定")
+            .setMessage("请填写在镜子现场测得的有效站位范围。")
+            .setView(fields).setPositiveButton("保存", null).setNegativeButton("取消", null)
+            .setNeutralButton("清除标定") { _, _ ->
+                depthRange = null
+                depthSettings.edit().remove("near").remove("far").apply()
+            }.create()
+        dialog.setOnShowListener {
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                val range = calibratedRange(near.text.toString().toFloatOrNull() ?: 0f,
+                    far.text.toString().toFloatOrNull() ?: 0f)
+                if (range == null) {
+                    far.error = "请输入 0.25 至 8 米之间的距离，最远距离须大于最近距离"
+                    return@setOnClickListener
+                }
+                depthRange = range
+                depthSettings.edit().putFloat("near", range.nearM).putFloat("far", range.farM).apply()
+                dialog.dismiss()
+            }
+        }
+        dialog.show()
     }
 
     private fun beginVision() {
@@ -412,11 +568,19 @@ class TryOnActivity : ComponentActivity() {
             if (activeVision != frame.metadata.sessionId) return@start
             hasFrame = true
             latestTracking = frame.metadata.trackingState
-            model.observeBody(StandingGuide.assess(frame.metadata,
-                source.capabilities.alignedDepth && frame.metadata.depth != null && frame.pixels.alignedDepth?.metadata == frame.metadata.depth))
+            val aligned = source.capabilities.alignedDepth && frame.metadata.depth != null &&
+                frame.pixels.alignedDepth?.metadata == frame.metadata.depth
+            model.observeBody(StandingGuide.assess(frame.metadata, aligned, if (model.rgbd) depthRange else null))
             preview.submit(frame, model.state.value.selected)
             controls.render(!model.rgb, true, frame.metadata.trackingState)
-            visionStatus.text = "${if (model.rgb) "RGB 摄像头（通道 ${rgb.activeCameraId ?: "未知"}）" else "合成输入（非真人）"} · ${frame.metadata.trackingState} · 无深度/精细遮挡"
+            val occlusion = when {
+                frame.pixels.alignedDepth != null -> "对齐深度"
+                frame.pixels.imagePose != null -> "姿态辅助遮挡"
+                else -> "基础预览"
+            }
+            val camera = if (model.rgb && !model.rgbd) "RGB 摄像头（通道 ${rgb.activeCameraId ?: "未知"}）" else sourceLabel()
+            val mask = if (frame.pixels.personMask != null) " · 人体分割" else ""
+            visionStatus.text = "$camera · ${frame.metadata.trackingState} · $occlusion$mask"
             refreshPreviewSummary()
             updateCaptureActions()
         }, { update ->
@@ -433,18 +597,45 @@ class TryOnActivity : ComponentActivity() {
     private fun stopVision() {
         model.sourceStopped()
         activeVision = null; hasFrame = false; latestTracking = null; captureBusy = false
+        if (captureCountdown != null) setPreviewFullscreen(false)
         assetJobs.values.forEach { it.cancel() }; assetJobs.clear(); assetKeys.clear(); loadedAssets.clear(); assetErrors.clear()
-        mock.stop(); rgb.stop(); preview.clear(); generate.isEnabled = false
+        mock.stop(); rgb.stop(); rgbd?.stop(); preview.clear(); generate.isEnabled = false
         visionStatus.text = model.visionFailure ?: "采集已停止，临时预览帧已清理"
         previewPanel.sourceStatus.text = visionStatus.text
-        previewPanel.renderInput(model.running,model.visionFailure != null,model.rgb)
+        previewPanel.renderInput(model.running, model.visionFailure != null, sourceDescription())
         updateCaptureActions()
         controls.render(!model.rgb, false)
     }
+    private fun requestCapture() {
+        if (!generate.isEnabled || captureCountdown != null) return
+        val seconds = model.captureDelaySeconds
+        if (seconds == 0) {
+            capture()
+            return
+        }
+        val timer = object : CountDownTimer(seconds * 1_000L, 1_000L) {
+            override fun onTick(millisUntilFinished: Long) {
+                previewPanel.renderCountdown(((millisUntilFinished + 999L) / 1_000L).toInt())
+            }
+
+            override fun onFinish() {
+                if (captureCountdown !== this) return
+                setPreviewFullscreen(false)
+                capture()
+            }
+        }
+        captureCountdown = timer
+        previewPanel.renderCountdown(seconds)
+        setPreviewFullscreen(true)
+        updateCaptureActions()
+        timer.start()
+    }
+
     private fun capture() {
         val controller = model.controller ?: return
         val id = activeVision ?: return
-        if (!controller.state.value.canCapture || captureBusy || staticImage.busy) return
+        val outfit = generationRequest()
+        if (!visible || !hasFrame || !controller.state.value.canGenerate(outfit) || captureBusy || staticImage.busy) return
         captureBusy = true; updateCaptureActions()
         source.captureOriginal { outcome ->
             val photo = outcome.getOrNull()
@@ -452,7 +643,7 @@ class TryOnActivity : ComponentActivity() {
                 photo?.close(); return@captureOriginal
             }
             captureBusy = false
-            if (photo != null) controller.generate(photo)
+            if (photo != null) controller.generate(photo, outfit)
             else status.text = outcome.exceptionOrNull()?.message ?: "拍摄失败，请重试"
             updateCaptureActions()
         }
@@ -468,7 +659,7 @@ class TryOnActivity : ComponentActivity() {
         if (listed != value.garments) {
             listed = value.garments
             garments.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item,
-                listed.map { it.name + if (it.generationReferenceUrl == null) "（仅预览）" else "" })
+                listed.map { "${it.category.label} · ${it.name}" })
         }
         val position = listed.indexOfFirst { it.garmentId == value.selectedId }
         if (position >= 0 && garments.selectedItemPosition != position) garments.setSelection(position)
@@ -479,22 +670,26 @@ class TryOnActivity : ComponentActivity() {
         browser?.render(value)
         mockLabel.text = when (value.job?.isMock) {
             true -> "MOCK · 模拟结果，非真实 AI 换装"
-            false -> "真实生成任务"
-            null -> "尚无生成结果"
+            false -> if (value.job?.outfit != null) "真实搭配生成任务" else "真实单件生成任务"
+            null -> ""
         }
-        comparison.render(value.original, value.result, model.resultComparisonMode)
+        mockLabel.visibility = if (value.job == null) View.GONE else View.VISIBLE
+        comparison.render(value.original, value.result, model.resultComparisonMode, value.generationInProgress)
         if (value.phase in setOf(FittingPhase.ENDING, FittingPhase.CLOSED)) {
             staticImage.clear()
             if (model.previewFullscreen) setPreviewFullscreen(false)
             model.running = false; model.visionFailure = null; stopVision(); comparison.clear()
             model.resultComparisonMode = ResultComparisonMode.SIDE_BY_SIDE
             model.catalogAssets = emptyList(); model.catalogQuery = ""; model.outfit = emptyMap()
+            model.outfitAccessories = emptyMap(); model.generateOutfit = false
             model.fitTarget = null; model.fitTargetExplicit = false; model.lastOutfitSelection = null
-            outfitStatus.text = "当前搭配已清空"; browser?.dismiss(); browser = null
+            outfitPanel.render(emptyList(), emptyList())
+            browser?.dismiss(); browser = null
             fitControls.render(emptyList(),null,OutfitFit())
             assetStatus.text = "会话结束，服装与本地图像已清理"
         } else {
             val current = value.garments.associateBy { it.garmentId }
+            model.outfitAccessories = model.outfitAccessories.filterValues { it in value.accessories }
             model.outfit = model.outfit.values.mapNotNull { current[it.garmentId] }
                 .fold(emptyMap()) { selection, item -> OutfitSelection.add(selection,item) }
             if (value.selected != model.lastOutfitSelection) {
@@ -505,20 +700,38 @@ class TryOnActivity : ComponentActivity() {
         }
         videos.onSessionChanged()
     }
+    private fun generationRequest(): OutfitRequest? = if (model.generateOutfit) {
+        OutfitRequest(model.outfit.values.map { it.garmentId }, model.outfitAccessories.values.map { it.accessoryId })
+    } else null
+
     private fun updateCaptureActions() {
         val value = model.controller?.state?.value ?: model.state.value
-        val allow = visible && value.canCapture && !captureBusy
+        val capturing = captureBusy || captureCountdown != null
+        val allow = visible && value.canGenerate(generationRequest()) && !capturing
         val importing = ::staticImage.isInitialized && staticImage.busy
+        if (::generationSummary.isInitialized) {
+            outfitMode.visibility = if (value.outfitAvailable) View.VISIBLE else View.GONE
+            outfitMode.isEnabled = value.canSelect && !capturing && !importing
+            if (outfitMode.isChecked != model.generateOutfit) outfitMode.isChecked = model.generateOutfit
+            generationSummary.text = if (model.generateOutfit) {
+                val names = model.outfit.values.map { it.name } + model.outfitAccessories.values.map { it.name }
+                if (names.isEmpty()) "先选择服装或配饰" else "将生成：${names.joinToString(" ＋ ")}。拍摄时请让衣摆和腰部清楚入镜。"
+            } else "单件生成：${value.selected?.name ?: "未选服装"}"
+        }
+        generate.text = if (generationRequest() == null) "拍摄并上传生成" else "拍摄并生成当前搭配"
         generate.isEnabled = allow && hasFrame && !importing
         if (::staticImage.isInitialized) staticImage.render(allow)
-        garments.isEnabled = value.canSelect && !captureBusy && !importing
-        catalog.isEnabled = value.canSelect && !captureBusy && !importing
-        videoButton.isEnabled = value.canSelect && !captureBusy && !importing
+        val canEdit = value.canSelect && !capturing && !importing
+        garments.isEnabled = canEdit
+        catalog.isEnabled = canEdit
+        videoButton.isEnabled = canEdit
+        outfitPanel.setEditingEnabled(canEdit)
     }
     private fun renderOutfit() {
-        outfitStatus.text = "当前搭配：" + model.outfit.values.joinToString(" ＋ ") { "${it.category.label}：${it.name}" }.ifBlank { "无" }
+        outfitPanel.render(model.outfit.values.toList(), model.outfitAccessories.values.toList())
         renderFitControls()
         loadOutfit()
+        updateCaptureActions()
     }
     private fun renderFitControls() {
         val available = model.outfit.keys.toList()
@@ -541,7 +754,7 @@ class TryOnActivity : ComponentActivity() {
         if (force) preview.setOutfit(emptyList())
         preview.setOutfit(items)
         refreshPreviewSummary()
-        if (items.isEmpty()) { assetStatus.text = "搭配已清空；选择单品或点击加入搭配"; return }
+        if (items.isEmpty()) { assetStatus.text = "搭配已清空，请在衣柜选择要试穿的单品"; return }
         for (garment in items) {
             val key = wanted.getValue(garment.garmentId)
             if (assetKeys[garment.garmentId] == key) continue
@@ -573,12 +786,12 @@ class TryOnActivity : ComponentActivity() {
     }
     private fun renderAssetStatus() {
         refreshPreviewSummary()
-        assetStatus.text = "已加载 ${loadedAssets.size}/${model.outfit.size} 件 · 长裤／长裙需完整腿部，短款需髋膝，帽子需双耳 · 上衣可用近似头部保护，无精细遮挡" +
+        assetStatus.text = "已加载 ${loadedAssets.size}/${model.outfit.size} 件 · 长裤／长裙需完整腿部，短款需髋膝，帽子需双耳" +
             if (assetErrors.isEmpty()) "" else "\n未加载：${assetErrors.values.joinToString("；")}；可点击重载"
     }
     private fun refreshPreviewSummary() {
         if (!hasFrame) return
-        previewPanel.sourceStatus.text = "${if (model.rgb) "真人 RGB" else "合成输入（非真人）"} · $latestTracking · 已加载 ${loadedAssets.size}/${model.outfit.size} 件" +
+        previewPanel.sourceStatus.text = "${sourceLabel()} · $latestTracking · 已加载 ${loadedAssets.size}/${model.outfit.size} 件" +
             " · ${StandingWords.summary(model.standing.value)}" +
             (if (assetErrors.isEmpty()) "" else " · 有加载失败，请退出全屏重载")
     }

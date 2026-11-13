@@ -78,15 +78,16 @@ class SyntheticControls(context: Context, private val source: SyntheticVisionSou
         override fun onNothingSelected(parent: AdapterView<*>?) = Unit
     }
     private companion object {
-        val scenarioLabels = listOf("综合演示", "静止人体", "左右移动", "人物大小变化", "缺少左肩", "人物丢失", "丢失与恢复")
+        val scenarioLabels = listOf("静止人体", "左右移动", "人物大小变化", "缺少左肩", "人物丢失", "丢失与恢复",
+            "手臂挡胸")
         val expectations = mapOf(
-            SyntheticScenario.DEMO to "预期：移动；每 80 样本短暂丢失。",
             SyntheticScenario.STILL to "预期：TRACKING，四个躯干锚点稳定。",
             SyntheticScenario.TRANSLATE to "预期：整体平移，人体大小不变。",
             SyntheticScenario.SCALE to "预期：围绕中心缩放；不是距离测量。",
             SyntheticScenario.PARTIAL to "预期：PARTIAL；渲染方应隐藏衣服。",
             SyntheticScenario.LOST to "预期：LOST；全部关键点为空。",
             SyntheticScenario.RECOVERY to "每 20 样本：TRACKING → PARTIAL → LOST → TRACKING。",
+            SyntheticScenario.ARM_CROSS to "用短袖查看前臂是否显示在上衣前方。",
         )
     }
 }

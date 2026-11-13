@@ -22,18 +22,20 @@ from typing import Callable, Literal
 from fastapi import FastAPI, Request, Query
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, Response, FileResponse
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 from starlette.concurrency import run_in_threadpool
 from starlette.datastructures import UploadFile
 from starlette.exceptions import HTTPException
 from PIL import Image, ImageDraw, ImageOps, UnidentifiedImageError
 from .catalog import ASSET_SPECS, CATALOG_CAPACITY, GarmentWrite, initial_catalog, regression_catalog, public_item, matches
 from .catalog_repository import CatalogRepository
+from .outfit import ACCESSORY_DIRECTORY, OutfitSelection, accessory_catalog, valid_kinds
 from .tryon_provider import ProviderFailure, ProviderResult, TryOnProvider
 from .provider_control import GenerationBudget
 from .usage_metrics import UsageMetrics
-from .video_contracts import VideoRecommendationRequest
+from .video_contracts import VideoRecommendationRequest, VideoSemanticAnalysis, VideoTag
 from .video_library import VideoLibrary
+from .video_semantics import OutfitTagger, SemanticUnavailable
 
 MAX_FILE = 10 * 1024 * 1024
 MAX_BODY = MAX_FILE + 64 * 1024
@@ -135,12 +137,13 @@ class Job:
     value: dict
     created: float
     mode: Mode
-    asset_id: str
+    asset_id: str | None
     result_bytes: bytes | None = None
     is_mock: bool = True
     budget: GenerationBudget | None = None
     started_monotonic: float = 0.0
     metrics_terminal_recorded: bool = False
+    semantic_tags: list[VideoTag] | None = None
 
 
 @dataclass
@@ -149,20 +152,24 @@ class Guest:
     expires: float
     uploads: dict[str, Photo] = field(default_factory=dict)
     jobs: dict[str, Job] = field(default_factory=dict)
-    keys: dict[str, tuple[tuple[str, str], str]] = field(default_factory=dict)
+    keys: dict[str, tuple[tuple, str]] = field(default_factory=dict)
     throttled_keys: set[str] = field(default_factory=set)
     catalog: dict[str, GarmentWrite] = field(default_factory=initial_catalog)
 
 
 class Store:
     """One-process service. State transitions and ownership checks share a lock."""
-    def __init__(self, mode: Mode = "success", clock: Callable[[], float] = time.time, ttl: float = 1800, catalog_path=None, catalog_profile="studio", provider: TryOnProvider | None = None, monotonic: Callable[[], float] = time.monotonic, provider_disabled: bool = False, metrics: UsageMetrics | None = None, video_library: VideoLibrary | None = None):
+    def __init__(self, mode: Mode = "success", clock: Callable[[], float] = time.time, ttl: float = 1800, catalog_path=None, catalog_profile="studio", provider: TryOnProvider | None = None, monotonic: Callable[[], float] = time.monotonic, provider_disabled: bool = False, metrics: UsageMetrics | None = None, video_library: VideoLibrary | None = None, outfit_tagger: OutfitTagger | None = None):
         self.mode, self.clock, self.ttl = mode, clock, ttl
         self.monotonic = monotonic
         self.provider = provider
         self.provider_disabled = provider_disabled
+        self.outfit_available = not provider_disabled and (provider is None or callable(getattr(provider, "generate_outfit", None)))
+        self.accessories = accessory_catalog()
         self.metrics = metrics
         self.video_library = video_library if video_library is not None else VideoLibrary.from_file()
+        self.outfit_tagger = outfit_tagger
+        self.outfit_tagging = threading.Lock()
         # Keep one local provider worker in flight, including its cleanup.
         # The upstream cannot be cancelled; a local timeout is not cloud cancellation.
         self.executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="tryon-provider") if provider else None
@@ -177,11 +184,36 @@ class Store:
         if metrics is not None and callable(observe_submission):
             observe_submission(lambda metric: self._record_usage(metric, is_mock=False))
 
+    def analyze_outfit(self, authorization: str | None, job_id: str) -> VideoSemanticAnalysis:
+        unavailable = VideoSemanticAnalysis(job_id=job_id, status="unavailable", tags=[])
+        with self.lock:
+            guest = self.guest(authorization)
+            job = guest.jobs.get(job_id)
+            if job is None or job.value["status"] != "succeeded" or job.is_mock or job.result_bytes is None:
+                raise Problem(404, "RESOURCE_NOT_FOUND", "当前会话没有可分析的生成结果")
+            if job.semantic_tags is not None:
+                status = "used" if job.semantic_tags else "no_tags"
+                return VideoSemanticAnalysis(job_id=job_id, status=status, tags=job.semantic_tags)
+            if self.outfit_tagger is None or not self.outfit_tagging.acquire(blocking=False):
+                return unavailable
+            image = job.result_bytes
+        try:
+            tags = self.outfit_tagger.tags(image)
+            analysis = VideoSemanticAnalysis(job_id=job_id, status="used" if tags else "no_tags", tags=tags)
+            with self.lock:
+                self.guest(authorization)
+                job.semantic_tags = analysis.tags
+            return analysis
+        except (SemanticUnavailable, ValidationError):
+            return unavailable
+        finally:
+            self.outfit_tagging.release()
+
     def _record_usage(self, metric: str, *, is_mock: bool, duration_ms: int | None = None) -> None:
         if self.metrics is None:
             return
         provider = "mock" if is_mock else getattr(self.provider, "name", "unknown")
-        if provider not in {"mock", "aidge-cos"}:
+        if provider not in {"mock", "aidge-cos", "local-model"}:
             provider = "unknown"
         model = "mock-static" if is_mock else "unknown"
         try:
@@ -275,7 +307,7 @@ class Store:
             guest.uploads[uid] = image
             return {"upload_id": uid, "width": image.width, "height": image.height, "expires_at": stamp(image.expires)}
 
-    def create_job(self, authorization, upload_id, garment_id, key):
+    def create_job(self, authorization, upload_id, garment_id, key, outfit: OutfitSelection | None = None):
         try:
             key = str(uuid.UUID(key))
         except (ValueError, TypeError, AttributeError):
@@ -283,7 +315,8 @@ class Store:
         work = None
         with self.lock:
             guest = self.guest(authorization)
-            fingerprint = (upload_id, garment_id)
+            fingerprint = (upload_id, garment_id,
+                           tuple(outfit.garment_ids) if outfit else (), tuple(outfit.accessory_ids) if outfit else ())
             if key in guest.keys:
                 prior, jid = guest.keys[key]
                 if prior != fingerprint:
@@ -291,13 +324,23 @@ class Store:
                 return guest.jobs[jid].value.copy(), 200
             if self.provider_disabled:
                 raise Problem(503, "PROVIDER_UNAVAILABLE", "真实试衣调用当前未启用；本地预览仍可使用", False)
-            if upload_id not in guest.uploads or garment_id not in guest.catalog:
-                raise Problem(404, "RESOURCE_NOT_FOUND", "上传或服装不存在")
-            asset_id = guest.catalog[garment_id].asset_id
-            if not ASSET_SPECS[asset_id]["generatable"]:
-                raise Problem(422, "GARMENT_NOT_GENERATABLE", "该服装仅支持实时预览")
-            garment_path = self.asset_path(asset_id) if self.provider is not None else None
-            cloth_type = self.cloth_type(guest.catalog[garment_id].category) if self.provider is not None else None
+            if upload_id not in guest.uploads:
+                raise Problem(404, "RESOURCE_NOT_FOUND", "上传不存在")
+            references = ()
+            garment_path = cloth_type = asset_id = None
+            if outfit is not None:
+                references = self.outfit_references(guest, outfit)
+                garment_id = (outfit.garment_ids + outfit.accessory_ids)[0]
+            else:
+                garment = guest.catalog.get(garment_id)
+                if garment is None:
+                    raise Problem(404, "RESOURCE_NOT_FOUND", "服装不存在")
+                asset_id = garment.asset_id
+                if not ASSET_SPECS[asset_id]["generatable"]:
+                    raise Problem(422, "GARMENT_NOT_GENERATABLE", "该服装仅支持实时预览")
+                if self.provider is not None:
+                    garment_path = self.asset_path(asset_id)
+                    cloth_type = self.cloth_type(garment.category)
             if self.provider is not None and self.provider_inflight:
                 raise Problem(429, "PROVIDER_BUSY", "正在生成另一项试衣，请稍后重试", True, 5)
             # Limit new attempts too; rejected simulation keys must not grow without bound.
@@ -312,20 +355,44 @@ class Store:
             value = {"job_id": jid, "session_id": guest.sid, "upload_id": upload_id, "garment_id": garment_id,
                      "status": "queued", "is_mock": self.provider is None, "created_at": stamp(now), "updated_at": stamp(now),
                      "result": None, "error": None}
+            if outfit is not None:
+                value["outfit"] = outfit.model_dump()
             budget = GenerationBudget(120, clock=self.monotonic) if self.provider is not None else None
             guest.jobs[jid] = Job(value, now, self.mode, asset_id, is_mock=self.provider is None,
                                   budget=budget, started_monotonic=self.monotonic())
             guest.keys[key] = fingerprint, jid
             self._record_usage("task_created", is_mock=self.provider is None)
             if self.provider is not None:
-                assert garment_path is not None and cloth_type is not None
-                work = (guest.sid, jid, bytes(guest.uploads[upload_id].data), garment_path, cloth_type)
+                work = (guest.sid, jid, guest.uploads[upload_id].data, garment_path, cloth_type, references)
                 self.provider_inflight.add((guest.sid, jid))
             response = value.copy(), 202
         if work is not None:
             assert self.executor is not None
             self.executor.submit(self.run_provider, *work)
         return response
+
+    def outfit_references(self, guest, outfit: OutfitSelection):
+        if not self.outfit_available:
+            raise Problem(422, "OUTFIT_NOT_SUPPORTED", "当前服务不支持搭配生成")
+        garments = [guest.catalog.get(gid) for gid in outfit.garment_ids]
+        accessories = [self.accessories.get(aid) for aid in outfit.accessory_ids]
+        if any(item is None for item in garments + accessories):
+            raise Problem(404, "RESOURCE_NOT_FOUND", "搭配中的服装或配饰不存在")
+        kinds = [item.category for item in garments] + [item["category"] for item in accessories]
+        if not valid_kinds(kinds):
+            raise Problem(422, "INVALID_OUTFIT", "同一部位只能选一件，连衣裙与上衣和下装互斥")
+        accessory_refs = tuple((item["category"], self.accessory_path(item["accessory_id"])) for item in accessories)
+        if self.provider is None:
+            return ()
+        return tuple((item.category, self.asset_path(item.asset_id)) for item in garments) + accessory_refs
+
+    def accessory_path(self, accessory_id):
+        if accessory_id not in self.accessories:
+            raise Problem(404, "RESOURCE_NOT_FOUND", "配饰不存在")
+        path = ACCESSORY_DIRECTORY / f"{accessory_id}.png"
+        if not path.is_file():
+            raise Problem(503, "ASSET_NOT_INSTALLED", "配饰参考素材尚未安装", True)
+        return path
 
     @staticmethod
     def cloth_type(category: str) -> str:
@@ -343,7 +410,7 @@ class Store:
             raise Problem(503, "ASSET_NOT_INSTALLED", "请先安装本地商品素材包", True)
         return path
 
-    def run_provider(self, sid: str, jid: str, model_image: bytes, garment_path: Path, cloth_type: str):
+    def run_provider(self, sid: str, jid: str, model_image: bytes, garment_path, cloth_type, references):
         try:
             with self.lock:
                 guest = self.guests.get(sid)
@@ -358,7 +425,10 @@ class Store:
                 job.value["updated_at"] = stamp(self.clock())
             try:
                 assert self.provider is not None
-                result = self.provider.generate(model_image, garment_path, cloth_type, budget=budget)
+                if references:
+                    result = self.provider.generate_outfit(model_image, references, budget=budget)
+                else:
+                    result = self.provider.generate(model_image, garment_path, cloth_type, budget=budget)
             except ProviderFailure as error:
                 self.finish_provider_failure(sid, jid, error)
                 return
@@ -487,11 +557,13 @@ def decode_photo(data: bytes, media_type: str) -> Photo:
         raise Problem(422, "INVALID_IMAGE", "图片无法解码")
 
 
-def mock_result(photo: Photo, asset_id: str) -> bytes:
-    with Image.open(io.BytesIO(photo.data)) as original, Image.open(ASSETS / ASSET_SPECS[asset_id]["file"]) as shirt:
+def mock_result(photo: Photo, asset_id: str | None) -> bytes:
+    with Image.open(io.BytesIO(photo.data)) as original:
         result = original.convert("RGBA")
-        layer = ImageOps.contain(shirt, (max(1, int(photo.width * .65)), max(1, int(photo.height * .7))))
-        result.alpha_composite(layer, ((photo.width - layer.width) // 2, int(photo.height * .12)))
+        if asset_id is not None:
+            with Image.open(ASSETS / ASSET_SPECS[asset_id]["file"]) as shirt:
+                layer = ImageOps.contain(shirt, (max(1, int(photo.width * .65)), max(1, int(photo.height * .7))))
+                result.alpha_composite(layer, ((photo.width - layer.width) // 2, int(photo.height * .12)))
         draw = ImageDraw.Draw(result)
         draw.rectangle((0, 0, photo.width, min(44, photo.height)), fill="#172D43")
         draw.text((8, 10), "MOCK PREVIEW - NOT AI OUTPUT", fill="white")
@@ -503,10 +575,17 @@ def mock_result(photo: Photo, asset_id: str) -> bytes:
 class CreateInput(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
     upload_id: str = Field(min_length=1, max_length=128)
-    garment_id: str = Field(min_length=1, max_length=128)
+    garment_id: str | None = Field(default=None, min_length=1, max_length=128)
+    outfit: OutfitSelection | None = None
+
+    @model_validator(mode="after")
+    def check_selection(self):
+        if len(self.model_fields_set & {"garment_id", "outfit"}) != 1 or (self.garment_id is None and self.outfit is None):
+            raise ValueError("Select a garment or an outfit")
+        return self
 
 
-def create_app(mode: Mode = "success", *, clock=time.time, ttl=1800, catalog_path=None, catalog_profile="studio", provider: TryOnProvider | None = None, monotonic=time.monotonic, provider_disabled: bool = False, usage_metrics: UsageMetrics | None = None, video_library: VideoLibrary | None = None) -> FastAPI:
+def create_app(mode: Mode = "success", *, clock=time.time, ttl=1800, catalog_path=None, catalog_profile="studio", provider: TryOnProvider | None = None, monotonic=time.monotonic, provider_disabled: bool = False, usage_metrics: UsageMetrics | None = None, video_library: VideoLibrary | None = None, outfit_tagger: OutfitTagger | None = None) -> FastAPI:
     if mode not in {"success", "failure", "delayed", "timeout", "rate-limit"}:
         raise ValueError("Unknown mock mode")
     if not 0 < ttl <= 1800:
@@ -518,7 +597,7 @@ def create_app(mode: Mode = "success", *, clock=time.time, ttl=1800, catalog_pat
     if provider is not None and provider_disabled:
         raise ValueError("A provider cannot be active while real-provider calls are disabled")
     store = Store(mode, clock, ttl, catalog_path, catalog_profile, provider, monotonic,
-                  provider_disabled, usage_metrics, video_library)
+                  provider_disabled, usage_metrics, video_library, outfit_tagger)
 
     @asynccontextmanager
     async def lifespan(app):
@@ -584,19 +663,36 @@ def create_app(mode: Mode = "success", *, clock=time.time, ttl=1800, catalog_pat
             guest = store.guest(auth(request))
             root = str(request.base_url) + "api/v1/assets/"
             items = [public_item(item, root) for item in guest.catalog.values() if matches(item, q, tag)]
-        return JSONResponse({"items": items}, headers={"Cache-Control": "no-store"})
+        payload = {"items": items}
+        if store.outfit_available:
+            payload.update(outfit_available=True, accessories=[
+                {**item, "thumbnail_url": str(request.base_url) + f"api/v1/outfit-accessories/{aid}.png",
+                 "source": "ai_generated"}
+                for aid, item in store.accessories.items() if (ACCESSORY_DIRECTORY / f"{aid}.png").is_file()
+            ])
+        return JSONResponse(payload, headers={"Cache-Control": "no-store"})
+
+    @app.get("/api/v1/outfit-accessories/{aid}.png")
+    def outfit_accessory(request: Request, aid: str):
+        with store.lock:
+            store.guest(auth(request))
+        return FileResponse(store.accessory_path(aid), media_type="image/png", headers={"Cache-Control": "no-store"})
 
     @app.post("/api/v1/video-recommendations")
     def video_recommendations(request: Request, body: VideoRecommendationRequest):
+        authorization = auth(request)
         with store.lock:
-            guest = store.guest(auth(request))
+            guest = store.guest(authorization)
             store.rate("video-recommendations:" + guest.sid, 30)
             if body.makeup_ids:
                 raise Problem(400, "INVALID_REQUEST", "妆容目录尚未接入，请暂时不要传 makeup_ids")
             if any(garment_id not in guest.catalog for garment_id in body.garment_ids):
                 raise Problem(400, "INVALID_REQUEST", "服装ID不属于当前会话衣柜")
+        analysis = store.analyze_outfit(authorization, body.semantic_job_id) if body.semantic_job_id else None
+        with store.lock:
+            guest = store.guest(authorization)
             try:
-                result = store.video_library.recommend(body, guest.catalog)
+                result = store.video_library.recommend(body, guest.catalog, analysis)
             except ValueError:
                 raise Problem(400, "INVALID_REQUEST", "服装或妆容上下文暂不可用")
             result.validate_context(body)
@@ -679,7 +775,8 @@ def create_app(mode: Mode = "success", *, clock=time.time, ttl=1800, catalog_pat
 
     @app.post("/api/v1/tryon-jobs")
     def create_job(request: Request, body: CreateInput):
-        value, status = store.create_job(auth(request), body.upload_id, body.garment_id, request.headers.get("idempotency-key"))
+        value, status = store.create_job(auth(request), body.upload_id, body.garment_id,
+                                         request.headers.get("idempotency-key"), body.outfit)
         return JSONResponse(absolute_job(request, value), status, headers={"Cache-Control": "no-store"})
 
     @app.get("/api/v1/tryon-jobs/{jid}")
