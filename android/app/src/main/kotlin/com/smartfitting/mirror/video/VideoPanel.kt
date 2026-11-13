@@ -100,6 +100,7 @@ class VideoPanel(context: Context) : FrameLayout(context) {
             textSize = 17f
             setTextColor(Color.rgb(26, 43, 55))
             gravity = Gravity.CENTER
+            accessibilityLiveRegion = View.ACCESSIBILITY_LIVE_REGION_POLITE
             setPadding(dp(24), dp(8), dp(24), dp(8))
         }
         retryButton = Button(context).apply {
@@ -142,6 +143,8 @@ class VideoPanel(context: Context) : FrameLayout(context) {
                 attachController()
                 buildCards(semanticNote)
                 showPane(listScroll)
+                listPane.findViewWithTag<View>("video.card.0")?.let(::focusWhenVisible)
+                    ?: listPane.findViewWithTag<View>("video.exit")?.let(::focusWhenVisible)
             }
             is VideoResult.Empty -> showState(listOfNotNull(semanticNote, result.message).joinToString("\n"),
                 retryable = false, allowStyleChange = true)
@@ -212,6 +215,15 @@ class VideoPanel(context: Context) : FrameLayout(context) {
         if (playerPane.visibility == View.VISIBLE) showPane(listScroll)
     }
 
+    /** User navigation only: lifecycle teardown must not move focus into a hidden page. */
+    fun returnToList() {
+        val previousIndex = currentIndex()
+        releasePlayer()
+        val card = listPane.findViewWithTag<View>("video.card.$previousIndex")
+            ?: listPane.findViewWithTag<View>("video.card.0")
+        (card ?: listPane.findViewWithTag<View>("video.exit"))?.let(::focusWhenVisible)
+    }
+
     /** Full teardown for host onDestroy. */
     fun releaseAll() {
         releasePlayer()
@@ -270,6 +282,9 @@ class VideoPanel(context: Context) : FrameLayout(context) {
         val orientationWord = if (item.orientation == ClipOrientation.LANDSCAPE) "横屏" else "竖屏"
         val meta = "时长 %d:%02d · %s · %s".format(minutes, seconds, orientationWord, if (item.isTestData) "测试数据" else "授权参考片")
         val tags = "标签：" + item.tags.joinToString(" · ")
+        val matches = item.matchesText.ifBlank { "未提供具体匹配依据" }
+        val source = item.sourceText.lineSequence().firstOrNull { it.isNotBlank() }
+            ?: if (item.isTestData) "程序生成测试数据" else "授权参考片，详细来源未提供"
         val card = LinearLayout(context).apply {
             tag = "video.card.$index"
             orientation = LinearLayout.VERTICAL
@@ -278,7 +293,7 @@ class VideoPanel(context: Context) : FrameLayout(context) {
             isClickable = true
             isFocusable = true
             minimumHeight = dp(56)
-            contentDescription = "播放视频：${item.title}，$meta，$tags"
+            contentDescription = "播放视频：${item.title}，$meta，$tags，相关依据：$matches，来源：$source"
             layoutParams = LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(8) }
             setOnClickListener { onInteraction?.invoke(); openClip(index, 0, autoplay = true) }
         }
@@ -309,10 +324,12 @@ class VideoPanel(context: Context) : FrameLayout(context) {
     private fun openClip(index: Int, positionMs: Int, autoplay: Boolean) {
         val controller = controller ?: return
         if (index !in items.indices) return
+        val enteringPlayer = !isPlayerVisible()
         val item = items[index]
         controller.select(index)
         renderPlayerChrome(item)
         showPane(playerPane)
+        if (enteringPlayer) focusWhenVisible(toggleButton)
         val token = ++loadToken
         releaseMediaPlayer()
         pendingAutoplay = autoplay
@@ -415,7 +432,7 @@ class VideoPanel(context: Context) : FrameLayout(context) {
                 playerStatus.text = "已经是最后一条视频。"
             }
         }
-        playerPane.findViewWithTag<Button>("video.back").setOnClickListener { onInteraction?.invoke(); releasePlayer() }
+        playerPane.findViewWithTag<Button>("video.back").setOnClickListener { onInteraction?.invoke(); returnToList() }
         volumeBar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
             override fun onProgressChanged(seekBar: SeekBar, progress: Int, fromUser: Boolean) {
                 if (!fromUser) return
@@ -474,6 +491,13 @@ class VideoPanel(context: Context) : FrameLayout(context) {
         statePane.findViewWithTag<Button>("video.ai.state").visibility =
             if (allowStyleChange && onAnalyze != null) View.VISIBLE else View.GONE
         showPane(statePane)
+        focusWhenVisible(if (retryable) retryButton else statePane.findViewWithTag("video.state.back"))
+    }
+
+    private fun focusWhenVisible(target: View) {
+        target.post {
+            if (isShown && target.isShown && target.isEnabled && target.isFocusable) target.requestFocus()
+        }
     }
 
     private fun showPane(visible: View) {
@@ -547,7 +571,10 @@ class VideoPanel(context: Context) : FrameLayout(context) {
         controls.addView(toggleButton)
         controls.addView(nextButton)
         controls.addView(endButton("video.end.player").apply { visibility = View.GONE })
-        val volumeLabel = overlayLabel("音量", 14f)
+        val volumeLabel = overlayLabel("音量", 14f).apply {
+            tag = "video.volume.label"
+            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+        }
         controls.addView(volumeLabel)
         controls.addView(volumeBar, LinearLayout.LayoutParams(dp(120), -2))
         // Horizontal scroll keeps every control reachable at 1.3x/1.5x system font sizes.
@@ -595,6 +622,7 @@ class VideoPanel(context: Context) : FrameLayout(context) {
     private fun cardText(text: String, size: Float, bold: Boolean = false) = TextView(context).apply {
         this.text = text
         textSize = size
+        importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
         setTextColor(Color.rgb(26, 43, 55))
         if (bold) setTypeface(typeface, android.graphics.Typeface.BOLD)
         setPadding(0, dp(2), 0, dp(2))
