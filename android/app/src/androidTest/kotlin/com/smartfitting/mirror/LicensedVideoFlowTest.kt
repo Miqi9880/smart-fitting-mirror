@@ -64,7 +64,7 @@ class LicensedVideoFlowTest {
             s.onActivity {
                 val target=it.window.decorView.findViewWithTag<View>(tag)
                 val bounds=Rect()
-                focusedAndVisible=target.isFocused && target.getGlobalVisibleRect(bounds) && bounds.width()>0 && bounds.height()>0
+                focusedAndVisible=target?.isFocused==true && target.getGlobalVisibleRect(bounds) && bounds.width()>0 && bounds.height()>0
             }
             focusedAndVisible
         }
@@ -108,6 +108,22 @@ class LicensedVideoFlowTest {
         val image=instrumentation.uiAutomation.takeScreenshot()
         val path=File(instrumentation.targetContext.getExternalFilesDir(null),"evidence/video-$name.png")
         path.parentFile!!.mkdirs(); path.outputStream().use { image.compress(Bitmap.CompressFormat.PNG,100,it) }; image.recycle()
+    }
+
+    @Test fun returningFromVideoListRestoresFocusToTheFittingEntry() {
+        instrumentation.setInTouchMode(false)
+        try {
+            launch(host()).use { s ->
+                open(s,keyboard=true)
+                awaitFocus(s,"video.card.0")
+                assertEquals(View.GONE,view<View>(s,"fitting.scroll")!!.visibility)
+                click(s,"video.exit")
+                awaitFocus(s,"fitting.videos")
+                assertEquals(View.GONE,panel(s).visibility)
+            }
+        } finally {
+            instrumentation.resetInTouchMode()
+        }
     }
 
     @Test fun fiveUpperReferencesAndTwoDressReferencesReallyRenderFromHttp() {
@@ -420,6 +436,12 @@ class LicensedVideoFlowTest {
                         for (tag in listOf("video.next","video.end.player","video.volume")) {
                             instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_TAB)
                             awaitFocus(s,tag)
+                            s.onActivity {
+                                val control = it.window.decorView.findViewWithTag<View>(tag)
+                                val visible = Rect()
+                                assertTrue("Control must be visible: $tag", control.getGlobalVisibleRect(visible))
+                                assertTrue("Control must fit horizontally: $tag", visible.width() >= control.width - 2)
+                            }
                         }
                         evidence(s,"font-$scale-$orientation")
                     }

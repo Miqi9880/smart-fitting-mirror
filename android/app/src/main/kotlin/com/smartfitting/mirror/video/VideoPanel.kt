@@ -324,11 +324,12 @@ class VideoPanel(context: Context) : FrameLayout(context) {
     private fun openClip(index: Int, positionMs: Int, autoplay: Boolean) {
         val controller = controller ?: return
         if (index !in items.indices) return
+        val enteringPlayer = !isPlayerVisible()
         val item = items[index]
         controller.select(index)
         renderPlayerChrome(item)
         showPane(playerPane)
-        focusWhenVisible(toggleButton)
+        if (enteringPlayer) focusWhenVisible(toggleButton)
         val token = ++loadToken
         releaseMediaPlayer()
         pendingAutoplay = autoplay

@@ -190,6 +190,21 @@ class VideoPlaybackFlowTest {
         }
     }
 
+    @Test fun switchingToTheNextClipKeepsFocusOnNextWhileItIsAvailable() {
+        launch().use { scenario ->
+            await { view<View>(scenario, "video.card.2") != null }
+            focus(scenario, "video.card.0")
+            key(KeyEvent.KEYCODE_DPAD_CENTER)
+            awaitFocus(scenario, "video.toggle")
+            key(KeyEvent.KEYCODE_TAB)
+            awaitFocus(scenario, "video.next")
+            key(KeyEvent.KEYCODE_ENTER)
+            await { panel(scenario).currentIndex() == 1 }
+            instrumentation.waitForIdleSync()
+            assertTrue(view<View>(scenario, "video.next")!!.isFocused)
+        }
+    }
+
     @Test fun cardTapPlaysThenPauseResumeNextAndBack() {
         launch().use { scenario ->
             await { view<View>(scenario, "video.card.0") != null }
@@ -229,14 +244,17 @@ class VideoPlaybackFlowTest {
     }
 
     @Test fun simulatedFailureShowsMessageAndRetryRecovers() {
-        launch({ putExtra(VideoActivity.EXTRA_FAIL, true) }).use { scenario ->
-            await { view<View>(scenario, "video.message") != null }
-            assertTrue(text(scenario, "video.message")!!.contains("失败"))
-            assertEquals(View.ACCESSIBILITY_LIVE_REGION_POLITE, view<TextView>(scenario, "video.message")!!.accessibilityLiveRegion)
-            key(KeyEvent.KEYCODE_TAB)
-            awaitFocus(scenario, "video.retry")
-            click(scenario, "video.retry")
-            await { view<View>(scenario, "video.card.0") != null }
+        instrumentation.setInTouchMode(false)
+        try {
+            launch({ putExtra(VideoActivity.EXTRA_FAIL, true) }).use { scenario ->
+                await { text(scenario, "video.message")?.contains("失败") == true }
+                assertEquals(View.ACCESSIBILITY_LIVE_REGION_POLITE, view<TextView>(scenario, "video.message")!!.accessibilityLiveRegion)
+                awaitFocus(scenario, "video.retry")
+                key(KeyEvent.KEYCODE_ENTER)
+                await { view<View>(scenario, "video.card.0") != null }
+            }
+        } finally {
+            instrumentation.resetInTouchMode()
         }
     }
 
