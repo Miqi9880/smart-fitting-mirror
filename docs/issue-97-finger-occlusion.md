@@ -74,11 +74,9 @@ write(y * width + x, scene != 0 && scene < thresholdMm)
 1. 用「邻域内未知样本数 > 实测样本数」做判据——1/3 的稀疏零值下永远触发不了，且把手指自身的像素算作「实测」在语义上是错的；
 2. 要求邻域内存在浅于躯干的实测样本——邻域一旦挨到一个 `>= threshold` 的躯干像素就会被否决，真正的指尖反而被拒。
 
-### 顺带改动（与本 Issue 无关，可单独 review）
-
-`android/settings.gradle.kts`：在 `pluginManagement` 和 `dependencyResolutionManagement` 的 `repositories` 最前面各加了阿里云 `google` / `public` 镜像，解决本机从 Google 拉 `segmentation-selfie` 依赖超时的问题。如果不希望混进这个 PR，可以单独 drop。
-
 ## 4. 单测结果
+
+11 月 22 日使用镜端 Orbbec 构建配置复跑 Gradle 全量单测，XML 结果为 298 次执行，零失败、错误或跳过。Android 模块分别执行 debug 与 release，按模块和用例名去重为 160 个用例。新增边界断言覆盖前臂连续缺深度且没有前景支持、指尖投影处存在有效躯干深度，两处均应保留衣服。
 
 `./gradlew.bat test --continue` → **BUILD SUCCESSFUL in 4m 21s**，165 个 task。
 

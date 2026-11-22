@@ -94,7 +94,7 @@ class GarmentMeshTest {
         // return 0 (unknown) along thin structures and at the gaps between
         // fingers. fillMask treats unknown as "not occluded", so the shirt is
         // drawn over those pixels unless refineArms turns them into foreground.
-        // refineArms used to refuse any pixel whose own depth was unknown, so a
+        // refineArms used to require measured foreground nearby, so a
         // finger made of unknown samples stayed occluded.
         val size = 100
         val depth = DepthMetadata("finger-depth", size, size, size * 2)
@@ -117,7 +117,7 @@ class GarmentMeshTest {
         val tipsX = 64
         val unknownFrom = 56
         val fingers = mutableListOf<Pair<Int, Int>>()
-        for ((i, tipY) in tips.withIndex()) {
+        for (tipY in tips) {
             fingers += tipsX to tipY
             for (column in 50..tipsX) {
                 val t = (column - 42).toFloat() / (tipsX - 42)
@@ -154,6 +154,15 @@ class GarmentMeshTest {
             }
         }
         assertTrue("the fixture must actually contain dropped finger samples", fingerPixels > 20)
+        // A large depth hole on the forearm has no measured foreground support.
+        for (row in 42..48) for (column in 27..35) setDepth(column, row, 0)
+        // A measured torso pixel on a projected finger overrides geometry.
+        setDepth(64, 41, 2000)
+        DepthOcclusion.fillMask(plane, 2000, mask)
+        DepthOcclusion.refineArms(frame, plane,
+            HandLandmarks(emptyList(), fingers.map { (x, y) -> point(x, y) }), 2000, mask)
+        assertEquals(-1, mask[45 * size + 31])
+        assertEquals(-1, mask[41 * size + 64])
         // The shirt away from the hand is still fully drawn.
         assertEquals(-1, mask[20 * size + 30])
         assertEquals(-1, mask[60 * size + 30])
